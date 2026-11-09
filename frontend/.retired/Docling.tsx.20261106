@@ -1,0 +1,41 @@
+import { Card, Flex, Listy, Spin, Tag, Typography } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../services/api';
+
+export default function Docling() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['docling-health'],
+    queryFn: () => api.serviceHealth('docling'),
+    staleTime: 30_000,
+  });
+
+  return (
+    <Flex vertical gap={16}>
+      <Card title="Docling 文档解析">
+        <Flex gap={12} align="center">
+          {isLoading ? <Spin size="small" /> : <Tag color={data?.status === 'up' ? 'green' : 'red'} variant="filled">{data?.status === 'up' ? '服务正常' : '服务不可用'}</Tag>}
+          <Typography.Text type="secondary">双栏论文、复杂表格与扫描件 → Markdown</Typography.Text>
+        </Flex>
+      </Card>
+
+      <Card size="small" title="可用入口">
+        <Listy
+          items={[
+            { key: 'agent', title: 'Agent 助手调用', desc: '在对话中让助手解析指定授权文档' },
+            { key: 'api', title: '科研检索 API', desc: 'POST /tools/docling/convert（需登录）' },
+          ]}
+          rowKey="key"
+          height={140}
+          itemRender={(i) => (
+            <div style={{ padding: '8px 4px' }}>
+              <Typography.Text strong>{i.title}</Typography.Text>
+              <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
+                {i.desc}
+              </Typography.Paragraph>
+            </div>
+          )}
+        />
+      </Card>
+    </Flex>
+  );
+}

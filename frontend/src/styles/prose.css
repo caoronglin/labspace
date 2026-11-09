@@ -1,0 +1,151 @@
+/* =====================================================================
+   D509 工作台 · 长文本排版（prose）
+   ---------------------------------------------------------------------
+   用于命令说明、接口文档、Markdown 等以段落为主的区域。
+   规则：正文 14px / 行高 1.6；标题层级清晰；中英文混排不手写空格；
+   行内代码用中性底色，深浅色模式共用同一组变量。
+   ===================================================================== */
+
+/* 行内代码：MarkdownView 等处使用了行内硬编码底色，
+   这里用变量覆盖，保证深色模式下仍是低对比度而不是刺眼白块 */
+code {
+  background: var(--d509-code-bg) !important;
+  color: var(--d509-text) !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  font-size: 0.92em !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+pre {
+  background: var(--d509-code-block-bg);
+  color: var(--d509-code-block-text);
+  border: 1px solid var(--d509-border-soft);
+  border-radius: var(--d509-radius);
+  padding: var(--d509-space-3);
+  overflow-x: auto;
+}
+
+/* 代码块内的文字跟随代码块配色，不再被行内代码的强制色覆盖成黑底黑字 */
+pre code,
+pre code * {
+  background: transparent !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-size: 13px !important;
+  line-height: 1.7;
+}
+
+/* ---------------------------------------------------------- 段落容器 */
+.d509-prose {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--d509-text-secondary);
+}
+
+.d509-prose > *:first-child {
+  margin-top: 0;
+}
+
+.d509-prose > *:last-child {
+  margin-bottom: 0;
+}
+
+.d509-prose h1 {
+  font-size: 21px;
+  margin: var(--d509-space-5) 0 var(--d509-space-3);
+}
+
+.d509-prose h2 {
+  font-size: 16.5px;
+  margin: var(--d509-space-5) 0 var(--d509-space-2);
+}
+
+.d509-prose h3 {
+  font-size: 15px;
+  margin: var(--d509-space-4) 0 var(--d509-space-2);
+}
+
+.d509-prose h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--d509-text);
+  margin: var(--d509-space-4) 0 var(--d509-space-2);
+}
+
+.d509-prose p {
+  margin: 0 0 var(--d509-space-3);
+}
+
+.d509-prose ul,
+.d509-prose ol {
+  margin: 0 0 var(--d509-space-3);
+  padding-left: var(--d509-space-5);
+}
+
+.d509-prose li {
+  margin-bottom: var(--d509-space-1);
+}
+
+.d509-prose li::marker {
+  color: var(--d509-text-tertiary);
+}
+
+.d509-prose strong {
+  color: var(--d509-text);
+  font-weight: 600;
+}
+
+.d509-prose blockquote {
+  margin: 0 0 var(--d509-space-3);
+  padding: var(--d509-space-1) 0 var(--d509-space-1) var(--d509-space-3);
+  border-left: 3px solid var(--d509-border);
+  color: var(--d509-text-secondary);
+}
+
+.d509-prose hr {
+  border: 0;
+  border-top: 1px solid var(--d509-border-soft);
+  margin: var(--d509-space-4) 0;
+}
+
+.d509-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 var(--d509-space-3);
+}
+
+.d509-prose th,
+.d509-prose td {
+  padding: var(--d509-space-2) var(--d509-space-3);
+  border-bottom: 1px solid var(--d509-border-soft);
+  text-align: left;
+}
+
+.d509-prose th {
+  color: var(--d509-text);
+  font-weight: 600;
+  background: var(--d509-surface-sunken);
+}
+
+/* Markdown 渲染（XMarkdown）：补上链接与窄屏表格的排版细节 */
+.d509-prose a {
+  color: var(--d509-brand);
+  text-decoration: none;
+}
+
+.d509-prose a:hover {
+  text-decoration: underline;
+}
+
+.d509-md img {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 720px) {
+  .d509-md table {
+    display: block;
+    overflow-x: auto;
+  }
+}

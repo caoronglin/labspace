@@ -1,0 +1,80 @@
+/**
+ * 版本与更新日志 —— 帮助中心、「功能更新」弹窗共用同一份数据。
+ *
+ * 发布新功能时只需在数组头部插入一条并把 CURRENT_VERSION 指向它，
+ * 老用户下次进入工作台就会看到一次性的更新介绍。
+ */
+
+export interface ReleaseNote {
+  version: string;
+  date: string;
+  title: string;
+  summary: string;
+  highlights: string[];
+}
+
+export const RELEASES: ReleaseNote[] = [
+  {
+    version: '2026.11.07.1',
+    date: '2026-11-07',
+    title: '数据表格与本地 AI 能力',
+    summary: '自建 Baserow 表格工作台，并把内网 GPU 模型嵌入检索、解析与翻译。',
+    highlights: [
+      '新增「数据表格」：自建 Baserow 前端，工作区 / 数据表 / 字段 / 记录一站管理',
+      '知识库与统一搜索接入 bge-m3 向量召回 + bge-reranker 重排，语义相关的结果排得更准',
+      '论文翻译优先走内网 hy-mt2，图片文档解析自动使用 MinerU 识别版式与文字',
+      '所有 AI 调用均校验登录态与 CSRF，知识条目仍按个人 ACL 隔离',
+    ],
+  },
+  {
+    version: '2026.11.07',
+    date: '2026-11-07',
+    title: '公共基因组与帮助中心',
+    summary: 'JBrowse 2 与 rust-bio 打通，检索、浏览、分析一条链路完成。',
+    highlights: [
+      '新增「公共基因组」：同源内嵌 JBrowse 2，按 ACL 浏览实验室参考基因组',
+      '序列分析接入 rust-bio：GC / GC3 含量、ORF 预测、反向互补一键完成',
+      '个人文件支持选择共享人，「共享给我」集中查看他人共享的内容',
+      '新增帮助中心：快速上手、服务地图、常见问题与更新日志',
+    ],
+  },
+  {
+    version: '2026.10.24',
+    date: '2026-10-24',
+    title: '个人工作台 2.0',
+    summary: '工作台拆分为聚焦、日历与甘特视图，导师可指派课题与任务。',
+    highlights: [
+      '工作台分栏：今日聚焦、日历视图、甘特视图互不干扰',
+      '导师可向成员指派课题与任务，并查看指派看板',
+      '任务支持富文本说明与附件交付',
+      '权限组预置老师 / 博士 / 研究生 / 本科生 / 实习生，可增删改',
+    ],
+  },
+  {
+    version: '2026.10.10',
+    date: '2026-10-10',
+    title: '文件共享与 ACL',
+    summary: '文件管理重构为共享空间，权限按用户组与个人细粒度控制。',
+    highlights: [
+      '文件源统一为公共文件、公共质粒、公共基因组、个人文件',
+      '目录级读写权限，只读用户自动降级为预览',
+      '支持排序、存储用量、更新时间与创建时间',
+      '删除进入回收站，管理员可查看下载与预览历史',
+    ],
+  },
+  {
+    version: '2026.09.26',
+    date: '2026-09-26',
+    title: '配色、文献与诊断',
+    summary: '新增科研配色工具，文献检索与访问诊断补齐。',
+    highlights: [
+      '配色搭配：Go 重写 lcpmgh/colors，支持科研期刊色板与取色匹配',
+      '科研文献检索与数据库速查联动',
+      '访问与诊断页，双 IP / Tailscale 连通性一目了然',
+      '全站支持 192.0.2.10 与 Tailscale 双入口自适应',
+    ],
+  },
+];
+
+export const CURRENT_VERSION = RELEASES[0].version;
+export const CURRENT_RELEASE = RELEASES[0];

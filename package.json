@@ -1,0 +1,20 @@
+{
+  "name": "labspace-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "description": "D509 工作台 monorepo（前端 / Agent 网关 / Python 后端），依赖统一由 pnpm 管理",
+  "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "build": "pnpm --filter labspace-frontend build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "bash e2e/run-regression.sh",
+    "test:api": "bash e2e/run-regression.sh api-integration.mjs",
+    "sync:py": "/usr/local/bin/lab-pyproject-sync",
+    "lint:antd": "cd frontend && antd lint ./src",
+    "doctor:antd": "cd frontend && antd doctor"
+  }
+}

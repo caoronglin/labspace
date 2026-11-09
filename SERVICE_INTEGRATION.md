@@ -1,0 +1,224 @@
+# SERVICE_INTEGRATION.md — 各服务集成方式与限制
+
+所有集成均为**链接/内嵌到统一入口**，不复制、不重写第三方功能。
+
+| 服务 | 集成方式 | 入口 | 验证 |
+| --- | --- | --- | --- |
+| Open WebUI | 独立页面（原生 OIDC 客户端已注册，issuer = `http://192.0.2.10:8090`） | `http://192.0.2.10:3000/` | ✅ 页面可加载，登录页显示 “Continue with Casdoor” |
+| FileBrowser Quantum | 独立页面（Casdoor 客户端已注册 `quantum`） | `http://192.0.2.10:8080/files/` | ✅ 登录页正常，27 项越权/只读测试通过 |
+| draw.io | 独立页面 + 门户受控保存/导出 | `http://192.0.2.10/draw/` | ✅ 绘图页可打开、可另存 XML 到个人目录 |
+| Linux Command | 官方仓库静态构建，Nginx 直接托管 | `http://192.0.2.10:8086/` | ✅ 页面加载，标题“Linux命令搜索引擎” |
+| IT-Tools | 官方镜像，独立页面 | `http://192.0.2.10:8084/` | ✅ 页面加载，标题“IT Tools - Handy online tools” |
+| 科研文献搜索 | 门户内页面 → 后端代理科研 API | 门户 `/literature` | ✅ PubMed / Europe PMC / Crossref / UniProt / NCBI Gene |
+| 统一搜索 | 门户内页面 → 后端代理 SearXNG | 门户 `/search` | ✅ 中文/学术/视频分类切换 |
+| Docling 解析 | 门户说明页 + Open WebUI 工具调用 | 门户 `/docling` | ✅ 健康检查通过 |
+| Open Terminal | 仅导师/管理员可见（角色过滤） | `http://192.0.2.10:8090/`（统一认证） | ✅ 角色过滤生效，学生不可见 |
+
+## draw.io 的集成（与官方建议的差异及原因）
+
+- 官方建议 Embed Mode（iframe + postMessage）。实测本机部署的 `jgraph/drawio:latest`
+  （Tomcat 版）**不包含 embed 应用**（镜像内 `/usr/local/tomcat/webapps/draw/` 无 embed 目录，
+  `/embed/index.html` 返回 404），主应用也不会触发 postMessage 握手（无 `init` 事件）。
+- 按任务要求「嵌入失败时优先采用独立内部页面，而不是修改第三方源码移除安全限制」，
+  门户改为：独立页面编辑 → 回到门户「导入 XML」保存到“我的图形”或导出到个人目录。
+- 已验证链路：模板生成 XML → 保存 → `labspace.drawings` 落库 → 导出 →
+  `/srv/lab/users/student01/drawio/rnaseq.drawio`（Quantum 可见，0640 + ACL）。
+- 内容校验：仅接受含 `<mxfile` / `<mxGraphModel` 的内容，拒绝 `<!DOCTYPE`、`<!ENTITY`、`<script>`、
+  `javascript:`；单文件上限 2MB；文件名白名单化；写入路径限定在 `<users_root>/<username>/drawio/`。
+- 若后续更换带 embed 应用的镜像，门户端的 iframe + postMessage 实现已保留在 git 历史中，可直接切回。
+
+## Open WebUI / Quantum 的 OIDC（已打通，2026-10-26）
+
+- 重建 Open WebUI（先备份）与 Quantum 后，两者均已接入内网 Casdoor：
+  - Open WebUI：`/oauth/oidc/login` → 302 → Casdoor → 回调 307；`adminlegacy@qq.com` 按邮箱绑定
+    既有账号（`oauth.merge_accounts_by_email=true`），**用户 ID、知识库、模型 API 均未变**。
+  - Quantum：客户端 `quantum` 已注册，OIDC 与本地口令并行（口令为管理员兜底，学生走 OIDC），
+    登录页显示「FileBrowser Quantum 或 Open ID Connect」，界面语言已设为 zh-CN。
+- 关键点：统一改用 IP 专属端口的 Casdoor（`http://192.0.2.10:8090`），Open WebUI / Quantum / 门户的
+  issuer 与授权地址全部为 IP，无需 DNS 解析（容器内 `extra_hosts` 域名映射已全部移除）。
+  `lab-postgres` 需同时在 lab-backend / lab-tools / labspace-net 三个网络上（也已写入 compose，
+  避免手工 `docker network connect` 在重建时丢失）。
+
+## 曾经的 OIDC 限制（已解决）
+
+- Casdoor 客户端 `openwebui` 已注册，回调 `http://192.0.2.10:3000/oauth/oidc/callback`；
+  Open WebUI 侧已写入 OIDC 配置（provider=本地 Casdoor，merge-by-email=true 以保留原账号）。
+- **当前实例未打通**：`/oauth/oidc/login` 返回 500。根因有二：
+  1. 容器内无法解析域名（现已全部改为 IP + 端口，不再依赖任何域名解析）；
+     已用 `docker exec` 写入 `/etc/hosts` 临时修复，但 Docker 会在容器重启时重写该文件。
+  2. Open WebUI 0.12.1 会缓存 OIDC client；`ENABLE_OAUTH_PERSISTENT_CONFIG=false` 时 OIDC 配置不落库，
+     进程重启后需要重新配置。
+- **一次性修复（维护窗口内执行）**：`cd /opt/lab-core-stack && docker compose up -d`
+  （现已取消域名映射，改为 issuer 指向 `http://192.0.2.10:8090`，并保留 `ENABLE_OAUTH_PERSISTENT_CONFIG=true`）。
+  这会重建 Open WebUI 容器（当前任务要求不得重建，故未执行），数据与知识库不受影响。
+- 在此之前，Open WebUI 仍可用口令登录（`ENABLE_LOGIN_FORM=true`），原有用户、知识库、模型 API 均未变动。
+
+## Quantum 的 OIDC
+
+客户端 `quantum` 已注册并写好 `FILEBROWSER_OIDC_*` 环境变量位；
+Casdoor 就绪后执行 `lab-quantum-oidc enable http://192.0.2.10:8090` 一键切换（口令与 OIDC 并行可用）。
+
+## Linux 命令库（门户内完整版）
+
+- 数据源：linux-command 官方仓库 `src/dist/data.json`（621 条索引）与 `src/command/*.md`（完整 Markdown 文档）。
+- 后端接口（均需登录）：
+  - `GET /api/commands?q=&limit=` → 索引检索（名称 + 用途模糊匹配）
+  - `GET /api/commands/{name}` → 单条命令完整 Markdown（最多 200KB）
+- 前端 `/commands`：搜索框 + 按首字母分组的命令列表 + 右侧全文。
+- 渲染方式：**不使用 `dangerouslySetInnerHTML`**，Markdown 由 `MarkdownView.tsx` 解析成 React 元素
+  （标题/代码块/粗体/行内代码/列表/段落），天然免疫 XSS。
+- 挂载方式：后端容器只读挂载 `data.json` 与 `command/` 两个独立目录（避免只读目录下再挂载）。
+- 独立站点 `http://192.0.2.10/commands/` 保留，供交互式浏览；两者内容同源。
+- **只读**：任何命令都不会被执行，页面仅展示官方文档。
+
+## 浏览器主页（/start）
+
+浏览器起始页，全屏独立布局（不套门户 Header/Sider）：
+
+| 能力 | 实现 |
+| --- | --- |
+| 登录 | 复用 Casdoor 会话：右上角显示头像/姓名与下拉（个人资料、退出登录），未登录显示「登录」按钮 |
+| 换背景 | 5 套本地 CSS 渐变/纹理（实验蓝、松石绿、晨曦、网格、深空）+ 深浅色主题切换，选择持久化在 localStorage（`labspace.bg`），**不拉外链图片，离线可用** |
+| 多元搜索 | 大搜索框 + 来源切换（全部=general,science,videos / 网页 / 学术 / 视频），走门户后端 `/api/search` → SearXNG 多引擎聚合；回车跳到结果页并带上 categories |
+| 快捷入口 | Open WebUI、文件管理、绘图、Linux 命令、IT-Tools、文献检索 |
+
+入口：门户头部新增「浏览器主页」按钮，首页新增「浏览器主页」卡片；建议把
+`http://192.0.2.10/start` 设为浏览器起始页。
+
+## OIDC 登录的两条硬规则（踩过的坑）
+
+### 规则 1：口令必须统一
+
+Casdoor 是唯一身份源。学生原本在 Quantum 用的本地口令与 Casdoor 不同，导致在 Casdoor 登录页
+被拒、页面反复退回登录框。已用 `lab-sync-passwords`（每日 06:50 定时 + 可手动执行）把
+**同名账号在 Casdoor / Quantum / Open WebUI 三处的口令统一**，统一后的清单在
+`/etc/labspace/casdoor-users.txt`（0600）。
+
+### 规则 2：OIDC 回调必须与登录入口同主机
+
+浏览器的会话 Cookie 是**按主机隔离**的。OIDC 流程是「在 A 主机登录 → IdP → 回到 A 主机回调」，
+若中间换了主机，回调时浏览器不会带上会话 Cookie，服务端就报 `mismatching_state`（页面显示
+“Sign-in with your identity provider failed”）。
+
+因此本部署统一 **IP 优先**：
+
+| 应用 | 固定回调（redirect_uri） | 必须从这个入口登录 |
+| --- | --- | --- |
+| LabSpace 门户 | **动态**（后端按请求 Host 生成） | 任意（IP 或域名均可） |
+| Quantum | `http://192.0.2.10:8080/files/api/auth/oidc/callback` | `http://192.0.2.10:8080/files/` |
+| Open WebUI | `http://192.0.2.10:3000/oauth/oidc/callback` | `http://192.0.2.10:3000/` |
+
+若要用其它入口登录 OIDC，必须把对应应用的
+`redirect_uri` 改回域名形式并重建容器（`OPENID_REDIRECT_URI` / Quantum 的 `FILEBROWSER_*`）。
+
+## JBrowse 2 基因组浏览器（/jbrowse/）
+
+| 项 | 说明 |
+| --- | --- |
+| 版本 | v4.3.0 官方 web 包（`jbrowse-web-v4.3.0.zip`，GMOD/jbrowse-components release） |
+| 部署方式 | 静态应用 + Nginx `alias` 托管，数据目录 `/srv/labdata/jbrowse/web/data`（教师可放自己的基因组） |
+| 入口 | `http://192.0.2.10/jbrowse/index.html?config=data/demo/config.zh.json`（注意参数是 `config`，不是 `data`；`?data=` 是旧版写法，v4 会回落到 `/jbrowse/config.json` 报 JSON 解析错） |
+| 内置示例 | 人类 hg19 断点/变异（BAM + VCF + chrom.sizes，5.5MB，**完全离线**），轨道名与组装名已中文化 |
+| 教师投放数据 | 放到 `data/<数据集>/`，内含 `config.json`，用 `?config=data/<数据集>/config.json` 打开 |
+| 语言 | 配置里 `"locale": "zh"`；JBrowse 2 的 web 包未内置中文语言包，**菜单仍为英文**（轨道/组装/说明已中文化） |
+| 出网 | 该 web 包默认会上报 Google Analytics（离线环境请求失败即忽略）；如需彻底拦截可对 lab 网段拒绝 `www.google-analytics.com` |
+
+## 植物生信数据库速查（71 个资源）
+
+把实验室常用的植物领域数据库/资源/工具做成门户的一等能力：
+
+| 项 | 说明 |
+| --- | --- |
+| 数据 | `backend/app/databases.py`（71 条，含中文名、简介、分类、标签、官方链接） |
+| 分类 | 通用 / 序列与蛋白 / 基因组与注释 / 转录组与ncRNA / 代谢与通路 / 表型与遗传 / 比较基因组 / 多组学与单细胞 / 工具与平台（9 类） |
+| 接口 | `GET /api/databases?q=&category=`（需登录）；全量 71 条，关键词命中名称/中文名/简介/标签 |
+| 门户页 | `/databases`：搜索框 + 分类 Segmented + 卡片网格（AntD 原生），点击直达官方站点 |
+| 首页常驻 | 「植物数据库速查」面板（默认展示 8 个常用：NCBI/KEGG/TAIR/UniProtKB/Ensembl Plants/Phytozome/PlantGSEA/PmiREN） |
+| **全局搜索并入** | 门户搜索框与「网页/学术搜索」会同时命中本地目录，命中项以 `植物库` 标签区分（engine=d509） |
+
+覆盖范围：NCBI、NCBI SRA、NCBI BLAST、ENA、KEGG、KAAS、TAIR、UniProtKB、AlphaFold DB、SignalP、EggNOG-mapper、
+PDB、InterPro、Pfam、PANTHER、Phytozome、Gramene、CoGe、GRIN、iTAK、InterPro、PhytoPath、Ensembl Plants、
+PLAZA、PlantGDB、MSU 水稻、SolGenomics、PASA、SoyBase、番茄基因组平台、PlantCyc、MetaCyc、BRENDA、
+PRGdb（含 4.0 版）、PlantTFDB、植物小 RNA 库、miRBase、PMRD、Plant-ImputeDB、C-values、EBI、Plant Ontology、
+植物 RNA-seq 文库平台、Expression Atlas、TreeGenes、Tropicos、Genesys、GDR、CottonGen、植物 MLST、SoySNP、
+PlantcircBase、PlantRegMap、URGI、OryzaSNP、ChromLoops、植物代谢网络、PlantReactome、PlantDeepSEA、PmiREN、
+PsctH、PCMDB、Cell BLAST、Plant Cell Atlas、MetaboLights、ChromStates、PlantGSEA、PNRD、PlantExp、BUSCO、GeneMANIA。
+
+## SnapOtter 文件工坊（原生 REST 重写，端口 8092）
+
+| 项 | 说明 |
+| --- | --- |
+| 镜像 | `snapotter/snapotter:latest`（GHCR `ghcr.io/snapotter-hq/snapotter` 拉取更快，镜像 12.3GB） |
+| 部署 | `/opt/lab-snapotter/compose.yaml`（compose name `lab-snapotter`）：app + postgres:17-alpine + redis:8-alpine |
+| 入口 | `http://192.0.2.10:8092/`（官方界面），门户页 `/snapotter` |
+| 数据 | `/srv/labdata/snapotter/{data,workspace,pgdata,redisdata}` |
+| 容器网络 | `lab-tools`（external），门户后端按容器名 `lab-snapotter:1349` 直连，不经过宿主机端口 |
+| 资源限制 | app 3g/3cpu/384 pid/shm 1g；pg 512m；redis 512m + `--maxmemory 384mb` |
+| 鉴权 | `POST /api/auth/login` → 会话；`POST /api/v1/api-keys` → `si_` 前缀 API Key（`Authorization: Bearer si_...`） |
+| 密钥存放 | `/etc/lab-snapotter/credentials`（0600）；门户后端用 `SNAPOTTER_API_KEY` 环境变量 |
+| 工具目录 | **没有 `/api/v1/tools` 列表接口**；权威来源是 `/api/v1/openapi.yaml`（610KB），后端用 PyYAML 解析出 243 个 `POST /api/v1/tools/{section}/{toolId}` 工具，缓存 10 分钟 |
+| 分区 | image(107) / video(57) / pdf(29) / audio(27) / files(23) |
+| 门户代理 | `GET /api/snapotter/status`、`GET /api/snapotter/tools`、`POST /api/snapotter/run`、`GET /api/snapotter/jobs/{id}`、`GET /api/snapotter/pipelines`、`GET /api/snapotter/download?url=` |
+| SSRF 防护 | 下载代理只允许 `/api/v1` 前缀与本机/容器名 host |
+| 合并 PDF 注意事项 | 官方 `merge-pdf` 需要**至少两个文件**，门户当前单文件上传流程只适合单文件类工具 |
+
+> **数据库角色坑**：镜像内**没有** `DATABASE_MIGRATION_URL` 的建角色逻辑（`grep -rl DATABASE_MIGRATION_URL /app` 无结果），
+> 必须自建 `/srv/labdata/snapotter/initdb/10-app-role.sh` 在 Postgres 首启时 `CREATE ROLE snapotter_app` +
+> `GRANT ALL PRIVILEGES ON DATABASE snapotter` + `ALTER SCHEMA public OWNER TO snapotter_app`。
+> 手工执行 SQL 时 `docker exec` 必须加 `-i`，否则 heredoc 内容不会送进 psql。
+
+## 统一语料（Unified Corpus）
+
+门户内所有「可检索的东西」汇总成一份索引，首页 ⌘K 命令面板、全局搜索「本地资源」分组、搜索建议三处同源：
+
+| 类型 | 条数 | 来源 |
+| --- | --- | --- |
+| command | 621 | Linux Command 官方索引 |
+| database | 71 | `backend/app/databases.py` |
+| page | 15 | 门户页面路由 |
+| service | 13 | `backend/app/catalog.py` |
+| tool | 12 | 浏览器本地工具（/devtools） |
+| snapotter | 243 | SnapOtter OpenAPI 工具目录（中文别名见 `corpus._TOOL_ALIASES`） |
+
+- 实现：`backend/app/corpus.py`；接口 `GET /api/corpus?q=&limit=`、`GET /api/search/suggest`。
+- 搜索结果**按类型限额**（`corpus.TYPE_CAPS`：snapotter 4 / command 5 / database 6 / service 5 / tool 4 / page 4），
+  避免 243 个文件工具或 621 条命令把结果洗掉。
+- SnapOtter 工具通过 `?section=&tool=` 深链接直达（`/snapotter?section=pdf&tool=merge-pdf`）。
+- 中文别名只覆盖常用能力（`corpus._TOOL_ALIASES`），例如「PDF 合并」→ `Merge PDFs`、「抠图」→ `Remove background`。
+
+## 门户原生重写的功能（Ant Design 6）
+
+原本跳转/内嵌的第三方页面，凡可在门户内实现的都已用 **Ant Design 6 原生组件**重写：
+
+| 页面 | 路由 | 替代/包含的第三方功能 | 说明 |
+| --- | --- | --- | --- |
+| 学术检索 | 主页面板 + `/search` | SearXNG | 门户 API 代理，AntD Segmented/Input.Search，多引擎聚合 |
+| 科研文献检索 | `/literature` | 科研 OpenAPI | PubMed / Europe PMC / Crossref / UniProt / NCBI Gene |
+| 开发工具箱 | `/devtools` | IT-Tools | **10 个工具**：JSON 美化/压缩、YAML↔JSON、Base64、URL 编解码、SHA-1/256/512、UUID、时间戳、正则测试、文本对比、进制转换；全部浏览器本地处理 |
+| Linux 命令速查 | `/commands` | Linux Command | 内置官方 621 条命令完整说明（Markdown 安全渲染） |
+| 我的图形 | `/drawings` | draw.io 图形管理 | 列表 / 重命名 / 下载 / 删除 / 继续编辑 |
+| PDF 论文翻译 | `/translate` | PDFMathTranslate GUI | AntD 上传 + 队列进度 + 结果下载 |
+| 文件工坊 | `/snapotter` | SnapOtter | **原生 REST 调用**（非 iframe）：243 个图像/PDF/音视频/文件工具，上传→处理→下载全链路在门户内完成 |
+| 公告管理 | 管理端 | — | 真实公告（数据库），首页不再显示占位 |
+
+保留第三方原生页面的原因（不做重写）：draw.io 图形编辑器、JBrowse 基因组浏览器、
+Open WebUI 聊天内核、Quantum 文件管理器——这些是完整专业应用，重写没有意义且易失真。
+原版 IT-Tools 仍保留在 `http://192.0.2.10:8084/`（导航「IT-Tools 原版」）。
+
+## PDF 论文翻译（已实测跑通）
+
+| 环节 | 实现 |
+| --- | --- |
+| 服务 | 官方镜像 `awwaawwa/pdfmathtranslate-next`（v4.3.0 系），**串行工作进程**（共享卷队列），非 Gradio 直连 |
+| 任务流 | 后端写 `/jobs/pending/<id>.pdf`（0644）→ 工作进程取件执行 `pdf2zh` → 产物目录打包为 `<id>.zip` → 后端轮询 `/jobs/done/<id>.json` |
+| 页面 | 门户 AntD 页：上传（Dragger）→ 进度（Progress）→ 下载（Result） |
+| 资源限制 | 内存 2GB / CPU 1 核 / 进程 256；单文件 ≤30MB；队列串行，翻译期间不挤占学生练习资源 |
+| 引擎 | 默认 `bing`（免密钥），可在 `deploy/.env` 用 `PDF2ZH_SERVICES` 切换（deepL / openai 兼容接口等） |
+| 实测 | 上传 PDF → 队列 → 生成 `*.zh.dual.pdf`（双语）与 `*.zh.mono.pdf`（纯译），译文中英文对照正确 |
+| 失败处理 | 校验产物非空才算成功；失败保留源文件与日志，页面显示失败原因 |
+
+## 权限边界
+
+- 门户按 Casdoor 角色过滤菜单与卡片；后端所有 API 独立校验角色（未登录 401、越权 403）。
+- 学生看不到 Open Terminal（终端卡片与后端接口均受限）。
+- 学生看不到他人知识库 / 文件（既有 Quantum 与 Open WebUI 自身的 ACL 继续生效）。

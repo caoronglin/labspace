@@ -1,0 +1,22 @@
+packages:
+  - frontend
+  - agent
+  - backend
+  - e2e
+
+# pnpm 12.4+ 内置 Python 依赖管理：读取 pyproject.toml / requirements.txt，
+# 生成 pylock.toml，并在项目目录创建 .venv（指向 pnpm store 内的 python-envs）。
+python:
+  enabled: true
+  versions:
+    - "3.12"
+    - "3.13"
+
+# 需要编译的 Python 包显式放行（psycopg2-binary 自带 wheel，通常无需构建）
+allowBuilds:
+  "pkg:pypi/psycopg2-binary": true
+
+minimumReleaseAgeExclude:
+  - "@tanstack/query-core@5.106.1"
+  - "@tanstack/react-query@5.106.1"
+  - vite@8.3.6

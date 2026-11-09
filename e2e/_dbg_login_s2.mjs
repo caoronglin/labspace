@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import { chromium } from 'playwright';
+const BASE='http://192.0.2.10';
+const line=fs.readFileSync('/etc/labspace/casdoor-users.txt','utf8').split('\n').find(l=>l.trim().startsWith('student02@local'));
+const [user,pass]=line.trim().split(/[: ]+/).filter(Boolean);
+const browser=await chromium.launch({args:['--no-sandbox']});
+const ctx=await browser.newContext({locale:'zh-CN'});
+const page=await ctx.newPage();
+await page.goto(`${BASE}/login`,{waitUntil:'domcontentloaded'});
+await page.waitForSelector('input[type="password"]',{timeout:20000});
+await page.locator('input[type="text"], input:not([type])').first().fill(user);
+await page.locator('input[type="password"]').first().fill(pass);
+await page.getByRole('button',{name:/登录|Login/}).first().click();
+await page.waitForTimeout(7000);
+console.log('URL',page.url());
+console.log((await page.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ').slice(0,300));
+await browser.close();

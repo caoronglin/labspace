@@ -1,0 +1,22 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({args:['--no-sandbox']});
+const ctx = await b.newContext({locale:'zh-CN', viewport:{width:1500,height:1000}});
+const p = await ctx.newPage();
+const fails=[];
+p.on('response', r=>{ if(r.status()>=400) fails.push(r.status()+' '+r.url().slice(0,70)); });
+await p.goto('http://192.0.2.10/login', {waitUntil:'domcontentloaded'});
+await p.waitForTimeout(3500);
+await p.waitForSelector('input[type="password"]', {timeout:15000});
+await p.locator('input[type="text"], input:not([type])').first().fill('student01');
+await p.locator('input[type="password"]').first().fill(process.env.LAB_PASS);
+await p.getByRole('button', {name:/登录|Login/}).first().click();
+await p.waitForTimeout(6000);
+await p.goto('http://192.0.2.10/drawio', {waitUntil:'networkidle', timeout:30000});
+await p.waitForTimeout(4000);
+const frames = p.frames().map(f=>f.url().split('?')[0]);
+console.log('  门户内 iframe 源:', frames.filter(u=>u.includes('draw')).join(' | ') || '无');
+const inner = p.frames().find(f=>f.url().includes('draw'));
+if (inner) { const t=(await inner.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ').slice(0,90); console.log('  iframe 内文本:', t); }
+console.log('  失败请求:', fails.slice(0,4));
+await p.screenshot({path:'/opt/labspace/e2e/shots/drawio-ip.png'});
+await b.close();

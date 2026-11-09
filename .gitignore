@@ -1,0 +1,90 @@
+# ---------------------------------------------------------------------------
+# LabSpace 门户 —— 版本控制忽略规则
+#
+# 原则：只提交「人写的源码 + 配置 + 文档 + 锁文件」；
+#       依赖、构建产物、缓存、运行时数据、密钥一律不入库。
+#
+# 注意：gitignore 不支持行尾注释，所有说明写在独立行上。
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------- 依赖目录
+node_modules/
+.venv/
+.venv
+venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# ---------------------------------------------------------------- 构建产物
+dist/
+build/
+*.tsbuildinfo
+
+# linux-command 站点构建输出（43MB）
+frontend/linux-command/src/.deploy/
+
+# 例外：linux-command 的命令索引是运行时挂载文件（compose.yaml 映射为
+# /opt/labspace/cmd-index.json），且本地已修改（新增生信命令条目），
+# 不能当作可丢弃的构建产物。dist/ 会连带忽略整个目录，故需逐条反忽略。
+!frontend/linux-command/src/dist/
+frontend/linux-command/src/dist/*
+!frontend/linux-command/src/dist/data.json
+!frontend/linux-command/src/dist/data.min.json
+
+# Go 编译产物
+go-core/bin/
+/go-core/labgo
+
+# ------------------------------------------------------- 编辑器 / Agent 状态
+.pi/
+.qoder/
+.idea/
+.vscode/
+
+# ------------------------------------------------------------ 日志与运行时数据
+*.log
+*.sqlite
+*.sqlite3
+*.db
+/data/
+
+# 运行时数据快照：ACL 备份与 Postgres 导出，属于现场数据而非源码
+deploy/acl-backups/
+deploy/*.sql
+
+# go:embed 需要随源码走的静态数据（internal/colorlab/data/palettes.csv），
+# 属于源码而非运行时数据，不能被上面的 /data/ 规则吞掉。
+!go-core/internal/colorlab/data/
+!go-core/internal/colorlab/data/**
+
+# ------------------------------------------------------------ 密钥与口令
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# 含数据库口令的 Casdoor 配置
+deploy/casdoor/app.conf
+
+# 含真实口令的用户清单 / 凭据文件
+*users.txt
+*credentials*.json
+*secrets*.json
+
+# ------------------------------------------------------------ 截图 / 视频产物
+e2e/shots/
+e2e/_dbg/
+e2e/*.png
+*.mp4
+*.webm
+
+# ------------------------------------------------------- 上游嵌套仓库元数据
+# frontend/linux-command/src 是 jaywcjlove/linux-command 的上游检出，
+# 其工作区内容（含本地新增的生信命令文档）按普通文件纳入 LabSpace 仓库，
+# 但嵌套的 .git 目录不入库。
+frontend/linux-command/src/.git/

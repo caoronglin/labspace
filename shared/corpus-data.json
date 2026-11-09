@@ -1,0 +1,1879 @@
+{
+ "version": 1,
+ "databases": [
+  {
+   "id": "ncbi",
+   "featured": true,
+   "name": "NCBI",
+   "cn": "美国国家生物技术信息中心",
+   "desc": "全球最大的生物信息学数据库之一，提供基因、蛋白质序列、文献、植物数据库等近 200 个数据库。",
+   "url": "https://www.ncbi.nlm.nih.gov/",
+   "category": "通用",
+   "tags": [
+    "序列",
+    "文献",
+    "通用",
+    "GenBank",
+    "Entrez"
+   ]
+  },
+  {
+   "id": "kegg",
+   "featured": true,
+   "name": "KEGG",
+   "cn": "京都基因与基因组百科全书",
+   "desc": "综合性基因组学数据库，用于基因功能及代谢通路注释、分类和分析，包含植物基因组数据。",
+   "url": "https://www.genome.jp/kegg/",
+   "category": "代谢与通路",
+   "tags": [
+    "通路",
+    "KEGG",
+    "注释",
+    "代谢"
+   ]
+  },
+  {
+   "id": "tair",
+   "featured": true,
+   "name": "TAIR",
+   "cn": "拟南芥信息资源",
+   "desc": "阿拉伯芥基因组、转录组、遗传变异、表达数据、蛋白质数据与代谢通路等信息。",
+   "url": "https://www.arabidopsis.org/",
+   "category": "基因组与注释",
+   "tags": [
+    "拟南芥",
+    "表达",
+    "注释",
+    "变异"
+   ]
+  },
+  {
+   "id": "uniprotkb",
+   "featured": true,
+   "name": "UniProtKB",
+   "cn": "通用蛋白质数据库",
+   "desc": "全球最大的蛋白质序列与注释数据库之一，拥有非常丰富的植物蛋白质数据。",
+   "url": "https://www.uniprot.org/",
+   "category": "序列与蛋白",
+   "tags": [
+    "蛋白",
+    "Swiss-Prot",
+    "TrEMBL",
+    "注释"
+   ]
+  },
+  {
+   "id": "pdb",
+   "name": "PDB",
+   "cn": "蛋白质结构数据库",
+   "desc": "全球蛋白质结构数据库，包含各种植物蛋白质的结构数据与相关信息。",
+   "url": "https://www.rcsb.org/",
+   "category": "序列与蛋白",
+   "tags": [
+    "结构",
+    "X射线",
+    "冷冻电镜",
+    "PDB"
+   ]
+  },
+  {
+   "id": "phytozome",
+   "featured": true,
+   "name": "Phytozome",
+   "cn": "植物比较基因组资源",
+   "desc": "综合性植物基因组数据库，含植物基因组序列、转录组数据、代谢通路、GO 注释等。",
+   "url": "https://phytozome.jgi.doe.gov/pz/portal.html",
+   "category": "比较基因组",
+   "tags": [
+    "比较基因组",
+    "同源",
+    "GO",
+    "植物"
+   ]
+  },
+  {
+   "id": "grin",
+   "name": "GRIN",
+   "cn": "种质资源信息网络",
+   "desc": "提供植物分类学信息以及广泛的植物遗传资源、基因组数据等信息。",
+   "url": "https://npgsweb.ars-grin.gov/gringlobal/search.aspx",
+   "category": "表型与遗传",
+   "tags": [
+    "种质",
+    "分类",
+    "性状",
+    "资源"
+   ]
+  },
+  {
+   "id": "itak",
+   "name": "iTAK",
+   "cn": "植物转录因子与蛋白激酶鉴定分类器",
+   "desc": "植物转录因子与蛋白激酶的鉴定、分类与注释数据库。",
+   "url": "http://itak.feilab.net/cgi-bin/itak/index.cgi",
+   "category": "基因组与注释",
+   "tags": [
+    "转录因子",
+    "激酶",
+    "分类"
+   ]
+  },
+  {
+   "id": "interpro",
+   "name": "InterPro",
+   "cn": "蛋白质家族/结构域整合资源",
+   "desc": "整合多个蛋白质分类库，可对植物蛋白质序列进行注释与分类。",
+   "url": "https://www.ebi.ac.uk/interpro/",
+   "category": "序列与蛋白",
+   "tags": [
+    "结构域",
+    "家族",
+    "注释",
+    "Pfam"
+   ]
+  },
+  {
+   "id": "phytopath",
+   "name": "PhytoPath",
+   "cn": "植物—病原体互作数据库",
+   "desc": "植物与病原体相互作用数据库，含病原菌效应器、植物抗性基因等信息。",
+   "url": "http://www.phytopathdb.org/",
+   "category": "表型与遗传",
+   "tags": [
+    "抗病",
+    "病原体",
+    "效应器",
+    "R基因"
+   ]
+  },
+  {
+   "id": "gramene",
+   "name": "Gramene",
+   "cn": "比较植物基因组知识库",
+   "desc": "涵盖多种植物的基因组信息、遗传变异、表型数据、代谢通路，可用于比较分析与功能预测。",
+   "url": "http://www.gramene.org/",
+   "category": "比较基因组",
+   "tags": [
+    "比较",
+    "表型",
+    "变异",
+    "通路"
+   ]
+  },
+  {
+   "id": "msu-rice",
+   "name": "MSU Rice Genome Annotation",
+   "cn": "水稻基因组注释项目",
+   "desc": "水稻基因组注释数据库，含基因功能、表达、突变等信息。",
+   "url": "http://rice.plantbiology.msu.edu/",
+   "category": "基因组与注释",
+   "tags": [
+    "水稻",
+    "注释",
+    "表达"
+   ]
+  },
+  {
+   "id": "solgenomics",
+   "name": "SolGenomics Network",
+   "cn": "茄科比较基因组平台",
+   "desc": "番茄、辣椒、马铃薯等茄科植物的基因组、转录组与表型数据。",
+   "url": "https://solgenomics.net/",
+   "category": "比较基因组",
+   "tags": [
+    "茄科",
+    "番茄",
+    "马铃薯",
+    "辣椒"
+   ]
+  },
+  {
+   "id": "pfam",
+   "name": "Pfam",
+   "cn": "蛋白质家族数据库",
+   "desc": "基于多序列比对的蛋白质家族分类系统，对植物蛋白质进化与功能分析非常有帮助。",
+   "url": "https://pfam.xfam.org/",
+   "category": "序列与蛋白",
+   "tags": [
+    "家族",
+    "HMM",
+    "结构域"
+   ]
+  },
+  {
+   "id": "ensemblplants",
+   "featured": true,
+   "name": "Ensembl Plants",
+   "cn": "Ensembl 植物平台",
+   "desc": "集成多个植物基因组的数据，含基因组序列、基因、转录本、功能注释与代谢通路。",
+   "url": "http://plants.ensembl.org/index.html",
+   "category": "比较基因组",
+   "tags": [
+    "基因组",
+    "注释",
+    "直系同源",
+    "Ensembl"
+   ]
+  },
+  {
+   "id": "soybase",
+   "name": "SoyBase",
+   "cn": "大豆遗传与基因组数据库",
+   "desc": "拥有大豆基因组序列、转录组数据、表型信息与突变等信息。",
+   "url": "https://www.soybase.org/",
+   "category": "基因组与注释",
+   "tags": [
+    "大豆",
+    "SNP",
+    "表型"
+   ]
+  },
+  {
+   "id": "tomato-gp",
+   "name": "Tomato Genome Platform",
+   "cn": "番茄基因组平台",
+   "desc": "提供番茄的基因组、转录组、表型数据等信息。",
+   "url": "https://solgenomics.net/tomato",
+   "category": "基因组与注释",
+   "tags": [
+    "番茄",
+    "注释",
+    "表达"
+   ]
+  },
+  {
+   "id": "plantcyc",
+   "name": "PlantCyc",
+   "cn": "植物代谢通路数据库",
+   "desc": "集成多个植物代谢通路数据库，对植物代谢通路分析非常有帮助。",
+   "url": "https://plantcyc.org/",
+   "category": "代谢与通路",
+   "tags": [
+    "代谢",
+    "通路",
+    "酶",
+    "PlantCyc"
+   ]
+  },
+  {
+   "id": "plaza",
+   "name": "PLAZA",
+   "cn": "植物比较基因组与通路数据库",
+   "desc": "集成多个植物基因组、功能注释、代谢通路等信息的数据库。",
+   "url": "https://bioinformatics.psb.ugent.be/plaza/",
+   "category": "比较基因组",
+   "tags": [
+    "同源",
+    "比较",
+    "直系同源"
+   ]
+  },
+  {
+   "id": "prgdb",
+   "name": "PRGdb",
+   "cn": "植物抗病 R 基因数据库",
+   "desc": "收录参考与推定抗病基因，覆盖 200 余物种；含病原体感知器基因（PRG）信息与物种页面。",
+   "url": "http://prgdb.org/prgdb/",
+   "category": "表型与遗传",
+   "tags": [
+    "抗病",
+    "R基因",
+    "PRG",
+    "病原体"
+   ]
+  },
+  {
+   "id": "prgdb4",
+   "name": "PRGdb 4.0",
+   "cn": "植物抗病 R 基因数据库（4.0 版）",
+   "desc": "参考抗病基因增至 199 个，推定抗病基因达 586,652 个（182 个测序物种），并新增 5 个农业重要物种的植物—病原体转录组数据。",
+   "url": "http://prgdb.org/prgdb4/",
+   "category": "表型与遗传",
+   "tags": [
+    "抗病",
+    "R基因",
+    "PRGdb4",
+    "转录组"
+   ]
+  },
+  {
+   "id": "planttfdb",
+   "name": "PlantTFDB",
+   "cn": "植物转录因子数据库",
+   "desc": "集成植物转录因子序列、结构、同源性、进化关系与功能信息，对研究转录调控机制非常有帮助。",
+   "url": "http://planttfdb.cbi.pku.edu.cn/",
+   "category": "基因组与注释",
+   "tags": [
+    "转录因子",
+    "进化",
+    "同源",
+    "TF"
+   ]
+  },
+  {
+   "id": "plantsrnas",
+   "name": "plant small RNA DB",
+   "cn": "植物小 RNA 注释数据库",
+   "desc": "收录植物基因组中已知的非编码 RNA 与小分子 RNA，提供序列、结构、功能与文献，并提供序列比对、结构建模、保守性分析等工具。",
+   "url": "http://www.plantsRNAs.org",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "小RNA",
+    "miRNA",
+    "注释",
+    "非编码RNA"
+   ]
+  },
+  {
+   "id": "rnacentral",
+   "name": "RNAcentral",
+   "cn": "RNA 中心数据库",
+   "desc": "汇聚 50 余个 RNA 资源条目的公共 RNA 数据库，提供 ncRNA 序列、注释、家族分类与跨库检索，适合 miRNA、lncRNA、rRNA 等研究。",
+   "url": "https://rnacentral.org/",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "ncRNA",
+    "miRNA",
+    "序列",
+    "注释",
+    "公共数据库"
+   ]
+  },
+  {
+   "id": "plant-imputedb",
+   "name": "Plant-ImputeDB",
+   "cn": "重要作物多物种遗传参考变异库",
+   "desc": "用 12 个植物物种 34,244 个样本构建高质量参考群体，提供在线基因型填充、参考面板下载与 SNP 浏览下载。",
+   "url": "http://gong_lab.hzau.edu.cn/Plant_imputeDB/#!/",
+   "category": "表型与遗传",
+   "tags": [
+    "SNP",
+    "填充",
+    "参考群体",
+    "基因型"
+   ]
+  },
+  {
+   "id": "cvalues",
+   "name": "C-values",
+   "cn": "植物基因组大小数据库",
+   "desc": "用于获取与比较植物基因组大小的数据库。",
+   "url": "https://cvalues.science.kew.org/",
+   "category": "比较基因组",
+   "tags": [
+    "基因组大小",
+    "C值",
+    "比较"
+   ]
+  },
+  {
+   "id": "ebi",
+   "name": "EBI",
+   "cn": "欧洲生物信息学研究所",
+   "desc": "拥有多个植物基因组数据库，包括 EMBL-EBI Plants、PRIDE、Ensembl Plants、InterPro 等。",
+   "url": "https://www.ebi.ac.uk/",
+   "category": "通用",
+   "tags": [
+    "PRIDE",
+    "蛋白组",
+    "InterPro",
+    "EMBL"
+   ]
+  },
+  {
+   "id": "plantgdb",
+   "name": "PlantGDB",
+   "cn": "比较植物基因组资源",
+   "desc": "可用于比较分析的植物基因组数据库，涵盖多个物种的基因、转录本、代谢通路等信息。",
+   "url": "http://www.plantgdb.org/",
+   "category": "比较基因组",
+   "tags": [
+    "比较",
+    "注释",
+    "基因组"
+   ]
+  },
+  {
+   "id": "plant-ontology",
+   "name": "Plant Ontology (PO)",
+   "cn": "植物本体库",
+   "desc": "收录植物各层次的解剖学、生理学、形态学和遗传学术语。",
+   "url": "http://www.plantontology.org/",
+   "category": "通用",
+   "tags": [
+    "本体",
+    "术语",
+    "注释",
+    "PO"
+   ]
+  },
+  {
+   "id": "plant-rna-seq",
+   "name": "Plant RNA-seq Library",
+   "cn": "植物公共 RNA-seq 文库在线搜索平台",
+   "desc": "含多种植物的转录组、小 RNA、Ribo-seq 与糖基化修饰 RNA 数据，提供注释、序列、表达量与结构功能信息及多种分析工具。",
+   "url": "http://ipf.sustech.edu.cn/pub/plantrna/",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "RNA-seq",
+    "表达",
+    "文库",
+    "Ribo-seq"
+   ]
+  },
+  {
+   "id": "treegenes",
+   "name": "TreeGenes",
+   "cn": "森林乔木基因组数据库",
+   "desc": "森林乔木基因组数据库，含多个乔木物种的基因组序列、转录组数据与表型信息。",
+   "url": "https://treegenesdb.org/",
+   "category": "基因组与注释",
+   "tags": [
+    "林木",
+    "基因组",
+    "表型"
+   ]
+  },
+  {
+   "id": "panther",
+   "name": "PANTHER",
+   "cn": "基于进化关系的蛋白质分类系统",
+   "desc": "基于进化关系的蛋白质分类系统，对植物蛋白质进化与功能研究非常有帮助。",
+   "url": "http://www.pantherdb.org/",
+   "category": "序列与蛋白",
+   "tags": [
+    "进化",
+    "家族",
+    "分类",
+    "GO"
+   ]
+  },
+  {
+   "id": "chromstates",
+   "name": "ChromStates",
+   "cn": "植物染色质状态信息数据库",
+   "desc": "利用机器学习对基因组序列建模与注释，自动划分染色质状态并提供可视化与下载。",
+   "url": "http://systemsbiology.cau.edu.cn/chromstates/",
+   "category": "多组学与单细胞",
+   "tags": [
+    "染色质",
+    "表观基因组",
+    "机器学习"
+   ]
+  },
+  {
+   "id": "plantgsea",
+   "featured": true,
+   "name": "PlantGSEA",
+   "cn": "植物基因集富集分析平台",
+   "desc": "用基因列表评估在 KEGG、GO、Reactome 等通路与生物过程中的富集程度并给出显著性。",
+   "url": "http://systemsbiology.cau.edu.cn/PlantGSEAv2/",
+   "category": "工具与平台",
+   "tags": [
+    "富集",
+    "GSEA",
+    "通路",
+    "GO"
+   ]
+  },
+  {
+   "id": "pnrd",
+   "name": "PNRD",
+   "cn": "植物非编码 RNA 数据库",
+   "desc": "PMRD 的升级版，收录 25,739 条 ncRNA 记录，提供关键字/文献检索、miRNA 靶向搜索与在线分析工具。",
+   "url": "http://structuralbiology.cau.edu.cn/PNRD",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "ncRNA",
+    "lncRNA",
+    "miRNA",
+    "tRNA"
+   ]
+  },
+  {
+   "id": "plantexp",
+   "name": "PlantExp",
+   "cn": "植物基因表达与可变剪接数据库",
+   "desc": "收录多物种 RNA-seq 与芯片表达数据，提供差异表达、共表达网络、功能富集等分析工具。",
+   "url": "https://biotec.njau.edu.cn/plantExp",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "表达",
+    "可变剪接",
+    "共表达",
+    "RNA-seq"
+   ]
+  },
+  {
+   "id": "gdr",
+   "name": "GDR",
+   "cn": "蔷薇科基因组数据库",
+   "desc": "包含苹果、草莓、蔷薇等蔷薇科植物的基因组、转录组与表型数据。",
+   "url": "https://www.rosaceae.org/",
+   "category": "基因组与注释",
+   "tags": [
+    "苹果",
+    "草莓",
+    "蔷薇",
+    "基因组"
+   ]
+  },
+  {
+   "id": "cottongen",
+   "name": "CottonGen",
+   "cn": "棉花基因组与育种数据库",
+   "desc": "纺织棉的基因组、转录组、表型数据等信息。",
+   "url": "https://www.cottongen.org/",
+   "category": "基因组与注释",
+   "tags": [
+    "棉花",
+    "纤维",
+    "育种"
+   ]
+  },
+  {
+   "id": "plant-mlst",
+   "name": "Plant MLST",
+   "cn": "植物相关微生物 MLST 数据库",
+   "desc": "植物相关微生物的多基因座序列分型（MLST）和分析数据库与网站。",
+   "url": "http://genome.ppws.vt.edu/cgi-bin/MLST/home.pl",
+   "category": "工具与平台",
+   "tags": [
+    "MLST",
+    "微生物",
+    "分型"
+   ]
+  },
+  {
+   "id": "soysnp",
+   "name": "SoySNP",
+   "cn": "大豆 SNP 数据库",
+   "desc": "大豆单核苷酸多态性数据库，用于研究遗传多样性与生态适应性等问题。",
+   "url": "http://soysnp.agron.iastate.edu/",
+   "category": "表型与遗传",
+   "tags": [
+    "大豆",
+    "SNP",
+    "多样性"
+   ]
+  },
+  {
+   "id": "plantcircbase",
+   "name": "PlantcircBase",
+   "cn": "植物环状 RNA 数据库",
+   "desc": "收集植物 circRNA 的反向剪接连接序列与全长序列，并预测 miRNA 海绵与 circRNA-miRNA-mRNA 网络。",
+   "url": "http://ibi.zju.edu.cn/plantcircbase/",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "circRNA",
+    "miRNA",
+    "海绵",
+    "预测"
+   ]
+  },
+  {
+   "id": "urgi",
+   "name": "URGI",
+   "cn": "农学意义植物研究生物信息平台",
+   "desc": "面向具有农学意义的植物研究，整合基因组、基因与表型资源的生物信息平台。",
+   "url": "http://urgi.versailles.inra.fr/",
+   "category": "工具与平台",
+   "tags": [
+    "作物",
+    "农学",
+    "资源",
+    "基因组"
+   ]
+  },
+  {
+   "id": "oryzasnp",
+   "name": "OryzaSNP",
+   "cn": "水稻 SNP 数据集",
+   "desc": "水稻单核苷酸多态性数据集，用于研究水稻遗传多样性与生态适应性等问题。",
+   "url": "http://oryzasnp.org/",
+   "category": "表型与遗传",
+   "tags": [
+    "水稻",
+    "SNP",
+    "多样性"
+   ]
+  },
+  {
+   "id": "chromloops",
+   "name": "ChromLoops",
+   "cn": "多物种染色质环数据库",
+   "desc": "全面、多物种的特异性蛋白介导的染色质环（ChIA-PET）数据库。",
+   "url": "https://3dgenomics.hzau.edu.cn/chromloops",
+   "category": "多组学与单细胞",
+   "tags": [
+    "染色质环",
+    "三维基因组",
+    "HiC",
+    "ChIA-PET"
+   ]
+  },
+  {
+   "id": "plant-metabolic-network",
+   "name": "Plant Metabolic Network",
+   "cn": "植物代谢网络",
+   "desc": "植物代谢网络，包括各种植物的代谢通路、酶及底物互作等信息。",
+   "url": "http://plantcyc.org/",
+   "category": "代谢与通路",
+   "tags": [
+    "代谢网络",
+    "酶",
+    "底物"
+   ]
+  },
+  {
+   "id": "plantreactome",
+   "name": "PlantReactome",
+   "cn": "植物信号转导与代谢通路数据库",
+   "desc": "植物信号转导与代谢通路的 Reactome 资源。",
+   "url": "https://plantreactome.gramene.org/index.php?lang=en",
+   "category": "代谢与通路",
+   "tags": [
+    "信号转导",
+    "Reactome",
+    "通路"
+   ]
+  },
+  {
+   "id": "plantdeepsea",
+   "name": "PlantDeepSEA",
+   "cn": "染色质可及性深度学习模型",
+   "desc": "基于多种植物染色质可及性的深度学习模型，预测调控元件与序列变异效应。",
+   "url": "http://plantdeepsea.ncpgr.cn",
+   "category": "多组学与单细胞",
+   "tags": [
+    "深度学习",
+    "染色质可及性",
+    "变异效应",
+    "调控元件"
+   ]
+  },
+  {
+   "id": "pmiren",
+   "featured": true,
+   "name": "PmiREN",
+   "cn": "植物 miRNA 综合数据库",
+   "desc": "收录 179 个物种的 38,186 个 miRNA 位点、7,838 个家族与 141,327 个预测靶向对，并提供 miRNA 表达量化与靶向验证等工具。",
+   "url": "http://www.pmiren.com/",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "miRNA",
+    "靶基因",
+    "表达",
+    "PARE-Seq"
+   ]
+  },
+  {
+   "id": "pscth",
+   "name": "PsctH",
+   "cn": "植物单细胞转录组综合数据库",
+   "desc": "汇集 5 种植物 9 个组织/亚组织的 51 种细胞类型、98 个经验证 Marker 基因，并提供原始数据集与文献挖掘。",
+   "url": "http://jinlab.hzau.edu.cn/PsctH/",
+   "category": "多组学与单细胞",
+   "tags": [
+    "单细胞",
+    "Marker",
+    "拟南芥",
+    "玉米",
+    "水稻"
+   ]
+  },
+  {
+   "id": "pcmdb",
+   "name": "PCMDB",
+   "cn": "植物细胞标记数据库",
+   "desc": "一站式植物细胞标记数据库，覆盖多物种、组织与细胞的细胞类型标记与 scRNA-seq 研究概述。",
+   "url": "http://www.tobaccodb.org/pcmdb/",
+   "category": "多组学与单细胞",
+   "tags": [
+    "细胞标记",
+    "scRNA-seq",
+    "烟草"
+   ]
+  },
+  {
+   "id": "cellblast",
+   "name": "Cell BLAST",
+   "cn": "单细胞转录组细胞查询工具",
+   "desc": "为每个查询细胞在参考库中检索最相似细胞，并据此转移细胞类型等注释。",
+   "url": "https://cblast.gao-lab.org",
+   "category": "多组学与单细胞",
+   "tags": [
+    "单细胞",
+    "相似性",
+    "注释迁移",
+    "细胞类型"
+   ]
+  },
+  {
+   "id": "ncbi-sra",
+   "name": "NCBI SRA",
+   "cn": "美国国家生物技术信息中心序列读段档案",
+   "desc": "收录全球植物转录组、宏基因组与三代测序原始数据，含公开数据集的样本元数据与质量报告。",
+   "url": "https://www.ncbi.nlm.nih.gov/sra",
+   "category": "通用",
+   "tags": [
+    "原始数据",
+    "测序",
+    "SRA",
+    "转录组",
+    "三代测序"
+   ]
+  },
+  {
+   "id": "ena",
+   "name": "ENA",
+   "cn": "欧洲核苷酸档案库",
+   "desc": "欧洲分子生物学实验室的原始测序数据与序列记录库，提供植物项目的标准化元数据与 API 接口。",
+   "url": "https://www.ebi.ac.uk/ena/browser/home",
+   "category": "通用",
+   "tags": [
+    "原始数据",
+    "测序",
+    "元数据",
+    "ENA",
+    "API"
+   ]
+  },
+  {
+   "id": "ncbi-blast",
+   "name": "NCBI BLAST",
+   "cn": "序列相似性比对工具",
+   "desc": "植物同源序列检索的通用入口，支持 blastn/blastp/blastx 与库规模选择，可在线提交或调用 API。",
+   "url": "https://blast.ncbi.nlm.nih.gov/",
+   "category": "序列与蛋白",
+   "featured": true,
+   "tags": [
+    "BLAST",
+    "同源",
+    "比对",
+    "序列检索"
+   ]
+  },
+  {
+   "id": "alphafold",
+   "name": "AlphaFold DB",
+   "cn": "蛋白质结构预测数据库",
+   "desc": "提供大规模蛋白质三维结构预测结果，支持按 UniProt 编号检索结构并下载 PDB/mmCIF 与置信度数据。",
+   "url": "https://alphafold.ebi.ac.uk/",
+   "category": "序列与蛋白",
+   "tags": [
+    "结构",
+    "预测",
+    "AlphaFold",
+    "蛋白",
+    "PDB"
+   ]
+  },
+  {
+   "id": "signalp",
+   "name": "SignalP",
+   "cn": "信号肽与跨膜区预测",
+   "desc": "预测蛋白质的信号肽、跨膜螺旋与分泌途径定位，是植物蛋白功能注释与亚细胞定位的基础工具。",
+   "url": "https://services.healthtech.dtu.dk/services/SignalP-6.0/",
+   "category": "序列与蛋白",
+   "tags": [
+    "信号肽",
+    "跨膜",
+    "定位",
+    "分泌途径",
+    "注释"
+   ]
+  },
+  {
+   "id": "eggnog",
+   "name": "EggNOG-mapper",
+   "cn": "同源注释与功能富集",
+   "desc": "基于直系同源基因组注释序列功能，自动完成 KO 映射、Gene Ontology 与 KEGG 通路富集。",
+   "url": "http://eggnog-mapper.embl.de/",
+   "category": "序列与蛋白",
+   "tags": [
+    "功能注释",
+    "直系同源",
+    "富集",
+    "GO",
+    "KO"
+   ]
+  },
+  {
+   "id": "kaas",
+   "name": "KAAS",
+   "cn": "KEGG 通路自动注释",
+   "desc": "对植物基因组/转录本进行 KEGG Orthology 注释与通路图绘制，是比较基因组功能比较的常用手段。",
+   "url": "https://www.genome.jp/kegg/kaas/",
+   "category": "基因组与注释",
+   "tags": [
+    "KEGG",
+    "注释",
+    "KO",
+    "通路",
+    "基因组"
+   ]
+  },
+  {
+   "id": "pasa",
+   "name": "PASA",
+   "cn": "基因组比对与转录本组装",
+   "desc": "将转录组 reads 与基因组比对，自动注释基因结构、识别新转录本并校正 UTR 与剪接位点。",
+   "url": "https://github.com/bgruening/pasa",
+   "category": "基因组与注释",
+   "tags": [
+    "转录本",
+    "剪接",
+    "UTR",
+    "比对",
+    "注释"
+   ]
+  },
+  {
+   "id": "mirbase",
+   "name": "miRBase",
+   "cn": "microRNA 数据库",
+   "desc": "收录植物 miRNA 的前体序列、成熟序列、靶基因预测与实验验证证据，是 miRNA 研究的标准参考库。",
+   "url": "https://www.mirbase.org/",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "miRNA",
+    "小RNA",
+    "靶基因",
+    "ncRNA"
+   ]
+  },
+  {
+   "id": "pmrd",
+   "name": "PMRD",
+   "cn": "植物 miRNA 数据库",
+   "desc": "整合 40 余种植物的 miRNA 序列与靶基因，支持跨物种 miRNA 家族比较与表达数据检索。",
+   "url": "https://www.mirdb.org/",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "miRNA",
+    "小RNA",
+    "靶基因",
+    "跨物种"
+   ]
+  },
+  {
+   "id": "expression-atlas",
+   "name": "Expression Atlas",
+   "cn": "EMBL-EBI 表达图谱",
+   "desc": "提供植物基线与处理条件下的基因表达数据集，支持差异表达分析与实验条件元数据检索。",
+   "url": "https://www.ebi.ac.uk/gxa/home",
+   "category": "转录组与ncRNA",
+   "tags": [
+    "表达",
+    "转录组",
+    "差异表达",
+    "图谱",
+    "基线"
+   ]
+  },
+  {
+   "id": "metacyc",
+   "name": "MetaCyc",
+   "cn": "代谢物与途径数据库",
+   "desc": "收录植物次生代谢与信号代谢的生物化学途径与酶反应，是代谢通路重建与比较分析的核心资源。",
+   "url": "https://metacyc.org/",
+   "category": "代谢与通路",
+   "tags": [
+    "代谢",
+    "通路",
+    "酶",
+    "次生代谢"
+   ]
+  },
+  {
+   "id": "brenda",
+   "name": "BRENDA",
+   "cn": "酶数据库",
+   "desc": "全球酶动力学参数与反应条件数据库，收录大量植物酶的最适 pH、底物特异性与Km/S参数。",
+   "url": "https://www.brenda-enzymes.org/",
+   "category": "代谢与通路",
+   "tags": [
+    "酶",
+    "动力学",
+    "底物",
+    "Km"
+   ]
+  },
+  {
+   "id": "tropicos",
+   "name": "Tropicos",
+   "cn": "植物物种权威数据库",
+   "desc": "由密苏里植物园维护的植物名称、物种标本、分布与文献数据库，是植物分类学与名称解析的首选。",
+   "url": "https://tropicos.org/",
+   "category": "表型与遗传",
+   "tags": [
+    "物种",
+    "分类",
+    "标本",
+    "名称",
+    "分布"
+   ]
+  },
+  {
+   "id": "genesys",
+   "name": "Genesys",
+   "cn": "全球种质资源数据库",
+   "desc": "汇集全球作物种质资源的检索入口，可按性状筛选并申请来自 CGIAR 等基因库的种子材料。",
+   "url": "https://www.genesys-pgr.org/",
+   "category": "表型与遗传",
+   "tags": [
+    "种质",
+    "资源",
+    "性状",
+    "种子",
+    "育种"
+   ]
+  },
+  {
+   "id": "coge",
+   "name": "CoGe",
+   "cn": "比较基因组学浏览器",
+   "desc": "提供跨物种基因组共线性（synteny）比较与基因簇浏览，是跨物种功能保守性分析的核心工具。",
+   "url": "https://genome.cshl.edu/cgi-bin/dgenome/dge_compare",
+   "category": "比较基因组",
+   "tags": [
+    "共线性",
+    "比较基因组",
+    "基因簇",
+    "同源"
+   ]
+  },
+  {
+   "id": "plant-cell-atlas",
+   "name": "Plant Cell Atlas",
+   "cn": "植物单细胞表达图谱",
+   "desc": "整合公开的植物单细胞转录组数据集，提供细胞类型注释、可视化与标记基因检索。",
+   "url": "https://plantcellatlas.earlham.ac.uk/",
+   "category": "多组学与单细胞",
+   "tags": [
+    "单细胞",
+    "表达图谱",
+    "细胞类型",
+    "scRNA-seq"
+   ]
+  },
+  {
+   "id": "metabolights",
+   "name": "MetaboLights",
+   "cn": "代谢组学数据仓库",
+   "desc": "EMBL-EBI 的代谢组学实验数据仓库，收录植物代谢物 MS/NMR 原始数据与实验协议，支持开放获取。",
+   "url": "https://www.ebi.ac.uk/metabolights/",
+   "category": "多组学与单细胞",
+   "tags": [
+    "代谢组",
+    "质谱",
+    "NMR",
+    "原始数据",
+    "多组学"
+   ]
+  },
+  {
+   "id": "busco",
+   "name": "BUSCO",
+   "cn": "基因组完整性评估",
+   "desc": "基于单拷贝直系同源基因评估基因组或转录组组装质量，输出完整度与重复率报告。",
+   "url": "https://busco.ezlab.org/",
+   "category": "工具与平台",
+   "tags": [
+    "组装评估",
+    "完整度",
+    "质量控制",
+    "单拷贝"
+   ]
+  },
+  {
+   "id": "genemania",
+   "name": "GeneMANIA",
+   "cn": "基因功能网络",
+   "desc": "基于共表达、共享基因本体、蛋白互作等证据构建基因功能网络，用于候选基因优先级排序。",
+   "url": "https://www.genemania.org/",
+   "category": "工具与平台",
+   "tags": [
+    "网络",
+    "功能预测",
+    "候选基因",
+    "共表达"
+   ]
+  },
+  {
+   "id": "plantregmap",
+   "name": "PlantRegMap",
+   "cn": "转录因子调控网络",
+   "desc": "整合 ChIP-seq 与功能实验数据，构建植物转录因子的靶基因调控网络并提供可视化分析。",
+   "url": "http://plantregmap.gao-lab.org/",
+   "category": "工具与平台",
+   "tags": [
+    "转录因子",
+    "靶基因",
+    "调控网络",
+    "ChIP-seq"
+   ]
+  },
+  {
+   "id": "clinvar",
+   "biomed": true,
+   "name": "ClinVar",
+   "cn": "临床变异数据库",
+   "desc": "NCBI 的人类基因变异与临床表型关联库，收录 ClinVar 变异记录（VCV）、致病性分级与等位基因频率。",
+   "url": "https://www.ncbi.nlm.nih.gov/clinvar/",
+   "category": "医学与临床",
+   "tags": [
+    "临床变异",
+    "遗传病",
+    "变异注释",
+    "VCV",
+    "ClinVar",
+    "致病性",
+    "SNP"
+   ]
+  },
+  {
+   "id": "gnomad",
+   "biomed": true,
+   "name": "gnomAD",
+   "cn": "人群基因组图谱",
+   "desc": "大规模人类基因组变异频率聚合库（Genome Aggregation Database），提供等位基因频率与人群分组注释。",
+   "url": "https://gnomad.broadinstitute.org/",
+   "category": "医学与临床",
+   "tags": [
+    "人群变异",
+    "等位基因频率",
+    "gnomAD",
+    "罕见变异",
+    "遗传病",
+    "人类基因组"
+   ]
+  },
+  {
+   "id": "malacards",
+   "biomed": true,
+   "name": "MalaCards",
+   "cn": "人类疾病卡片",
+   "desc": "把 OMIM、Orphanet、PubMed、DisGeNET 等来源汇总成单张疾病卡片，附相关基因与表型列表。当前本机网络返回 403（Cloudflare 拦截），需在浏览器中访问。",
+   "url": "https://www.malacards.org/",
+   "category": "医学与临床",
+   "tags": [
+    "疾病卡片",
+    "罕见病",
+    "表型",
+    "MalaCards"
+   ]
+  },
+  {
+   "id": "omim",
+   "biomed": true,
+   "name": "OMIM",
+   "cn": "人类孟德尔遗传病数据库",
+   "desc": "在线版人类孟德尔遗传（Mendelian Inheritance in Man）条目库，权威收录遗传病表型与基因关系；下载需订阅账号，本机网络返回 403。",
+   "url": "https://www.omim.org/",
+   "category": "医学与临床",
+   "tags": [
+    "孟德尔遗传",
+    "遗传病",
+    "OMIM",
+    "表型",
+    "临床"
+   ]
+  },
+  {
+   "id": "orphanet",
+   "biomed": true,
+   "name": "Orphanet",
+   "cn": "罕见病知识库",
+   "desc": "欧洲罕见病知识库，收录罕见病分类、流行病学与基因-疾病关系，含 Orphanet 编号体系。",
+   "url": "https://www.orpha.net/",
+   "category": "医学与临床",
+   "tags": [
+    "罕见病",
+    "疾病分类",
+    "Orphanet",
+    "遗传病"
+   ]
+  },
+  {
+   "id": "gtex",
+   "biomed": true,
+   "name": "GTEx",
+   "cn": "人类组织表达图谱",
+   "desc": "人类组织基因表达图谱（Genotype-Tissue Expression），提供 50 余种组织的表达量与 eQTL 数据。",
+   "url": "https://gtexportal.org/home",
+   "category": "医学与临床",
+   "tags": [
+    "组织表达",
+    "eQTL",
+    "GTEx",
+    "人类",
+    "表达谱"
+   ]
+  },
+  {
+   "id": "disgenet",
+   "biomed": true,
+   "name": "DisGeNET",
+   "cn": "基因-疾病关联数据库",
+   "desc": "整合多来源的基因-疾病关联证据库，支持表型映射与证据评分；API 需注册获取访问密钥。",
+   "url": "https://www.disgenet.org/",
+   "category": "医学与临床",
+   "tags": [
+    "基因疾病关联",
+    "证据评分",
+    "DisGeNET",
+    "疾病网络"
+   ]
+  },
+  {
+   "id": "genecards",
+   "biomed": true,
+   "name": "GeneCards",
+   "cn": "人类基因综合信息卡",
+   "desc": "人类基因的综合信息卡，汇总基因功能、疾病、表达、变异与文献等信息；网页版对本机返回 403，需浏览器访问。",
+   "url": "https://www.genecards.org/",
+   "category": "医学与临床",
+   "tags": [
+    "基因信息卡",
+    "人类基因",
+    "GeneCards",
+    "综述"
+   ]
+  },
+  {
+   "id": "cbioportal",
+   "biomed": true,
+   "name": "cBioPortal",
+   "cn": "癌症基因组图谱门户",
+   "desc": "汇集 TCGA 等癌症基因组研究，提供突变、拷贝数、表达与临床数据的在线分析与查询。",
+   "url": "https://www.cbioportal.org/",
+   "category": "医学与临床",
+   "tags": [
+    "癌症",
+    "肿瘤组学",
+    "cBioPortal",
+    "TCGA",
+    "体细胞突变"
+   ]
+  },
+  {
+   "id": "openfda",
+   "biomed": true,
+   "name": "openFDA",
+   "cn": "美国FDA开放药品数据",
+   "desc": "美国 FDA 公开药品与器械数据的官方 API，含药品标签、召回、不良事件等数据集，可按通用名或适应症检索。",
+   "url": "https://open.fda.gov/",
+   "category": "医学与临床",
+   "tags": [
+    "药品标签",
+    "监管数据",
+    "openFDA",
+    "药物安全",
+    "召回"
+   ]
+  },
+  {
+   "id": "europepmc",
+   "biomed": true,
+   "name": "Europe PMC",
+   "cn": "欧洲生物医学文献库",
+   "desc": "欧洲生物医学文献全文库，收录 PubMed/PMC 之外的预印本与专利文献，支持 REST 检索与全文获取。",
+   "url": "https://europepmc.org/",
+   "category": "医学与临床",
+   "tags": [
+    "文献",
+    "PubMed",
+    "EuropePMC",
+    "全文",
+    "PMID"
+   ]
+  },
+  {
+   "id": "opentargets",
+   "biomed": true,
+   "name": "Open Targets",
+   "cn": "药物靶点证据平台",
+   "desc": "整合遗传学、临床与文献证据的疾病-靶点关联平台，提供靶点可成药性与适应症关联评分（GraphQL API 开放）。",
+   "url": "https://platform.opentargets.org/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "药物靶点",
+    "靶点验证",
+    "OpenTargets",
+    "疾病关联",
+    "可成药性"
+   ]
+  },
+  {
+   "id": "chembl",
+   "biomed": true,
+   "name": "ChEMBL",
+   "cn": "生物活性分子数据库",
+   "desc": "欧洲生物信息研究所的生物活性数据库，收录药物分子结构、活性测定值、药理作用与临床开发状态。",
+   "url": "https://www.ebi.ac.uk/chembl/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "药物化学",
+    "生物活性",
+    "ChEMBL",
+    "药理",
+    "小分子",
+    "靶点"
+   ]
+  },
+  {
+   "id": "pubchem",
+   "biomed": true,
+   "name": "PubChem",
+   "cn": "小分子化合物数据库",
+   "desc": "美国 NIH 的公共化合物数据库，提供小分子结构、分子式、分子量、SMILES 与生物活性交叉引用。",
+   "url": "https://pubchem.ncbi.nlm.nih.gov/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "化合物",
+    "小分子",
+    "PubChem",
+    "分子式",
+    "结构",
+    "药物化学"
+   ]
+  },
+  {
+   "id": "drugbank",
+   "biomed": true,
+   "name": "DrugBank",
+   "cn": "药物与靶点数据库",
+   "desc": "药物、靶点、酶与载体信息的整合库，含药物作用机制与代谢途径；下载与 API 均需订阅账号，本机网络返回 403。",
+   "url": "https://go.drugbank.com/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "药物",
+    "靶点",
+    "DrugBank",
+    "作用机制",
+    "代谢"
+   ]
+  },
+  {
+   "id": "hpa",
+   "biomed": true,
+   "name": "Human Protein Atlas",
+   "cn": "人类蛋白质图谱",
+   "desc": "基于免疫组化与转录组数据的人类蛋白表达图谱，提供组织表达、亚细胞定位与肿瘤免疫注释（提供 JSON 下载 API）。",
+   "url": "https://www.proteinatlas.org/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "蛋白表达",
+    "免疫组化",
+    "HPA",
+    "亚细胞定位",
+    "癌症组"
+   ]
+  },
+  {
+   "id": "cellosaurus",
+   "biomed": true,
+   "name": "Cellosaurus",
+   "cn": "细胞系数据库",
+   "desc": "国际细胞系标准数据库，收录细胞系来源、基因型、疾病来源与文献证据，提供 REST 检索接口。",
+   "url": "https://www.cellosaurus.org/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "细胞系",
+    "细胞株",
+    "Cellosaurus",
+    "CVCL",
+    "基因型"
+   ]
+  },
+  {
+   "id": "chebi",
+   "biomed": true,
+   "name": "ChEBI",
+   "cn": "化学实体词典",
+   "desc": "化学与生物实体的非冗余词典，提供化合物角色、结构与同义词的结构化检索（OLS4 开放接口）。",
+   "url": "https://www.ebi.ac.uk/chebi/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "化学实体",
+    "化合物本体",
+    "ChEBI",
+    "代谢物",
+    "同义词"
+   ]
+  },
+  {
+   "id": "proteomedb",
+   "biomed": true,
+   "name": "ProteomeDB",
+   "cn": "蛋白质组数据库",
+   "desc": "人类蛋白质组与自组装蛋白质组数据库，含蛋白质组学数据集与定量数据。当前网络不可达（连接超时），需稍后重试或换网络。",
+   "url": "https://www.proteomedb.org/",
+   "category": "蛋白质与药物",
+   "tags": [
+    "蛋白质组",
+    "定量蛋白质组",
+    "ProteomeDB",
+    "表达量"
+   ]
+  },
+  {
+   "id": "string-db",
+   "biomed": true,
+   "name": "STRING",
+   "cn": "蛋白质相互作用网络",
+   "desc": "已知与预测的蛋白质功能关联网络数据库，提供交互网络、通道富集与多种评分口径的 REST 接口。",
+   "url": "https://string-db.org/",
+   "category": "微生物与病毒",
+   "tags": [
+    "蛋白互作",
+    "PPI",
+    "网络",
+    "STRING",
+    "功能关联"
+   ]
+  },
+  {
+   "id": "card",
+   "biomed": true,
+   "name": "CARD",
+   "cn": "抗药性基因数据库",
+   "desc": "Comprehensive Antibiotic Resistance Database，收录耐药基因、耐药表型与基因组背景，检索需在网页端完成。",
+   "url": "https://card.mcmaster.ca/",
+   "category": "微生物与病毒",
+   "tags": [
+    "耐药性",
+    "抗药基因",
+    "CARD",
+    "细菌",
+    "耐药表型"
+   ]
+  },
+  {
+   "id": "vfdb",
+   "biomed": true,
+   "name": "VFDB",
+   "cn": "毒力因子数据库",
+   "desc": "中国病原微生物毒力因子数据库，收录毒力基因家族、结构与表型注释，数据以网页检索与下载为主。",
+   "url": "http://www.mgc.ac.cn/VFs/",
+   "category": "微生物与病毒",
+   "tags": [
+    "毒力因子",
+    "病原体",
+    "VFDB",
+    "感染",
+    "基因家族"
+   ]
+  },
+  {
+   "id": "microbedb",
+   "biomed": true,
+   "name": "MicrobeDB",
+   "cn": "微生物综合数据库",
+   "desc": "面向微生物组学研究的综合数据库，链接基因组、代谢物、表型与文献证据。当前网络不可达（连接超时）。",
+   "url": "https://microbe.dbcls.jp/",
+   "category": "微生物与病毒",
+   "tags": [
+    "微生物组",
+    "宏基因组",
+    "MicrobeDB",
+    "微生物"
+   ]
+  },
+  {
+   "id": "virome",
+   "biomed": true,
+   "name": "Virome",
+   "cn": "病毒组数据库",
+   "desc": "收录已知病毒基因组序列与分类信息的数据库。当前网络不可达（连接超时），需换网络或稍后重试。",
+   "url": "https://virome.net/",
+   "category": "微生物与病毒",
+   "tags": [
+    "病毒组",
+    "病毒基因组",
+    "Virome",
+    "病毒分类"
+   ]
+  },
+  {
+   "id": "ivisp",
+   "biomed": true,
+   "name": "IVISP",
+   "cn": "病毒原生生物序列库",
+   "desc": "收录病毒、原生生物与相关类群基因组序列的数据库。当前网络不可达（连接超时），检索需在站点恢复后进行。",
+   "url": "https://www.ivisp.org/",
+   "category": "微生物与病毒",
+   "tags": [
+    "病毒序列",
+    "原生生物",
+    "IVISP",
+    "序列下载"
+   ]
+  },
+  {
+   "id": "encode",
+   "biomed": true,
+   "name": "ENCODE",
+   "cn": "人类功能基因组学数据",
+   "desc": "人类功能基因组学数据门户，收录 ChIP-seq、RNA-seq、ATAC-seq 等标准化实验数据与元数据（开放 REST API）；首页 HEAD 请求在本机超时（HTTP 000），但 API 可正常访问。",
+   "url": "https://www.encodeproject.org/",
+   "category": "组学与多组学",
+   "tags": [
+    "功能基因组",
+    "ChIP-seq",
+    "ENCODE",
+    "表观组",
+    "标准化数据"
+   ]
+  },
+  {
+   "id": "depmap",
+   "biomed": true,
+   "name": "DepMap",
+   "cn": "癌症细胞系依赖图谱",
+   "desc": "Broad 研究所的癌症细胞系 CRISPR 筛选与多组学图谱，给出基因依赖性与细胞系表达数据；下载需在网页端申请。",
+   "url": "https://depmap.org/portal/",
+   "category": "组学与多组学",
+   "tags": [
+    "细胞系",
+    "CRISPR筛选",
+    "DepMap",
+    "依赖性",
+    "癌症"
+   ]
+  },
+  {
+   "id": "brain-atlas",
+   "biomed": true,
+   "name": "Allen Brain Atlas",
+   "cn": "人类大脑图谱",
+   "desc": "Allen 研究所的大脑解剖与细胞类型图谱，提供脑区结构图、空间转录组与公开 REST 查询接口。",
+   "url": "https://brain-map.org/",
+   "category": "组学与多组学",
+   "tags": [
+    "脑图谱",
+    "神经科学",
+    "AllenBrainAtlas",
+    "空间转录组",
+    "脑区"
+   ]
+  },
+  {
+   "id": "roadmap",
+   "biomed": true,
+   "name": "Roadmap Epigenomics",
+   "cn": "表观基因组图谱",
+   "desc": "人类表观基因组学图谱项目，整合 127 种细胞/组织的组蛋白修饰、染色质可及性与甲基化数据，以数据下载为主。",
+   "url": "https://egg2.wustl.edu/roadmap/data/byFileType/",
+   "category": "组学与多组学",
+   "tags": [
+    "表观基因组",
+    "组蛋白修饰",
+    "Roadmap",
+    "染色质",
+    "甲基化"
+   ]
+  },
+  {
+   "id": "gwas",
+   "biomed": true,
+   "name": "GWAS Catalog",
+   "cn": "全基因组关联研究目录",
+   "desc": "EBI 维护的全基因组关联研究目录，收录 SNP-性状关联研究与收录文献；旧版 REST 接口已下线，需网页或下载方式获取。",
+   "url": "https://www.ebi.ac.uk/gwas/",
+   "category": "组学与多组学",
+   "tags": [
+    "GWAS",
+    "全基因组关联",
+    "SNP",
+    "性状",
+    "遗传学"
+   ]
+  },
+  {
+   "id": "hgnc",
+   "biomed": true,
+   "name": "HGNC",
+   "cn": "人类基因命名委员会",
+   "desc": "人类基因符号权威命名与别名维护机构，提供基因符号、别名、定位与 Entrez ID 的 REST 接口。",
+   "url": "https://www.genenames.org/",
+   "category": "组学与多组学",
+   "tags": [
+    "基因命名",
+    "基因符号",
+    "HGNC",
+    "别名",
+    " Entrez"
+   ]
+  },
+  {
+   "id": "galaxy",
+   "biomed": true,
+   "name": "Galaxy",
+   "cn": "生物信息分析平台",
+   "desc": "欧洲公共 Galaxy 实例（usegalaxy.eu），提供上百种生信工具的网页工作流与无代码分析环境。",
+   "url": "https://usegalaxy.eu/",
+   "category": "组学与多组学",
+   "tags": [
+    "分析平台",
+    "工作流",
+    "Galaxy",
+    "生信流程"
+   ]
+  },
+  {
+   "id": "pride",
+   "biomed": true,
+   "name": "PRIDE",
+   "cn": "蛋白质组数据存档",
+   "desc": "ProteomeXchange 蛋白质组数据存档的官方检索接口，可按关键词与物种检索公开质谱数据集项目。",
+   "url": "https://www.ebi.ac.uk/pride/",
+   "category": "组学与多组学",
+   "tags": [
+    "蛋白质组",
+    "质谱",
+    "PRIDE",
+    "ProteomeXchange",
+    "数据集"
+   ]
+  },
+  {
+   "id": "enrichr",
+   "biomed": true,
+   "name": "Enrichr",
+   "cn": "基因集富集分析",
+   "desc": "Maayanlab 维护的基因集富集分析资源，提供上百个基因集库及在线富集打分接口。",
+   "url": "https://maayanlab.cloud/Enrichr/",
+   "category": "组学与多组学",
+   "tags": [
+    "富集分析",
+    "基因集",
+    "Enrichr",
+    "通路富集",
+    "GO"
+   ]
+  },
+  {
+   "id": "taxonomy",
+   "biomed": true,
+   "name": "NCBI Taxonomy",
+   "cn": "生物分类学数据库",
+   "desc": "NCBI 统一生物分类数据库，收录所有生物体的标准学名、TaxID 与分类层级，可经 E-utilities 检索。",
+   "url": "https://www.ncbi.nlm.nih.gov/taxonomy",
+   "category": "组学与多组学",
+   "tags": [
+    "分类学",
+    "物种",
+    "TaxID",
+    "Taxonomy",
+    "拉丁名"
+   ]
+  }
+ ],
+ "pages": [
+  {
+   "id": "/",
+   "name": "首页工作台",
+   "keywords": "首页 主页 工作台"
+  },
+  {
+   "id": "/search",
+   "name": "统一搜索",
+   "keywords": "搜索 检索 searxng"
+  },
+  {
+   "id": "/literature",
+   "name": "科研文献检索",
+   "keywords": "文献 pubmed 论文"
+  },
+  {
+   "id": "/databases",
+   "name": "植物数据库速查",
+   "keywords": "植物 数据库 生信 tair kegg"
+  },
+  {
+   "id": "/commands",
+   "name": "Linux 命令速查",
+   "keywords": "linux 命令 shell"
+  },
+  {
+   "id": "/drawio",
+   "name": "绘图工具",
+   "keywords": "drawio 绘图 流程图"
+  },
+  {
+   "id": "/drawings",
+   "name": "我的图形",
+   "keywords": "图形 存档"
+  },
+  {
+   "id": "/docparse",
+   "name": "文档解析",
+   "keywords": "docling docparse 解析 pdf markdown 扫描件 表格"
+  },
+  {
+   "id": "/genomes",
+   "name": "公共基因组",
+   "keywords": "genomes genome jbrowse 基因组 浏览器 变异 序列 fasta orf gc cropgenome rust-bio"
+  },
+  {
+   "id": "/bioinfo",
+   "name": "生信实验实训",
+   "keywords": "bioinfo 生信 实训 课程 实验 终端 作业 批阅 terminal"
+  },
+  {
+   "id": "/translate",
+   "name": "PDF 论文翻译",
+   "keywords": "pdf 翻译 论文"
+  },
+  {
+   "id": "/network",
+   "name": "访问与诊断",
+   "keywords": "网络 端口 诊断"
+  },
+  {
+   "id": "/start",
+   "name": "浏览器主页",
+   "keywords": "主页 起始页 背景"
+  },
+  {
+   "id": "/snapotter",
+   "name": "文件工坊",
+   "keywords": "snapotter 文件 图像 图片 pdf 音视频 转换 ocr 压缩 去背景"
+  },
+  {
+   "id": "/files",
+   "name": "文件管理",
+   "keywords": "文件 网盘 共享 个人文件 公共基因组 公共质粒 回收站"
+  },
+  {
+   "id": "/knowledge",
+   "name": "知识库",
+   "keywords": "知识库 文档 rag 笔记 检索"
+  },
+  {
+   "id": "/workbench",
+   "name": "个人工作台",
+   "keywords": "工作台 任务 课题 指派 待办 日历 甘特"
+  },
+  {
+   "id": "/colors",
+   "name": "配色搭配",
+   "keywords": "配色 色板 调色 取色 科研配色 nature science ggsci"
+  },
+  {
+   "id": "/help",
+   "name": "帮助中心",
+   "keywords": "帮助 faq 文档 更新日志 上手"
+  }
+ ],
+ "section_cn": {
+  "image": "图片处理",
+  "pdf": "PDF 处理",
+  "files": "文件处理",
+  "video": "视频处理",
+  "audio": "音频处理"
+ },
+ "tool_aliases": {
+  "image/compress": "图片 压缩 瘦身 减小体积",
+  "image/resize": "图片 缩放 调整尺寸 放大 缩小",
+  "image/crop": "图片 裁剪 剪切",
+  "image/circle-crop": "图片 圆形裁剪 头像",
+  "image/rounded-crop": "图片 圆角裁剪",
+  "image/smart-crop": "图片 智能裁剪",
+  "image/convert": "图片 格式转换 转码",
+  "image/rotate": "图片 旋转 翻转",
+  "image/watermark-image": "图片 水印",
+  "image/watermark-text": "图片 文字水印 标注",
+  "image/remove-background": "图片 抠图 去背景",
+  "image/remove-gif-background": "动图 去背景 抠图",
+  "image/ocr": "图片 文字识别 OCR 提取文字",
+  "image/qr-generate": "二维码 生成",
+  "image/barcode-generate": "条形码 生成",
+  "image/barcode-read": "条形码 识别 读取",
+  "image/blur-faces": "人脸 模糊 打码 隐私保护",
+  "image/blur-background": "背景 模糊",
+  "image/enhance-faces": "人脸 增强 美颜",
+  "image/image-enhancement": "图片 增强 画质优化",
+  "image/sharpening": "图片 锐化 变清晰",
+  "image/pixelate": "图片 像素化 马赛克",
+  "image/adjust-colors": "图片 调色 亮度 对比度 饱和度",
+  "image/color-palette": "图片 取色 调色板 配色",
+  "image/histogram": "图片 直方图 像素分布",
+  "image/collage": "图片 拼图 拼接 网格",
+  "image/compose": "图片 合成",
+  "image/stitch": "图片 拼接 长图",
+  "image/split": "图片 拆分 切割",
+  "image/vectorize": "图片 矢量化 转SVG",
+  "image/svg-to-raster": "SVG 光栅化 转位图",
+  "image/upscale": "图片 超分辨率 放大 提升清晰度",
+  "image/restore-photo": "老照片 修复 复原",
+  "image/noise-removal": "图片 降噪 噪点",
+  "image/meme-generator": "表情包 制作",
+  "image/favicon": "网站图标 favicon",
+  "image/html-to-image": "网页 截图 转图片",
+  "image/info": "图片 信息 查看 尺寸",
+  "image/bulk-rename": "图片 批量重命名",
+  "image/find-duplicates": "图片 查重 重复检测",
+  "image/image-to-base64": "图片 base64 编码",
+  "image/image-to-pdf": "图片 转PDF",
+  "image/duplicate-check": "图片 查重",
+  "pdf/merge-pdf": "PDF 合并 拼接",
+  "pdf/split-pdf": "PDF 拆分 分割 分离",
+  "pdf/compress-pdf": "PDF 压缩 减小体积",
+  "pdf/ocr-pdf": "PDF OCR 扫描件 文字识别",
+  "pdf/pdf-to-text": "PDF 转文本 提取文字",
+  "pdf/pdf-to-image": "PDF 转图片",
+  "pdf/pdf-to-jpg": "PDF 转JPG",
+  "pdf/pdf-to-png": "PDF 转PNG",
+  "pdf/pdf-to-word": "PDF 转Word 可编辑",
+  "pdf/watermark-pdf": "PDF 水印",
+  "pdf/rotate-pdf": "PDF 旋转 页面方向",
+  "pdf/crop-pdf": "PDF 裁剪 页面",
+  "pdf/protect-pdf": "PDF 加密 密码 保护",
+  "pdf/unlock-pdf": "PDF 解密 去除密码",
+  "pdf/redact-pdf": "PDF 涂黑 脱敏 遮盖 隐私",
+  "pdf/extract-pages": "PDF 提取页面",
+  "pdf/remove-pages": "PDF 删除页面",
+  "pdf/organize-pdf": "PDF 整理 排序 页面重排",
+  "pdf/sign-pdf": "PDF 签名 电子签章",
+  "pdf/pdf-metadata": "PDF 元数据 信息",
+  "pdf/pdf-page-numbers": "PDF 页码 添加",
+  "pdf/grayscale-pdf": "PDF 灰度 黑白",
+  "pdf/linearize-pdf": "PDF 网页优化 快速预览",
+  "pdf/repair-pdf": "PDF 修复 损坏 恢复",
+  "pdf/pdfa-convert": "PDF/A 归档 长期保存",
+  "pdf/flatten-pdf": "PDF 扁平化",
+  "pdf/booklet-pdf": "PDF 小册子 骑马订",
+  "pdf/nup-pdf": "PDF 多页合一 拼版",
+  "files/create-zip": "打包 压缩 ZIP",
+  "files/extract-zip": "解压 解包",
+  "files/merge-csvs": "CSV 合并",
+  "files/split-csv": "CSV 拆分",
+  "files/csv-excel": "CSV 转Excel",
+  "files/excel-to-csv": "Excel 转CSV",
+  "files/csv-json": "CSV 转JSON",
+  "files/json-xml": "JSON XML 互转",
+  "files/yaml-json": "YAML JSON 互转",
+  "files/markdown-to-docx": "Markdown 转Word",
+  "files/markdown-to-pdf": "Markdown 转PDF",
+  "files/markdown-to-html": "Markdown 转HTML",
+  "files/html-to-pdf": "HTML 转PDF 网页存PDF",
+  "files/word-to-pdf": "Word 转PDF",
+  "files/excel-to-pdf": "Excel 转PDF",
+  "files/powerpoint-to-pdf": "PPT 转PDF",
+  "files/convert-document": "文档 转换",
+  "files/convert-spreadsheet": "表格 转换",
+  "files/convert-presentation": "演示文稿 转换",
+  "files/chart-maker": "图表 制作",
+  "files/epub-convert": "EPUB 转换 电子书",
+  "files/to-epub": "转EPUB 电子书",
+  "video/compress-video": "视频 压缩 瘦身",
+  "video/convert-video": "视频 格式转换 转码",
+  "video/trim-video": "视频 剪切 截取",
+  "video/merge-videos": "视频 合并 拼接",
+  "video/extract-audio": "视频 提取音频",
+  "video/video-to-gif": "视频 转GIF",
+  "video/gif-to-video": "GIF 转视频",
+  "video/video-to-frames": "视频 抽帧 提取帧",
+  "video/images-to-video": "图片 合成视频",
+  "video/auto-subtitles": "自动字幕 语音识别",
+  "video/burn-subtitles": "字幕 烧录 嵌入",
+  "video/extract-subtitles": "提取 字幕",
+  "video/mute-video": "静音 去除声音",
+  "video/resize-video": "视频 分辨率 缩放",
+  "video/rotate-video": "视频 旋转",
+  "video/reverse-video": "视频 倒放",
+  "video/stabilize-video": "视频 防抖 稳定",
+  "video/video-speed": "视频 变速 加速 慢放",
+  "video/watermark-video": "视频 水印",
+  "video/crop-video": "视频 裁剪",
+  "video/change-fps": "帧率 FPS",
+  "video/video-color": "视频 调色",
+  "video/aspect-pad": "画面 比例 补边",
+  "video/video-to-webp": "视频 转WebP",
+  "video/replace-audio": "替换 音轨 配音",
+  "audio/convert-audio": "音频 格式转换 转码",
+  "audio/trim-audio": "音频 剪切 截取",
+  "audio/merge-audio": "音频 合并",
+  "audio/split-audio": "音频 拆分",
+  "audio/mp3-to-wav": "MP3 转WAV",
+  "audio/wav-to-mp3": "WAV 转MP3",
+  "audio/flac-to-mp3": "FLAC 转MP3",
+  "audio/m4a-to-mp3": "M4A 转MP3",
+  "audio/ogg-to-mp3": "OGG 转MP3",
+  "audio/normalize-audio": "音频 响度 标准化 母带",
+  "audio/noise-reduction": "音频 降噪",
+  "audio/fade-audio": "音频 淡入 淡出",
+  "audio/audio-speed": "音频 变速",
+  "audio/pitch-shift": "音频 变调 音调",
+  "audio/volume-adjust": "音频 音量 调整",
+  "audio/reverse-audio": "音频 倒放",
+  "audio/transcribe-audio": "语音转文字 听写 录音转写",
+  "audio/silence-removal": "去除静音 静音裁剪",
+  "audio/ringtone-maker": "铃声 制作",
+  "audio/waveform-image": "波形图 音频可视化",
+  "audio/audio-metadata": "音频 元数据 信息"
+ },
+ "hot_keywords": [
+  "单细胞",
+  "拟南芥",
+  "水稻",
+  "转录组",
+  "miRNA",
+  "SNP",
+  "KEGG",
+  "TAIR",
+  "GO 注释",
+  "蛋白结构",
+  "BioPython",
+  "临床变异",
+  "ChEMBL",
+  "Linux 命令",
+  "正则表达式"
+ ],
+ "search_categories": [
+  {
+   "value": "general",
+   "label": "网页",
+   "hint": "中文通用网页检索"
+  },
+  {
+   "value": "science",
+   "label": "学术",
+   "hint": "PubMed / EuropePMC / arXiv / OpenAlex"
+  },
+  {
+   "value": "scientific publications",
+   "label": "论文",
+   "hint": "Crossref / OpenAlex / arXiv 元数据"
+  },
+  {
+   "value": "videos",
+   "label": "视频",
+   "hint": "哔哩哔哩 / AcFun / 腾讯视频"
+  },
+  {
+   "value": "images",
+   "label": "图片",
+   "hint": "百度图片 / 夸克 / Naver / Pixabay"
+  },
+  {
+   "value": "it",
+   "label": "IT / 代码",
+   "hint": "GitHub / npm / crates.io / 技术问答"
+  },
+  {
+   "value": "news",
+   "label": "新闻",
+   "hint": "Hacker News / 微信搜一搜"
+  },
+  {
+   "value": "books",
+   "label": "图书",
+   "hint": "中文通用引擎检索图书条目"
+  }
+ ]
+}

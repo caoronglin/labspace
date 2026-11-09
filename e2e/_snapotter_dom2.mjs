@@ -1,0 +1,20 @@
+import { chromium } from 'playwright';
+const BASE = 'http://192.0.2.10:8092';
+const pass = process.env.SO_PASS || '';
+const browser = await chromium.launch();
+const context = await browser.newContext({ locale: 'en-US', viewport: { width: 1440, height: 900 } });
+const page = await context.newPage();
+await page.goto(BASE + '/login', { waitUntil: 'networkidle' });
+await page.locator('input[type=text], input[type=email], input[name=username]').first().fill('admin');
+await page.locator('input[type=password]').first().fill(pass);
+await page.locator('input[type=password]').first().press('Enter');
+await page.waitForTimeout(2500);
+const html = await page.evaluate(() => {
+  const el = [...document.querySelectorAll('button,a')].find((e) => /Image\s*\n?\s*107/.test(e.innerText));
+  if (!el) return 'not found';
+  let p = el;
+  for (let i = 0; i < 4 && p.parentElement; i += 1) p = p.parentElement;
+  return p.outerHTML;
+});
+console.log(html.slice(0, 6000));
+await browser.close();

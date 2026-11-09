@@ -1,0 +1,23 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({args:['--no-sandbox']});
+const p = await (await b.newContext({locale:'zh-CN', viewport:{width:1500,height:1000}})).newPage();
+await p.goto('http://192.0.2.10/api/auth/login', {waitUntil:'domcontentloaded'});
+await p.waitForSelector('#username');
+await p.locator('#username').fill('student01');
+await p.locator('#password').fill(process.env.LAB_PASS);
+await p.getByRole('button', {name:'登录'}).first().click();
+await p.waitForURL('http://192.0.2.10/**', {timeout:25000}).catch(()=>{});
+await p.goto('http://192.0.2.10/services', {waitUntil:'networkidle'});
+await p.waitForTimeout(1500);
+// 点第一张服务卡片
+await p.locator('.lab-service-card').first().click();
+await p.waitForTimeout(2000);
+const rec = await p.evaluate(async()=> JSON.parse(await (await fetch('/api/recent',{credentials:'include'})).text()));
+console.log('  最近访问:', rec.recent.join(', ') || '(空)');
+await p.goto('http://192.0.2.10/', {waitUntil:'networkidle'});
+await p.waitForTimeout(1500);
+const t=(await p.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ');
+const i=t.indexOf('最近访问');
+console.log('  首页最近访问区块:', t.slice(i, i+90));
+await p.screenshot({path:'/opt/labspace/e2e/shots/home-recent.png'});
+await b.close();

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link
+      rel="preload"
+      href="/fonts/honor-sans/HONORSans-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#2B5CE6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0D1219" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="D509 工作台 · 实验室一体化服务平台：AI 对话、文件管理、绘图、文献检索、基因组浏览、文档解析与开发工具，统一入口。"
+    />
+    <title>D509 工作台 · 实验室一体化服务平台</title>
+    <style>
+      /* 首屏骨架，避免 JS 加载期间白屏 */
+      html,
+      body {
+        margin: 0;
+        background: #f6f7f9;
+      }
+      #root:empty {
+        min-height: 100vh;
+      }
+      /* 深色偏好下首屏骨架也跟着换底色，避免先闪一帧白 */
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #0d1219;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

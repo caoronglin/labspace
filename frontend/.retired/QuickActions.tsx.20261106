@@ -1,0 +1,77 @@
+import { useNavigate } from 'react-router-dom';
+import { Typography, theme } from 'antd';
+import {
+  AppstoreOutlined,
+  ConsoleSqlOutlined,
+  DatabaseOutlined,
+  FileSearchOutlined,
+  GlobalOutlined,
+  PartitionOutlined,
+} from '@ant-design/icons';
+import { tokens } from '../theme/tokens';
+
+/**
+ * 首页快捷入口磁贴。
+ * 装饰色收敛：图标统一主色 + 淡色底（colorPrimaryBg），仅保留 1 个 accent（植物数据库）。
+ * 圆角/间距走 8px 栅格；hover 位移由既有 .d509-tile 样式提供，不新增动画。
+ */
+const ITEMS = [
+  { key: 'search', label: '统一搜索', desc: '网页 / 学术 / 本地', icon: <GlobalOutlined />, path: '/search', accent: false },
+  { key: 'databases', label: '植物数据库', desc: '50+ 生信资源', icon: <DatabaseOutlined />, path: '/databases', accent: true },
+  { key: 'commands', label: '命令速查', desc: '621 条官方说明', icon: <ConsoleSqlOutlined />, path: '/commands', accent: false },
+  { key: 'drawio', label: '绘图工具', desc: '流程图 / 示意图', icon: <PartitionOutlined />, path: '/drawio', accent: false },
+  { key: 'docparse', label: '文档解析', desc: 'PDF → 结构化', icon: <FileSearchOutlined />, path: '/docparse', accent: false },
+  { key: 'services', label: '全部服务', desc: '按分类浏览', icon: <AppstoreOutlined />, path: '/services', accent: false },
+];
+
+export default function QuickActions() {
+  const navigate = useNavigate();
+  const { token } = theme.useToken();
+
+  return (
+    <div
+      className="d509-stagger d509-grid d509-grid-sm"
+      style={{ ['--d509-grid-min' as string]: '168px' }}
+    >
+      {ITEMS.map((it) => {
+        const accent = it.accent;
+        return (
+          <div
+            key={it.key}
+            className="d509-tile"
+            onClick={() => navigate(it.path)}
+            role="button"
+            tabIndex={0}
+            aria-label={`${it.label}：${it.desc}`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                navigate(it.path);
+              }
+            }}
+          >
+            <span
+              className="d509-icon"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: token.borderRadius,
+                fontSize: 16,
+                background: accent ? token.colorFillTertiary : token.colorPrimaryBg,
+                color: accent ? tokens.colorAccent : token.colorPrimary,
+              }}
+            >
+              {it.icon}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.25 }}>{it.label}</div>
+              <Typography.Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
+                {it.desc}
+              </Typography.Text>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

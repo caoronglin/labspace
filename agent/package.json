@@ -1,0 +1,14 @@
+{
+  "name": "labspace-agent",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "D509 Agent 网关（pi RPC 网关 + 门户插件）",
+  "scripts": {
+    "start": "node gateway.mjs",
+    "check": "node --check gateway.mjs"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}

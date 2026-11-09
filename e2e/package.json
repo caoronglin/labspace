@@ -1,0 +1,12 @@
+{
+  "name": "labspace-e2e",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.64.1"
+  },
+  "scripts": {
+    "test": "bash ./run-regression.sh",
+    "smoke": "node ./e2e.mjs"
+  }
+}

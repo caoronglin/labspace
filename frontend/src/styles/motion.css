@@ -1,0 +1,174 @@
+/* =====================================================================
+   D509 工作台 · 动效系统
+   ---------------------------------------------------------------------
+   节奏参考 Ant Design Motion：短促、克制、不抢注意力。
+   - 时长：120 / 200 / 340 / 520ms
+   - 缓动：standard / out / in / spring
+   - 入场：位移 8~12px + 缩放 0.98→1，无 3D 翻转、无夸张弹跳
+   - 错峰：40ms 间隔，最多 8 项
+   - 降级：prefers-reduced-motion 下关闭所有位移与无限动画
+   （与 src/theme/tokens.ts 的 motion 令牌一一对应）
+   ===================================================================== */
+
+:root {
+  --d509-dur-fast: 120ms;
+  --d509-dur-base: 200ms;
+  --d509-dur-slow: 340ms;
+  --d509-dur-slower: 520ms;
+
+  --d509-ease-standard: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --d509-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --d509-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --d509-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --d509-stagger-step: 40ms;
+  --d509-stagger-max: 8;
+  --d509-enter-offset: 10px;
+  --d509-enter-scale: 0.98;
+}
+
+/* ---------------------------------------------------------- ① 入场 */
+.d509-enter {
+  animation: d509-enter-in var(--d509-dur-slow) var(--d509-ease-out) both;
+}
+
+@keyframes d509-enter-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--d509-enter-offset), 0) scale(var(--d509-enter-scale));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 页面级默认入场：内容区顶层区块（未显式标注动效类）统一走同一节奏，
+   页面一旦显式使用 .d509-enter / .d509-stagger 即以类名为准 */
+.ant-layout-content > *:not(.d509-enter):not(.d509-stagger):not(.ant-skeleton) {
+  animation: d509-enter-in var(--d509-dur-slow) var(--d509-ease-out) both;
+}
+
+/* ---------------------------------------------------------- ② 错峰 */
+/* 用法一：父容器加 .d509-stagger，子元素自动依次入场（最多 8 项）
+   用法二：任意元素上写 style={{ '--d509-stagger-index': 3 }} */
+.d509-stagger > * {
+  animation: d509-enter-in var(--d509-dur-slow) var(--d509-ease-out) both;
+}
+
+.d509-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.d509-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.d509-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.d509-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.d509-stagger > *:nth-child(5) { animation-delay: 160ms; }
+.d509-stagger > *:nth-child(6) { animation-delay: 200ms; }
+.d509-stagger > *:nth-child(7) { animation-delay: 240ms; }
+.d509-stagger > *:nth-child(8) { animation-delay: 280ms; }
+/* 第 9 项起不再延迟，避免整屏等待过久 */
+.d509-stagger > *:nth-child(n + 9) { animation-delay: 0ms; }
+
+[style*='--d509-stagger-index'] {
+  animation-delay: calc(var(--d509-stagger-index, 0) * var(--d509-stagger-step));
+}
+
+/* ---------------------------------------------------------- ③ 悬停抬升 */
+.d509-hover-lift {
+  transition:
+    transform var(--d509-dur-base) var(--d509-ease-standard),
+    box-shadow var(--d509-dur-base) var(--d509-ease-standard),
+    border-color var(--d509-dur-base) var(--d509-ease-standard);
+  will-change: transform;
+}
+
+.d509-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--d509-shadow-md);
+}
+
+.d509-hover-lift:active {
+  transform: translateY(0);
+}
+
+/* ---------------------------------------------------------- ④ 展开 / 折叠 */
+.d509-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--d509-dur-slow) var(--d509-ease-standard),
+    opacity var(--d509-dur-base) var(--d509-ease-standard);
+}
+
+.d509-expand > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.d509-expand[data-open='true'],
+.d509-expand.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------- ⑤ 骨架微光 */
+.d509-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--d509-skeleton-sheen) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: d509-skeleton-sheen 1.4s var(--d509-ease-standard) infinite;
+}
+
+.d509-skeleton-line {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--d509-skeleton-sheen) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: d509-skeleton-sheen 1.4s var(--d509-ease-standard) infinite;
+}
+
+@keyframes d509-skeleton-sheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---------------------------------------------------------- 降级 */
+/* 尊重系统「减少动态效果」：位移与无限动画全部关闭，仅保留静态/透明度变化 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .d509-enter,
+  .ant-layout-content > *:not(.d509-enter):not(.d509-stagger),
+  .d509-stagger > *,
+  .d509-hover-lift,
+  .d509-card,
+  .d509-tile,
+  .d509-skeleton::after,
+  .d509-skeleton-line,
+  .d509-pulse {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
