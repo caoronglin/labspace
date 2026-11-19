@@ -53,6 +53,7 @@ import PageShell from '../components/PageShell';
 import { useAuth } from '../app/AuthContext';
 import { api, type PeopleEntry } from '../services/api';
 import { meetingApi, type MeetingFile, type MeetingWeek } from '../services/labspaces';
+import { labSharedApi } from '../services/labShared';
 import { errText } from '../utils/err';
 
 import { formatSize } from '../utils/format';
@@ -108,6 +109,14 @@ export default function MeetingReports() {
     enabled: grantOpen,
     retry: false,
     staleTime: 300_000,
+  });
+
+  // 我在组员共享树里的那棵目录（学生侧）：用它做「组会 ↔ 共享目录」的跳转
+  const sharedMine = useQuery({
+    queryKey: ['lab-shared', 'mine'],
+    queryFn: labSharedApi.mine,
+    staleTime: 60_000,
+    retry: false,
   });
 
   const invalidate = () => {
@@ -313,6 +322,24 @@ export default function MeetingReports() {
       description="按 ISO 周归档，每周一个目录；每个周目录单独授权，未授权的人看不到。"
       extra={
         <Space wrap>
+          {/* 组会材料与「组员共享目录」是两处：
+              组会按周归档（逐周授权），共享目录是每人一棵的个人材料区
+              （含 01_组会汇报）。用户常常不知道材料该放哪、也不知道另一处
+              有没有同一份东西 —— 这里直接把两个入口摆在一起。 */}
+          {sharedMine.data?.granted ? (
+            <Button
+              icon={<FolderOpenOutlined />}
+              onClick={() =>
+                navigate(
+                  `/files?source=users&dir=${encodeURIComponent(
+                    `${sharedMine.data?.path ?? ''}/01_组会汇报`,
+                  )}`,
+                )
+              }
+            >
+              我的共享目录 · 01_组会汇报
+            </Button>
+          ) : null}
           <Button
             icon={<ReloadOutlined />}
             loading={weeks.isFetching}

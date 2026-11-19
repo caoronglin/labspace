@@ -359,9 +359,27 @@ export default function SharedMembers({ embedded = false }: { embedded?: boolean
               <Paragraph type="secondary" style={{ marginBottom: 8 }}>
                 每位成员固定三个目录：01_组会汇报、02_论文、03_其他。
               </Paragraph>
-              <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              <Paragraph type="secondary" style={{ marginBottom: 8 }}>
                 导师拥有整棵树的查看、上传、下载、编辑权限，还能按需要自建目录。
               </Paragraph>
+              {/* 两处材料区的分工，直接写出来 —— 用户最常问的就是
+                  「组会材料到底放哪」，而这两个地方以前互不相干。 */}
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 4 }}
+                title="组会材料放哪？"
+                description={
+                  <span>
+                    这里是你自己的材料区（长期保存）。
+                    如果材料是<b>按周提交到组会归档</b>，请走
+                    <Typography.Link style={{ marginInlineStart: 4 }} onClick={() => navigate('/meetings')}>
+                      组会汇报
+                    </Typography.Link>
+                    —— 那条按 ISO 周归档，导师逐周授权。
+                  </span>
+                }
+              />
             </Card>
           </Col>
         </Row>
