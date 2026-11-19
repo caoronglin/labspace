@@ -4,8 +4,8 @@
 
 | 服务 | 集成方式 | 入口 | 验证 |
 | --- | --- | --- | --- |
-| Open WebUI | 独立页面（原生 OIDC 客户端已注册，issuer = `http://192.0.2.10:8090`） | `http://192.0.2.10:3000/` | ✅ 页面可加载，登录页显示 “Continue with Casdoor” |
-| FileBrowser Quantum | 独立页面（Casdoor 客户端已注册 `quantum`） | `http://192.0.2.10:8080/files/` | ✅ 登录页正常，27 项越权/只读测试通过 |
+| 文件管理（门户原生网盘） | 门户内原生页面（Go 核心 `labfiles` 索引 + 按用户 ACL 授权） | 门户 `/files` | ✅ Go 核心实现，含单元测试 |
+| Agent 助手 | 门户内 IM 页 → pi RPC 网关 | 门户 `/agent` | ✅ SSE 流式回复、工具调用、消息落库 |
 | draw.io | 独立页面 + 门户受控保存/导出 | `http://192.0.2.10/draw/` | ✅ 绘图页可打开、可另存 XML 到个人目录 |
 | Linux Command | 官方仓库静态构建，Nginx 直接托管 | `http://192.0.2.10:8086/` | ✅ 页面加载，标题“Linux命令搜索引擎” |
 | IT-Tools | 官方镜像，独立页面 | `http://192.0.2.10:8084/` | ✅ 页面加载，标题“IT Tools - Handy online tools” |
@@ -28,57 +28,30 @@
 - 按任务要求「嵌入失败时优先采用独立内部页面，而不是修改第三方源码移除安全限制」，
   门户改为：独立页面编辑 → 回到门户「导入 XML」保存到“我的图形”或导出到个人目录。
 - 已验证链路：模板生成 XML → 保存 → `labspace.drawings` 落库 → 导出 →
-  `/srv/lab/users/student01/drawio/rnaseq.drawio`（Quantum 可见，0640 + ACL）。
+  `/srv/lab/users/student01/drawio/rnaseq.drawio`（门户网盘可见，0640 + ACL）。
 - 内容校验：仅接受含 `<mxfile` / `<mxGraphModel` 的内容，拒绝 `<!DOCTYPE`、`<!ENTITY`、`<script>`、
   `javascript:`；单文件上限 2MB；文件名白名单化；写入路径限定在 `<users_root>/<username>/drawio/`。
 - 若后续更换带 embed 应用的镜像，门户端的 iframe + postMessage 实现已保留在 git 历史中，可直接切回。
 
-## Open WebUI / Quantum 的 OIDC（已打通，2026-10-26）
+## Open WebUI / Quantum（已下线，2026-11-04 清理）
 
-- 重建 Open WebUI（先备份）与 Quantum 后，两者均已接入内网 Casdoor：
-  - Open WebUI：`/oauth/oidc/login` → 302 → Casdoor → 回调 307；`adminlegacy@qq.com` 按邮箱绑定
-    既有账号（`oauth.merge_accounts_by_email=true`），**用户 ID、知识库、模型 API 均未变**。
-  - Quantum：客户端 `quantum` 已注册，OIDC 与本地口令并行（口令为管理员兜底，学生走 OIDC），
-    登录页显示「FileBrowser Quantum 或 Open ID Connect」，界面语言已设为 zh-CN。
-- 关键点：统一改用 IP 专属端口的 Casdoor（`http://192.0.2.10:8090`），Open WebUI / Quantum / 门户的
-  issuer 与授权地址全部为 IP，无需 DNS 解析（容器内 `extra_hosts` 域名映射已全部移除）。
-  `lab-postgres` 需同时在 lab-backend / lab-tools / labspace-net 三个网络上（也已写入 compose，
-  避免手工 `docker network connect` 在重建时丢失）。
-
-## 曾经的 OIDC 限制（已解决）
-
-- Casdoor 客户端 `openwebui` 已注册，回调 `http://192.0.2.10:3000/oauth/oidc/callback`；
-  Open WebUI 侧已写入 OIDC 配置（provider=本地 Casdoor，merge-by-email=true 以保留原账号）。
-- **当前实例未打通**：`/oauth/oidc/login` 返回 500。根因有二：
-  1. 容器内无法解析域名（现已全部改为 IP + 端口，不再依赖任何域名解析）；
-     已用 `docker exec` 写入 `/etc/hosts` 临时修复，但 Docker 会在容器重启时重写该文件。
-  2. Open WebUI 0.12.1 会缓存 OIDC client；`ENABLE_OAUTH_PERSISTENT_CONFIG=false` 时 OIDC 配置不落库，
-     进程重启后需要重新配置。
-- **一次性修复（维护窗口内执行）**：`cd /opt/lab-core-stack && docker compose up -d`
-  （现已取消域名映射，改为 issuer 指向 `http://192.0.2.10:8090`，并保留 `ENABLE_OAUTH_PERSISTENT_CONFIG=true`）。
-  这会重建 Open WebUI 容器（当前任务要求不得重建，故未执行），数据与知识库不受影响。
-- 在此之前，Open WebUI 仍可用口令登录（`ENABLE_LOGIN_FORM=true`），原有用户、知识库、模型 API 均未变动。
-
-## Quantum 的 OIDC
-
-客户端 `quantum` 已注册并写好 `FILEBROWSER_OIDC_*` 环境变量位；
-Casdoor 就绪后执行 `lab-quantum-oidc enable http://192.0.2.10:8090` 一键切换（口令与 OIDC 并行可用）。
+- 二者曾分别承担 AI 聊天（Open WebUI，:3000）与文件管理（FileBrowser Quantum，:8080），
+  2026-11-04 已连同容器、镜像与 `lab-quantum_default` 网络一并清理，服务目录（Go 核心 `catalog.go`）不再收录。
+- 沿革：当时两者均已接入内网 Casdoor（OIDC 客户端 `openwebui` / `quantum`），但 issuer 与回调是**静态配置**，
+  需在用户点「一键登录」时按入口主机改配置并重建容器；该机制随服务下线已失效。
+- 替代能力：文件 → 门户原生网盘 `/files` 与文件工坊 SnapOtter（:8092）；聊天 → 门户 Agent 助手 `/agent`。
 
 ## OIDC 入口自适应（跟随访问入口主机）
 
 门户支持两个入口主机：内网 `192.0.2.10` 与 Tailscale `198.51.100.71`。
-门户、Casdoor issuer、服务目录地址都已自适应；只有 Open WebUI 与 Quantum 的 OIDC
-issuer / 回调地址是静态配置，需在用户点「一键登录」时切换。
+门户、Casdoor issuer、服务目录地址都已自适应。
 
 | 事实 | 说明 |
 | --- | --- |
-| Open WebUI 的真值是容器环境变量 | `OPENID_PROVIDER_URL` / `OPENID_REDIRECT_URI`（`/opt/lab-core-stack/.env`）。`ENABLE_OAUTH_PERSISTENT_CONFIG` 未开启时，数据库 `config` 表里的 `oauth.*` 是**不生效的残留** |
-| Quantum 的真值是 env 文件 | `/etc/lab-quantum/quantum.env` 的 `FILEBROWSER_OIDC_ISSUER_URL`（`config.yaml` 内是 `${FILEBROWSER_OIDC_ISSUER_URL}` 占位符） |
-| 两者改动后必须重建容器 | Quantum 不支持 SIGHUP 热加载（`docker kill -s HUP lab-quantum` 会直接退出） |
-| 切换由宿主机辅助服务执行 | `ops/oidc-sync.py`（systemd `lab-oidc-sync`，监听 `172.28.0.1:8111`，`X-Ops-Token` 鉴权），门户后端经 `/api/sso/{id}/prepare` 调用 |
-| 回调地址自动登记 | 切换后把新的回调 URI 追加到 Casdoor `application.redirect_uris`（幂等） |
-
-验证：`e2e/ip-adaptive-test.mjs`（15/15）、`e2e/sso-e2e-test.mjs`（4/4）。
+| Casdoor issuer 随请求 Host 回显 | `origin` / `originFrontend` 留空，授权码流建立浏览器会话，跨应用免密 |
+| 门户回调动态生成 | 后端按请求 Host 推导 issuer 与 `redirect_uri`（写入 `state`） |
+| 生信实训平台回调固定 | `http://192.0.2.10:8102/api/v1/auth/callback`（`BIOINFO_OIDC_REDIRECT_URI`） |
+| 门户内原生页面全部随入口自适应 | 文件管理 `/files`、Agent 助手 `/agent`、文件工坊 `/snapotter` 等地址由 `adapt_host()` 按当前 Host 生成 |
 
 ## Linux 命令库（门户内完整版）
 
@@ -102,7 +75,7 @@ issuer / 回调地址是静态配置，需在用户点「一键登录」时切�
 | 登录 | 复用 Casdoor 会话：右上角显示头像/姓名与下拉（个人资料、退出登录），未登录显示「登录」按钮 |
 | 换背景 | 5 套本地 CSS 渐变/纹理（实验蓝、松石绿、晨曦、网格、深空）+ 深浅色主题切换，选择持久化在 localStorage（`labspace.bg`），**不拉外链图片，离线可用** |
 | 多元搜索 | 大搜索框 + 来源切换（全部=general,science,videos / 网页 / 学术 / 视频），走门户后端 `/api/search` → SearXNG 多引擎聚合；回车跳到结果页并带上 categories |
-| 快捷入口 | Open WebUI、文件管理、绘图、Linux 命令、IT-Tools、文献检索 |
+| 快捷入口 | 文件共享、文件工坊、知识库问答、绘图、Linux 命令、文献检索 |
 
 入口：门户头部新增「浏览器主页」按钮，首页新增「浏览器主页」卡片；建议把
 `http://192.0.2.10/start` 设为浏览器起始页。
@@ -111,10 +84,10 @@ issuer / 回调地址是静态配置，需在用户点「一键登录」时切�
 
 ### 规则 1：口令必须统一
 
-Casdoor 是唯一身份源。学生原本在 Quantum 用的本地口令与 Casdoor 不同，导致在 Casdoor 登录页
-被拒、页面反复退回登录框。已用 `lab-sync-passwords`（每日 06:50 定时 + 可手动执行）把
+Casdoor 是唯一身份源。历史上 Quantum / Open WebUI 另有本地口令，导致同名账号在 Casdoor 登录页
+被拒、页面反复退回登录框；当时用 `lab-sync-passwords`（每日 06:50 定时 + 可手动执行）把
 **同名账号在 Casdoor / Quantum / Open WebUI 三处的口令统一**，统一后的清单在
-`/etc/labspace/casdoor-users.txt`（0600）。
+`/etc/labspace/casdoor-users.txt`（0600）。这两个服务下线后，口令统一只需覆盖 Casdoor 与生信实训平台。
 
 ### 规则 2：OIDC 回调必须与登录入口同主机
 
@@ -127,11 +100,10 @@ Casdoor 是唯一身份源。学生原本在 Quantum 用的本地口令与 Casdo
 | 应用 | 固定回调（redirect_uri） | 必须从这个入口登录 |
 | --- | --- | --- |
 | LabSpace 门户 | **动态**（后端按请求 Host 生成） | 任意（IP 或域名均可） |
-| Quantum | `http://192.0.2.10:8080/files/api/auth/oidc/callback` | `http://192.0.2.10:8080/files/` |
-| Open WebUI | `http://192.0.2.10:3000/oauth/oidc/callback` | `http://192.0.2.10:3000/` |
+| 生信实训平台 | `http://192.0.2.10:8102/api/v1/auth/callback` | `http://192.0.2.10:8102/` |
 
 若要用其它入口登录 OIDC，必须把对应应用的
-`redirect_uri` 改回域名形式并重建容器（`OPENID_REDIRECT_URI` / Quantum 的 `FILEBROWSER_*`）。
+`redirect_uri` 改回域名形式并重启对应服务。
 
 ## JBrowse 2 基因组浏览器（/jbrowse/）
 
@@ -316,8 +288,8 @@ asyncio 会先尝试 IPv6 并挂到超时，**可用的 IPv4 地址根本没被�
 | 文件工坊 | `/snapotter` | SnapOtter | **原生 REST 调用**（非 iframe）：243 个图像/PDF/音视频/文件工具，上传→处理→下载全链路在门户内完成 |
 | 公告管理 | 管理端 | — | 真实公告（数据库），首页不再显示占位 |
 
-保留第三方原生页面的原因（不做重写）：draw.io 图形编辑器、JBrowse 基因组浏览器、
-Open WebUI 聊天内核、Quantum 文件管理器——这些是完整专业应用，重写没有意义且易失真。
+保留第三方原生页面的原因（不做重写）：draw.io 图形编辑器、JBrowse 基因组浏览器——
+这些是完整专业应用，重写没有意义且易失真。
 原版 IT-Tools 仍保留在 `http://192.0.2.10:8084/`（导航「IT-Tools 原版」）。
 
 ## PDF 论文翻译（已实测跑通）
@@ -336,4 +308,4 @@ Open WebUI 聊天内核、Quantum 文件管理器——这些是完整专业应�
 
 - 门户按 Casdoor 角色过滤菜单与卡片；后端所有 API 独立校验角色（未登录 401、越权 403）。
 - 学生看不到 Open Terminal（终端卡片与后端接口均受限）。
-- 学生看不到他人知识库 / 文件（既有 Quantum 与 Open WebUI 自身的 ACL 继续生效）。
+- 学生看不到他人文件（门户原生网盘与生信实训工作区均按用户 ACL 隔离）。

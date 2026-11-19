@@ -1,0 +1,15 @@
+# yamllint 配置（仓库根，作用于 compose.yaml / .cnb.yml 等）
+#
+# 只放宽了 line-length：默认 80 列对 docker-compose 不现实——一个
+# `AGENTSCOPE_DB_DSN: "postgresql+asyncpg://..."` 天然就超 120，硬折行会让
+# 连接串被拆成两段、复制粘贴即失效。其余规则保持默认。
+extends: default
+
+rules:
+  line-length:
+    max: 140
+    level: warning
+  # compose 文件里注释是给人读的，不强制以 # 后空格结尾判错
+  comments:
+    min-spaces-from-content: 1
+  document-start: disable

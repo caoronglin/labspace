@@ -10,11 +10,11 @@
         │  Nginx（宿主机 apt 安装，host-based 路由） │
         │   192.0.2.10:80      → LabSpace 门户 + /api 反代 │
         │   192.0.2.10:8090     → Casdoor（IP 专属端口）│
-        │   192.0.2.10:3000    → Open WebUI         │
-        │   192.0.2.10:8080    → FileBrowser Quantum│
         │   192.0.2.10:8082    → draw.io            │
         │   192.0.2.10:8086    → Linux Command（静态）│
         │   192.0.2.10:8084    → IT-Tools           │
+        │   192.0.2.10:8092   → SnapOtter（文件工坊）│
+        │   192.0.2.10:8091    → JBrowse 2（静态）   │
         │   （未匹配主机名 / IP 直连 → 门户 default_server）│
         │                                          │
         │  ┌──────────── Docker 网络 ───────────┐ │
@@ -25,7 +25,6 @@
         │  │  lab-it-tools (80)                 │ │
         │  │  lab-postgres（既有，PG17）        │ │
         │  │ lab-tools（既有）                  │ │
-        │  │  lab-open-webui / lab-quantum /    │ │
         │  │  lab-searxng / lab-tika /          │ │
         │  │  lab-docling / lab-research-api /  │ │
         │  │  lab-research-mcp / lab-terminal   │ │
@@ -36,13 +35,17 @@
         │  │ labgo (Go 核心, :8122)            │   │  ← 服务目录/健康/内嵌探测
         │  │   127.0.0.1:8122  ← nginx        │   │
         │  │   172.28.0.1:8122  ← 后端容器      │   │
-        │  │ lab-agent-gateway (:8110, pi RPC) │   │
         │  │ lab-oidc-sync (:8111, issuer 同步) │   │
         │  │ bioinfo-api (:8100) / bioinfo-    │   │
         │  │   terminal (:8101)                │   │
         │  └────────────────────────────────────┘   │
         └──────────────────────────────────────────┘
 ```
+
+> **Open WebUI（:3000）与 Quantum（:8080）已下线（2026-11-04 清理）**：容器、镜像与 `lab-quantum_default`
+> 网络均已清理，服务目录（Go 核心 `catalog.go`，唯一权威源）也不再收录这两个条目。
+> 文件能力由门户原生网盘 `/files` 与文件工坊 SnapOtter（:8092）承担，
+> 聊天/知识库问答能力由门户 Agent 助手 `/agent` 承担。
 
 > **Go 核心（LabGo）**：服务注册表、健康探测、内嵌探测、实验文件只读索引的权威实现，
 > 纯 Go 标准库、零外部依赖。浏览器请求的 `/api/services*` 直接由 nginx 转给它，
@@ -63,8 +66,8 @@
 | SnapOtter | `http://192.0.2.10:8092/` | 文件工坊官方界面（门户页 `/snapotter`） |
 | 图纸平台 | `http://192.0.2.29:5244/` | 外部内网服务（当前端口关闭，标记 `external-down`） |
 | PDF 论文翻译 | `http://192.0.2.10/translate` | 门户内页面（AntD 重写），后端为 PDFMathTranslate 工作进程 |
-| Open WebUI | `http://192.0.2.10:3000/` | 应用自身根路径，不做子路径改写 |
-| Quantum | `http://192.0.2.10:8080/files/` | 基础路径 /files/ |
+| 文件管理（门户原生网盘） | `http://192.0.2.10/files` | 门户内页面（Go 核心 `labfiles` 按用户 ACL 授权） |
+| Agent 助手 | `http://192.0.2.10/agent` | 门户内页面（pi RPC 网关），AI 对话与知识库问答 |
 | Tailscale | `http://198.51.100.71/` | 同一套服务，跨网访问（nftables 放行 100.64.0.0/10） |
 
 > **全部服务一律使用 `192.0.2.10 + 端口` 访问，不使用任何域名**：客户端无需 DNS 解析、
@@ -82,8 +85,6 @@
 | 8086 | 0.0.0.0 | Linux Command（静态） |
 | 8091 | 0.0.0.0 | JBrowse 2（静态） |
 | 8092 | 0.0.0.0 | SnapOtter 文件工坊 |
-| 3000 | 0.0.0.0 | Open WebUI |
-| 8080 | 0.0.0.0 | Quantum |
 | 8081 | 127.0.0.1 | SearXNG（容器间访问） |
 
 **没有任何业务端口暴露到公网**：所有对外端口由 nftables 限制为仅内网 `192.0.2.0/24` 与
@@ -100,6 +101,7 @@ set svc_ports { type inet_service
 ```
 
 放行规则：`tcp dport @svc_ports ip saddr @lan_net accept` 与 `tcp dport @svc_ports ip saddr @ts_net accept`。
+（3000 / 8080 是已下线服务遗留的白名单条目，当前无进程监听，可择机从集合中删除。）
 新增对外服务时**必须**把端口加进 `svc_ports`，否则外部客户端连接会被 DROP（本机回环自测仍会通过，是常见盲区）。
 
 > 严禁使用 `flush ruleset`：那会清掉 Docker 注入的 iptables 链。修改后用
@@ -115,21 +117,16 @@ set svc_ports { type inet_service
 | 门户后端 | `backend/app/catalog.py::adapt_host()` + `main.py::_client_host()` | 按请求 `Host`/`X-Forwarded-Host` 改写服务地址（url / embedUrl / ssoUrl / 描述），影响 `/api/services`、`/api/services/health`、`/api/network/entries`、`/api/search`、`/api/corpus` |
 | 门户前端 | `frontend/src/utils/host.ts`（`currentHost()` / `hostUrl()`） | 页面内所有绝对地址按当前 `window.location.hostname` 生成，无硬编码 IP（仅 `DEFAULT_HOST` 兜底） |
 | 门户自身 OIDC | `backend/app/casdoor.py` | issuer 按请求 Host 推导；`state` 内固化 `redirect_uri` 与 `issuer` |
-| Open WebUI / Quantum | `ops/oidc-sync.py`（systemd `lab-oidc-sync`）+ `/api/sso/{id}/prepare` | 这两个服务的 OIDC issuer 与回调地址是**静态配置**，用户点「一键登录」时按当前入口主机切换（必要时重建容器） |
+| 门户内原生页面（文件管理 `/files`、Agent 助手 `/agent` 等） | 门户自身路由 + `backend/app/catalog.py::adapt_host()` | 全部按当前入口主机生成地址，无需任何外部服务配合 |
 
 自适应的原因：远程用户经 Tailscale 进入时，内网 IP `192.0.2.10` 对其不可达
 （`tailscale status` 提示未接受子网路由），因此服务地址必须跟随入口主机。
 
 切换细节：
 
-- Open WebUI 的 OIDC 真值是**容器环境变量**（`OPENID_PROVIDER_URL` / `OPENID_REDIRECT_URI`，
-  位于 `/opt/lab-core-stack/.env`）——`ENABLE_OAUTH_PERSISTENT_CONFIG` 未开启时，
-  数据库 `config` 表里的 `oauth.*` 是**不生效的残留**；
-- Quantum 的 issuer 真值是 `/etc/lab-quantum/quantum.env` 的 `FILEBROWSER_OIDC_ISSUER_URL`
-  （`config.yaml` 里是 `${FILEBROWSER_OIDC_ISSUER_URL}` 占位符）；
-- 两者改动后**必须重建容器**（Quantum 不支持 SIGHUP 热加载，`docker kill -s HUP` 会直接退出）；
-- 切换后会把新的回调地址自动登记进 Casdoor `application.redirect_uris`（幂等）；
-- 宿主机辅助服务只监听 docker 网桥 `172.28.0.1:8111` 并校验 `X-Ops-Token`，不对外暴露。
+- 已下线的 Open WebUI / Quantum 曾用静态 issuer + 重建容器的方式切换（`ops/oidc-sync.py`、
+  `OPENID_*` 环境变量、`FILEBROWSER_OIDC_ISSUER_URL`），随 2026-11-04 清理一并失效，现行架构不再依赖；
+- 其余服务的 issuer 均为**动态**：门户与生信实训平台按请求 Host 推导，无需重启任何容器；
 
 ## 3. 身份流
 
@@ -153,10 +150,10 @@ set svc_ports { type inet_service
 
 | 数据 | 位置 | 说明 |
 | --- | --- | --- |
-| LabSpace 业务数据 | 独立库 `labspace`（PG17 内新建，与 Open WebUI 的库完全隔离） | `labspace.favorites` / `labspace.recent` / `labspace.drawings` |
+| LabSpace 业务数据 | 独立库 `labspace`（PG17 内新建，与 `casdoor` 库完全隔离） | `labspace.favorites` / `labspace.recent` / `labspace.drawings` |
 | Casdoor | 独立库 `casdoor`（同一 PG 实例，独立 database + 独立角色） | 组织、应用、组、用户 |
-| 用户绘图文件 | `/srv/lab/users/<user>/drawio/*.drawio` | 与 Quantum 个人目录一致，Quantum 可直接管理 |
-| 既有服务数据 | 未改动 | Open WebUI / Quantum / oikb / 科研 API 等原样保留 |
+| 用户绘图文件 | `/srv/lab/users/<user>/drawio/*.drawio` | 门户原生网盘按用户 ACL 管理，Go 核心 `labfiles` 负责授权 |
+| 既有服务数据 | 未改动 | oikb / 科研 API / SearXNG / Docling 等原样保留 |
 
 ## 5. 服务目录与健康检查
 
@@ -178,18 +175,17 @@ set svc_ports { type inet_service
 
 ```
 浏览器 ──SSE──▶ Nginx :80 ──▶ LabSpace 后端 /api/agent/sessions/{id}/stream
-                                  │  (X-Agent-Token)
+                                  │  (X-User-ID = 会话解出的 sub，客户端不可伪造)
                                   ▼
-                       宿主机 agent/gateway.mjs  172.28.0.1:8110
-                                  │  pi --mode rpc（stdin/stdout JSONL）
+                   AgentScope 2.0.11 Agent Service（容器 lab-agentscope :8100）
+                                  │  create_app(storage/message_bus/workspace_manager/mcp_hubs)
                                   ▼
-                       pi 子进程（--no-builtin-tools --tools lab_*）
-                                  │  lab-portal.js 插件（用用户 JWT 回调门户）
+                   Postgres 库 agentscope（13 张表）+ 内置 MCP 工具进程
+                                  │  mcp__lab__lab_services 等工具回调门户 API
                                   ▼
-                       门户 /api/services、/api/databases、/api/search、/api/workbench
+                   openai 兼容端点（平台模型凭据 /etc/labspace/agent-model.env）
 ```
 
-- 网关只监听 docker 网桥地址，**外部客户端不可直连**；systemd 单元 `lab-agent-gateway.service`。
 - 每个会话一个 pi 子进程；会话目录 `/srv/labdata/labspace/agent/sessions`，cwd 指向空目录
   `/srv/labdata/labspace/agent/work`；15 分钟空闲回收。
 - 插件工具只能通过门户 API 访问数据，**不能读写宿主机文件系统**。
@@ -198,9 +194,9 @@ set svc_ports { type inet_service
 
 | 依赖 | 状态 | 影响 |
 | --- | --- | --- |
-| Windows Server 模型 API `100.64.0.10:7997` | 不可达 | Open WebUI 无向量/重排能力，RAG 相关验收无法完成 |
+| Windows Server 模型 API `100.64.0.10:7997` | 不可达 | 门户无向量/重排能力，RAG 相关验收无法完成 |
 | 内网 DNS | 由 Debian 的 dnsmasq 提供 | 客户端需把 DNS 指向 192.0.2.10（或在 hosts 写映射）；未配置时可用 `http://192.0.2.10/` 兜底 |
 | HTTPS 证书 | 未部署 | 当前仅 HTTP，认证凭据在内网链路上是明文传输（见 SECURITY.md 风险条目） |
-| Windows 宿主机 `100.64.0.10` | 整机不可达 | Hy-MT2 文本翻译模型无法部署（门户自动回退到本机引擎）；Open WebUI 无向量/重排 |
+| Windows 宿主机 `100.64.0.10` | 整机不可达 | Hy-MT2 文本翻译模型无法部署（门户自动回退到本机引擎） |
 | OXR 官方免费实例 `free-oxr.somark.ai` | 可用但为共享实例 | 偶发超时/限流；门户自动回退到内网 Docling |
 | 出站 IPv6 | 部分站点为黑洞 | 后端统一强制 IPv4 出站（`backend/app/http.py`），避免外部接口随机 ConnectTimeout |

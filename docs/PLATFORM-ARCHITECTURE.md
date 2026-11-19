@@ -31,9 +31,11 @@
 
 1. **D509 工作台（LabSpace）门户** —— 统一入口 + 服务目录 + 管理台（Docker + Nginx + FastAPI，~2 万行）
 2. **生信实训平台（bioinfo-training）** —— 课程/实验/终端/工作区（原生 systemd + FastAPI + React，~1.5 万行）
-3. **一体化服务栈** —— FileBrowser Quantum、Open WebUI、Casdoor、SearXNG、Docling/Tika、draw.io、JBrowse、SnapOtter、PDFMathTranslate、科研 API/MCP
+3. **一体化服务栈** —— Casdoor、SearXNG、Docling/Tika、draw.io、JBrowse、SnapOtter、PDFMathTranslate、科研 API/MCP
+   （FileBrowser Quantum 与 Open WebUI 已于 2026-11-04 清理下线）
 
-身份统一由 **Casdoor** 承载；文件统一由 **FileBrowser Quantum** 承载；门户只做**目录/编排/代理**，不建第二份存储。
+身份统一由 **Casdoor** 承载；文件统一由**门户原生网盘 `/files`** 承载（SnapOtter 只做文件工具处理）；
+门户只做**目录/编排/代理**，不建第二份存储。
 
 ---
 
@@ -53,20 +55,19 @@
  │  :80   D509 门户静态站 + /api/ 反代        :8090 Casdoor 反代        │
  │  :8086 Linux 命令速查（静态）               :8091 JBrowse 2（静态）  │
  │  :8102 生信实训平台前端 + /api 反代                                   │
- └──┬────────┬────────────┬─────────────┬──────────────┬─────────────┘
-    │        │            │             │              │
-    ▼        ▼            ▼             ▼              ▼
- ┌────────┐ ┌─────────┐ ┌─────────┐ ┌────────────┐ ┌──────────────┐
- │LabSpace│ │bioinfo- │ │ Casdoor │ │ FileBrowser │ │  JBrowse 2   │
- │backend │ │ api     │ │ :8000   │ │ Quantum     │ │  :8091 静态  │
- │ :8088  │ │ :8100   │ │(容器内) │ │  :8080      │ │              │
- │(容器)  │ │bioinfo- │ └─────────┘ └────────────┘ └──────────────┘
+ └──┬────────┬────────────┬─────────────┬─────────────────────────────┘
+    │        │            │             │
+    ▼        ▼            ▼             ▼
+ ┌────────┐ ┌─────────┐ ┌─────────┐ ┌──────────────┐
+ │LabSpace│ │bioinfo- │ │ Casdoor │ │  JBrowse 2   │
+ │backend │ │ api     │ │ :8000   │ │  :8091 静态  │
+ │ :8088  │ │ :8100   │ │(容器内) │ │              │
+ │(容器)  │ │bioinfo- │ └─────────┘ └──────────────┘
  └────────┘ │ terminal│
             │  :8101  │
             └─────────┘
 
-  Docker 网络（5 个）：labspace / labspace-net / lab-core_lab-backend /
-                      lab-quantum_default / lab-tools
+  Docker 网络（3 个）：labspace-net / lab-core_lab-backend / lab-tools
   宿主 systemd（非容器）：nginx · dnsmasq · bioinfo-api · bioinfo-terminal
     bioinfo-cgroup-helper · lab-agent-gateway(Node 172.28.0.1:8110)
     lab-oidc-sync(Python 172.28.0.1:8111) · lab-health.timer
@@ -77,14 +78,14 @@
 | 端口 | 服务 | 形态 | 访问地址 |
 |---|---|---|---|
 | 80 | D509 门户 | Nginx 静态 + 反代 | `http://192.0.2.10/` |
-| 3000 | Open WebUI | Docker 直出 | `http://192.0.2.10:3000/` |
-| 8080 | FileBrowser Quantum | Docker 直出 | `http://192.0.2.10:8080/files/` |
 | 8082 | draw.io | Docker 直出 | `http://192.0.2.10:8082/` |
 | 8084 | IT-Tools | Docker 直出 | `http://192.0.2.10:8084/` |
 | 8086 | Linux 命令速查 | Nginx 静态 | `http://192.0.2.10:8086/` |
 | 8090 | Casdoor 认证 | Nginx 反代 | `http://192.0.2.10:8090/` |
 | 8091 | JBrowse 2 | Nginx 静态 | `http://192.0.2.10:8091/index.html` |
 | 8092 | SnapOtter | Docker 直出 | `http://192.0.2.10:8092/` |
+| 8093 | 图纸平台 | Nginx 反代 | `http://192.0.2.10:8093/` |
+| 8094 | Baserow 数据表 | Nginx 反代 | `http://192.0.2.10:8094/` |
 | 8102 | 生信实训平台 | Nginx 反代 | `http://192.0.2.10:8102/` |
 
 > 约定：**所有入口一律 IP + 端口**。`*.lab.internal` 已下线（dnsmasq 保留可选别名，不影响使用）。
@@ -249,21 +250,20 @@ backend/
                             lab_services / lab_database_query / lab_web_search
                             lab_workbench_capture / lab_workbench_list
 
-/opt/labspace/ops/oidc-sync.py  issuer 同步器（监听 172.28.0.1:8111）
-                                改写 OPENID_* 与 FILEBROWSER_OIDC_ISSUER_URL → 重建容器
-                                → 幂等登记 Casdoor redirect_uris
+/opt/labspace/ops/oidc-sync.py  已下线服务的历史 issuer 同步器（监听 172.28.0.1:8111）
+                                随 Open WebUI / Quantum 于 2026-11-04 清理而停用
 
-/usr/local/bin/  （19 个运维脚本）
-lab-backup            备份（Casdoor/LabSpace、Open WebUI 库+数据、FQ、SnapOtter）
+/usr/local/bin/  （运维脚本）
+lab-backup            备份（Casdoor/LabSpace、SnapOtter）
 lab-restore-drill     恢复演练（恢复到临时库比对行数）
 lab-health            每日巡检（systemd timer）
 lab-reset-init        重置初始化（TRUNCATE + 入口/API 校验）
 lab-casdoor-init      Casdoor 应用/用户初始化
-lab-sync-passwords    密码同步（casdoor / openwebui / quantum）
-lab-owui-user  lab-owui-kb  lab-owui-oauth-sync
-lab-quantum-user  lab-quantum-user-list.py  lab-quantum-oidc  lab-quantum-check
+lab-sync-passwords    密码同步（casdoor）
 lab-searxng-test  lab-oikb-sync  lab-pyproject-sync
-lab-pull-full-openwebui.sh  lab-pull-retry.sh
+
+（`lab-owui-*`、`lab-quantum-*`、`lab-pull-full-openwebui.sh` 是已下线服务的历史脚本，
+不再有对应服务，已从现行清单移除。）
 ```
 
 ### 4.6 测试
@@ -345,27 +345,12 @@ lab-pull-full-openwebui.sh  lab-pull-retry.sh
 | users | `GET /users` `POST /users/{id}/roles` `POST /users/{id}/status` |
 | admin | `GET/POST/PATCH` items / plans / projects / sessions / users；`GET/PUT /admin/config` `GET /admin/usage` |
 
-### 5.3 FileBrowser Quantum v2.0.1 —— 平台调用的端点
+### 5.3 FileBrowser Quantum（已下线，2026-11-04 清理）
 
-| 方法 | 路径 | 参数 | 用途 |
-|---|---|---|---|
-| POST | `/files/api/auth/login` | `username` query + `X-Password` 头 | 密码登录（返回 JWT 字符串） |
-| — | （任意请求） | `X-JWT-Assertion` 头 | **外部 JWT 断言**（平台用户级访问） |
-| GET | `/files/api/resources/items` | `source`, `path`, `only` | 列目录 |
-| GET | `/files/api/resources` | `source`, `path`, `content`, `metadata` | 资源元数据（含 ETag） |
-| GET | `/files/api/resources/download` | `source`, `file`(可重复), `inline` | 下载/流式 |
-| GET | `/files/api/resources/view` | `source`, `file`, `viewToken` | 行内查看非媒体 |
-| GET | `/files/api/resources/preview` | `path`, `size` | 图片缩略图 |
-| GET | `/files/api/media/stream` | `source`, `file`, `viewToken` | 媒体流 |
-| POST | `/files/api/resources` | `source`, `path`, `override`, `isDir` | 上传/创建目录 |
-| PATCH | `/files/api/resources` | body: items + action | 移动 / 复制 / 重命名 |
-| DELETE | `/files/api/resources` | `source`, `path` | 删除 |
-| POST | `/files/api/resources/bulk` | body | 批量删除 |
-| GET | `/files/api/tools/search` | `query`, `sources`, `scope`, `useWildcard` | 搜索 |
-| GET | `/files/api/settings/sources` | — | 当前用户可见源 |
-| GET | `/files/api/settings/source` | — | 全局默认权限（管理端） |
-| PATCH | `/files/api/settings/source` | `{"defaultPermissions":{"modify":true}}`（**单字段**） | 调整全局默认权限 |
-| GET/PATCH | `/files/api/users` | — | 用户与 backendScopes（管理端） |
+Quantum 的容器、镜像与 `lab-quantum_default` 网络均已清理，平台不再调用其 `/files/api/*` 端点，
+Casdoor 客户端 `quantum` 亦已停用。文件访问改由门户原生网盘 `/files` 承担
+（Go 核心 `labfiles`：只读索引 + 按用户 ACL 授权，对外路径 `/api/files`）；
+文件处理类需求（图像/PDF/音视频）由 SnapOtter（:8092）承担。
 
 ### 5.4 外部公共 API（门户科研检索，`db_apis.py` + `corpus.py`）
 
@@ -437,9 +422,8 @@ lab-pull-full-openwebui.sh  lab-pull-retry.sh
 | 服务 | 目录 | 容器/形态 | 对外 | 认证 |
 |---|---|---|---|---|
 | Casdoor | `labspace/deploy` | `lab-casdoor` 127.0.0.1:8000 | Nginx :8090 | 自身账号 + OIDC Provider |
-| PostgreSQL | 同上 | `lab-postgres` pgvector/pg17 | 内网 | 库：`casdoor` `labspace` `openwebui` `openwebui_vectors` |
-| FileBrowser Quantum | `lab-quantum` | `lab-quantum` ghcr.io/gtsteffaniak/filebrowser:2.0-stable（**v2.0.1**） | :8080 | password + OIDC + **外部 JWT** |
-| Open WebUI | `lab-core-stack` | `lab-open-webui` v0.12.1-slim | :3000 | OIDC(Casdoor) + 密码 |
+| PostgreSQL | 同上 | `lab-postgres` pgvector/pg17 | 内网 | 库：`casdoor` `labspace` |
+| 门户原生网盘 | Go 核心（无容器） | `labgo` systemd，172.28.0.1:8122 | 门户 `/files` | 门户会话 + 按用户 ACL |
 | SearXNG | `lab-search` | `lab-searxng` 127.0.0.1:8081 + valkey | 门户代理 | 门户统一入口 |
 | Docling + Tika | `lab-docparse` | `lab-docling` / `lab-tika` | 内网 | 门户代理 |
 | draw.io | `labspace/deploy` | `lab-drawio` | :8082 | 内网无认证 |
@@ -462,42 +446,37 @@ lab-pull-full-openwebui.sh  lab-pull-retry.sh
                      │  用户 / 组织 / 应用│
                      └────────┬─────────┘
                               │ OIDC (code + PKCE)
-        ┌─────────────────────┼───────────────────────────┐
-        ▼                     ▼                           ▼
-  D509 门户              生信实训平台              第三方服务
-  (labspace)            (bioinfo-training)        (OWUI / Quantum)
-        │                     │                           │
-        │ state 固化          │ client_id=bioinfo-training │ 静态 issuer
-        │ redirect_uri+issuer │                           │ → 需 lab-oidc-sync
-        ▼                     ▼                           ▼
-  门户会话 JWT        平台会话 Cookie          OIDC / X-JWT-Assertion
-  (HttpOnly Cookie)   bioinfo_session
+                  ┌───────────┴───────────┐
+                  ▼                       ▼
+           D509 门户              生信实训平台
+           (labspace)            (bioinfo-training)
+                  │                       │
+      state 固化 redirect_uri+issuer      │ client_id=bioinfo-training
+                  ▼                       ▼
+           门户会话 JWT             平台会话 Cookie
+           (HttpOnly Cookie)        bioinfo_session
 ```
 
 ### 7.1 Casdoor 作为唯一 IdP
-- 5 个应用：`labspace`、`bioinfo-training`、`quantum`、`openwebui`、`app-built-in`（client_id 见 `application` 表）。
+- 现有应用：`labspace`、`bioinfo-training`、`app-built-in`（client_id 见 `application` 表）；`openwebui` / `quantum` 客户端随 2026-11-04 清理停用。
 - 组/角色：`lab-admin` / `lab-teacher` / `lab-student` / `project-*`；生信平台另有 `bioinfo-admin/instructor/teacher/ta/assistant/student`。
-- 关键修复：`application.enable_signin_session=true` + `enable_auto_signin=true`（5 应用）→ 授权码流建立浏览器会话 → **跨应用免密**。
+- 关键修复：`application.enable_signin_session=true` + `enable_auto_signin=true`（现有应用）→ 授权码流建立浏览器会话 → **跨应用免密**。
 - `origin`/`originFrontend` 留空 → issuer 随请求 Host 回显 → IP 入口无需域名。
 
 ### 7.2 门户会话
 授权码 → 后端换 token → 自签会话 JWT（`sub`=用户 id）→ HttpOnly Cookie；附加**双提交 CSRF**（Cookie `labspace_csrf` + 头 `X-CSRF-Token`）。服务间调用走 `require_user_or_service` + `X-Lab-Service-Token`。
 
-### 7.3 第三方 issuer 按入口切换（显式触发）
-Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样按请求 Host 回显，必须改配置并重建容器才能切换。实现：
-- `sso.py::sso_prepare()`：`/api/sso/{id}/prepare` 按**当前请求 Host** 判定目标主机 → 调宿主机 `lab-oidc-sync`。
-- `ops/oidc-sync.py`：改写 `.env` 中 `OPENID_*` / `FILEBROWSER_OIDC_ISSUER_URL` → `docker compose up -d` 重建容器 → **等容器 healthy** → 幂等登记 Casdoor `redirect_uris`。
-- 前端 `pages/SsoLogin.tsx` 中转页：调用 prepare → 显示“正在按当前入口地址准备一键登录…” → 拿到地址后跳转；门户的「一键登录」按钮、服务详情的「打开服务」、Start 页入口清单里的 Open WebUI / Quantum 均走这条路径。
+### 7.3 第三方 issuer 按入口切换（已下线）
 
-**不再自动跟随（2026-11-05 修正）**：早期实现在每个 `/api/*` 请求后按来访客户端网段自动切换 issuer（90s 节流）。切换必须重建容器（约 30s），期间直连 `:3000` / `:8080` 会命中 Docker **docker-proxy 的 502 Bad Gateway**；内网与 Tailscale 用户交替访问时容器被反复重建，502 反复出现（已实测复现并定位）。现在浏览行为**不再**触发任何容器重建，只有用户明确点击「一键登录」时才会切换，且切换完成、容器健康后才跳转。
+Open WebUI / Quantum 的 issuer 曾是**静态配置**，无法像 Casdoor 那样按请求 Host 回显，必须改配置并重建容器才能切换。
+这两个服务已于 2026-11-04 清理下线，切换机制（`ops/oidc-sync.py` + `/api/sso/{id}/prepare`）随之停用；
+门户与生信实训平台的 issuer 均按请求 Host 动态推导，不再触发任何容器重建。
 
-**已知局限**：直接访问 `:3000` / `:8080`（不经门户）时，如果 issuer 尚未切到当前入口，OIDC 登录会被指向不可达的内网地址 —— 请从门户的「一键登录」入口进入。彻底免重启切换需改 Open WebUI 内部（其 OAuth client 在启动时构造并缓存，运行期改配置不重建 client），本轮未采用。
+### 7.4 FileBrowser Quantum 的用户级认证（已下线）
 
-### 7.4 FileBrowser Quantum 的用户级认证（外部 JWT 断言）
-平台后端为每个登录用户签发**短时效 HS256 断言**（`sub` = 映射后的 FBQ 用户名，`groups` = Casdoor 组），经 `X-JWT-Assertion` 头送给 FQ：
-- 密钥只在宿主 `/etc/lab-quantum/quantum.env`(0600) 与 `/etc/bioinfo-training/platform.env`(0600)，**永不下发浏览器**。
-- FQ 侧 `auth.methods.jwt`：`header: X-JWT-Assertion`、`userIdentifier: sub`、`groupsClaim: groups`、`adminGroup` 留空。
-- 账号命名空间隔离：平台用户映射为 `d509-<local>`，与 FQ 内 OIDC 账号分开——FQ 对已存在账号强制校验 `loginMethod`，OIDC 账号（`student01@local`）用 JWT 登录返回 **401 invalid login method**。
+平台曾为每个登录用户签发**短时效 HS256 断言**（`X-JWT-Assertion` 头）交给 FQ 做用户级访问。
+随 Quantum 于 2026-11-04 下线，该断言链路与宿主密钥 `/etc/lab-quantum/quantum.env`(0600) 一并退役；
+现行文件访问由门户原生网盘的 Go 核心 ACL 承担。
 
 ---
 
@@ -506,37 +485,35 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
 ```
   ┌───────────────────────────────────────────┐   ┌───────────────────────────┐
   │ lab-postgres (pgvector/pg17)              │   │ bioinfo PostgreSQL 17     │
-  │   casdoor / labspace / openwebui /        │   │  宿主 :5433, 库 bioinfo   │
-  │   openwebui_vectors                       │   │  Alembic 31 表            │
+  │   casdoor / labspace                      │   │  宿主 :5433, 库 bioinfo   │
+  │                                           │   │  Alembic 31 表            │
   └───────────────────────────────────────────┘   └───────────────────────────┘
   ┌───────────────────────────┐   ┌────────────────────────────────┐
-  │ snapotter postgres + redis│   │ FileBrowser Quantum（唯一文件存储）│
-  └───────────────────────────┘   │  /srv/lab/public   公共资料(只读,:ro) │
-                                   │  /srv/lab/users    个人文件(自动建目录)│
-                                   │  /srv/lab/course-materials 课程资料  │
-                                   │  /srv/lab/projects 项目文件(组 ACL)   │
+  │ snapotter postgres + redis│   │ 门户原生网盘（Go 核心 labfiles）│
+  └───────────────────────────┘   │  /srv/lab/public    公共资料     │
+                                   │  /srv/lab/plasmids  公共质粒     │
+                                   │  /srv/lab/genomes   公共基因组   │
+                                   │  /srv/lab/users/<user> 个人文件  │
                                    └────────────────────────────────┘
   其它：/srv/labdata（jbrowse、bioinfo-training 用户区、备份）
-        /opt/lab-core-stack/data/open-webui    /opt/lab-quantum/data
+        （已下线服务的宿主目录 /opt/lab-core-stack、/opt/lab-quantum 已停用，保留待清理）
 ```
 
-### 8.1 FQ 权限模型（当前生效）
-- 全局默认权限（`PATCH /api/settings/source` 逐字段）：`view/download/modify/delete/create` 全部 **true**。
-  只读源仍受 `readOnly: true` + 容器 `:ro` 挂载双重保护（实测上传 `403 source is read-only`）。
-- source 级 `defaultPermissions` 块已从 `config.yaml` 删除 —— v2.0.1 中**任一 source 的显式配置会锁定全局默认值**。
-- `个人文件`：`defaultEnabled:true` + `private:true` + `defaultUserScope:"/"` + `createUserDir:true` → 新用户自动获得 `/<用户名>` scope 且目录自动创建。
-- 组规则（access_rules）：`/srv/lab/projects` 下 `/grp-rnaseq/`、`/grp-mcn/` 按组 Allow。
+### 8.1 门户原生网盘权限模型（当前生效）
+- 源（source）：`public`（公共资料）、`plasmids`（公共质粒）、`genomes`（公共基因组）为共享源；`users` 为个人空间。
+- 组规则（`labfiles.DefaultGroups()`）：`lab-student` 三个共享源只读；`lab-teacher` 可写 `genomes`；`lab-admin` 可写全部共享源。
+- 个人空间：`users/<local>` 目录自动创建，仅本人可见（可显式共享给指定人），跨用户访问一律拒绝。
+- 应用层 ACL 校验 + POSIX ACL 双重保护；写操作由 `labgo` 运行账号落盘，操作进文件审计。
 
 ---
 
 ## 9. 关键数据流
 
-### 9.1 用户从门户进入第三方服务（免密）
+### 9.1 跨应用免密登录
 ```
-浏览器 → 门户 /sso/:serviceId → GET /api/sso/{id}/prepare
-      → 后端调 lab-oidc-sync → 改 issuer → 重建容器
-      → 返回授权 URL（issuer 与当前入口 Host 一致）
-      → 浏览器跳 Casdoor（已有会话 → 静默通过）→ 回调 → 目标应用已登录
+浏览器 → 门户 /api/auth/login → Casdoor 授权（已有会话静默通过）
+      → 回调 /api/auth/callback → 门户会话 JWT（HttpOnly Cookie）
+      → 生信实训平台用同一 Casdoor 会话免密进入（enable_auto_signin）
 ```
 
 ### 9.2 PI Agent 流式对话
@@ -550,15 +527,14 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
 ```
 > 坑：SSE 跨 chunk 丢半行 → `aiter_text()` 需保留半行（已修于 agent.py / mt.py）。
 
-### 9.3 文件访问（FQ 目标流）
+### 9.3 文件访问（门户原生网盘）
 ```
-浏览器 → 平台后端 →(签发 X-JWT-Assertion)→ FileBrowser Quantum
-  目录  GET  /api/resources/items?source=&path=
-  元数据 GET /api/resources?source=&path=
-  下载  GET  /api/resources/download?source=&file=
-  搜索  GET  /api/tools/search?query=&sources=&useWildcard=
-  上传  POST /api/resources?source=&path=
-  移动/重命名 PATCH /api/resources        删除 DELETE /api/resources?source=&path=
+浏览器 → 门户 /files → Go 核心 labfiles（只读索引 + 按用户 ACL 授权）
+  列目录  GET  /api/files?source=users
+  预览    GET  /api/files/{id}/preview
+  下载    GET  /api/files/{id}/download      批量打包 GET /api/files/archive?ids=
+  上传/新建/重命名/共享/回收站  POST /api/files/{action}
+  删除    DELETE /api/files
 ```
 
 ---
@@ -567,15 +543,16 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
 
 | 组件 | 位置 | 说明 |
 |---|---|---|
-| 每日巡检 | `/usr/local/bin/lab-health` + `lab-health.timer` | 宿主资源 / 容器 / 10 个入口 / Docker 别名冲突 / 模型 API / 备份 / 定时任务 / 磁盘（当前：失败 0、警告 1） |
-| 备份 | `/usr/local/bin/lab-backup` | Casdoor+LabSpace、Open WebUI(库+数据)、FQ 配置与用户库、SnapOtter；保留 14 天 |
+| 每日巡检 | `/usr/local/bin/lab-health` + `lab-health.timer` | 宿主资源 / 容器 / 内网入口（11 项 URL 探活）/ Docker 别名冲突 / 模型 API / 备份 / 定时任务 / 磁盘（当前：失败 0、警告 1） |
+| 备份 | `/usr/local/bin/lab-backup` | Casdoor+LabSpace、SnapOtter；保留 14 天 |
 | 恢复演练 | `/usr/local/bin/lab-restore-drill` | 恢复 → 临时库比对行数 → 删除 |
-| 账号工具 | `lab-owui-user` `lab-quantum-user` `lab-sync-passwords` `lab-casdoor-init` `lab-oikb-sync` `lab-owui-kb` | 凭据在 `/etc/lab-*/credentials`(0600) |
+| 账号工具 | `lab-sync-passwords` `lab-casdoor-init` `lab-oikb-sync` | 凭据在 `/etc/lab-*/credentials`(0600) |
 | e2e | `/opt/labspace/e2e/*.mjs`（50+）、`/opt/bioinfo-training/e2e/` | Playwright + 集成体检 |
 | 日志 | `journalctl -u <unit>`、`docker logs` | Nginx 记录各入口访问 |
 
 ### 10.1 防火墙
-`/etc/nftables.conf`：`inet filter`，`policy drop`；白名单 = `lan_net`（192.0.2.0/24、172.16/12、10.88/16）+ `ts_net`（100.64/10）× `svc_ports`（80、3000、8080、8082、8084、8086、8090、8091、8092、8102）；SSH 22 单独放行；DNS 53 仅内网。
+`/etc/nftables.conf`：`inet filter`，`policy drop`；白名单 = `lan_net`（192.0.2.0/24、172.16/12、10.88/16）+ `ts_net`（100.64/10）× `svc_ports`（80、8082、8084、8086、8090、8091、8092、8102）；SSH 22 单独放行；DNS 53 仅内网。
+（3000 / 8080 是已下线服务遗留的白名单条目，当前无进程监听。）
 > 严禁 `flush ruleset`（会清掉 Docker 的 iptables 链）；新增端口必须同步 `svc_ports`。
 
 ---
@@ -585,21 +562,21 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
 按收益/风险排序：
 
 1. **统一编排到一套 Compose/网络命名空间**
-   现状 8 个 compose 项目 + 5 个 Docker 网络 + 3 套 Nginx 配置 + 3 套 systemd。容器服务名必须全局唯一（曾因 `postgres` 别名冲突导致约一半数据库连接打错库、间歇性 500）。
+   现状 6 个 compose 项目 + 3 个 Docker 网络 + 3 套 Nginx 配置 + 3 套 systemd。容器服务名必须全局唯一（曾因 `postgres` 别名冲突导致约一半数据库连接打错库、间歇性 500）。
    → 收敛为单一 compose 栈（或统一网络命名 + 服务名前缀），CI 加「服务名唯一性」静态检查。
 
 2. **端口与入口收敛**
-   10 个对外端口、10 个入口 URL → 统一走单一反代前缀（`/sso/owui/`、`/sso/quantum/`、`/files/`、`/tools/`…），nftables 白名单可缩到 2–3 个。
+   10 个对外端口、10 个入口 URL → 统一走单一反代前缀（`/files/`、`/tools/`…），nftables 白名单可缩到 2–3 个。
 
 3. **数据层归并**
-   3 个 PostgreSQL 实例 + FQ sqlite → bioinfo 库并入 `lab-postgres`（保留 pgvector）；SnapOtter / Open WebUI 是否合并按负载再定。
+   3 个 PostgreSQL 实例 → bioinfo 库并入 `lab-postgres`（保留 pgvector）；SnapOtter 是否合并按负载再定。
 
 4. **认证层收口为「Casdoor + 一个 SSO 网关」**
-   现状 Casdoor 既是 IdP 又有自建账号库，FQ/OWUI/bioinfo 各一套 OIDC + 一套 issuer 同步脚本。
-   → 以 Casdoor 为唯一 IdP，统一由「SSO 入口服务」完成 issuer 解析 / 断言签发 / redirect_uri 登记，删掉手工同步；把 FQ 的 JWT 断言、OWUI 的 OIDC、bioinfo 的 OIDC 收敛成同一种断言模式。
+   现状 Casdoor 既是 IdP 又有自建账号库，bioinfo 另有一套 OIDC 账号体系。
+   → 以 Casdoor 为唯一 IdP，统一由「SSO 入口服务」完成 issuer 解析 / redirect_uri 登记，删掉手工同步。
 
-5. **解决 issuer 自动跟随的方向性缺陷**
-   → 改用 Tailscale 子网路由（advertised routes）让两个网段互通，一次配置永久生效，删除自动跟随逻辑；或「每个入口绑定固定 issuer，客户端自选入口」。
+5. **入口与 issuer 的方向性缺陷**
+   → 改用 Tailscale 子网路由（advertised routes）让两个网段互通，一次配置永久生效；或「每个入口绑定固定 issuer，客户端自选入口」。
 
 6. **生信平台「非容器」路线成本复核**
    现状需 root 的 cgroup 操作通过窄权限 unix socket 助手完成，复杂度高。
@@ -616,7 +593,7 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
    → 统一 `pyproject.toml` + uv lock（容器内也用 uv）；前端统一 workspace + lockfile；CI 加 lockfile 一致性检查。
 
 10. **备份覆盖面补齐**
-    `lab-backup` 未覆盖**生信平台库与用户工作区**，也未备份 `/srv/lab`（FQ 源数据）→ 纳入并做定期恢复演练。
+    `lab-backup` 未覆盖**生信平台库与用户工作区**，也未备份 `/srv/lab`（实验室共享文件源）→ 纳入并做定期恢复演练。
 
 11. **代码组织收敛**
     门户后端 18 个模块堆在单包 `app/`，`main.py` 承担过多职责；生信平台已用 `routers/` 拆分。
@@ -635,9 +612,9 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
 | Windows Server 模型 API `100.64.0.10:7997` 不可达 | Embedding/Reranker/知识库向量化无法验证 | 巡检唯一警告 |
 | 外部图纸平台 `192.0.2.29:5244` 端口关闭 | 目录中该服务不可用 | 标 `external-down`，非本机故障 |
 | 客户端默认 DNS `192.0.2.1` 不解析 `*.lab.internal` | 域名访问不可用 | 已下线域名，IP 访问不受影响 |
-| LAN/Tailscale 同时在线时 issuer 互翻 | 第三方服务偶发跳错入口 | 见优化建议 5 |
+| LAN/Tailscale 同时在线时 issuer 互翻 | 跨入口登录可能跳错主机 | 见优化建议 5 |
 | 生信平台未纳入备份 | 数据丢失风险 | 见优化建议 10 |
-| FQ 全局默认权限为读写 | 新用户默认可写个人/课程/项目源 | 只读源双保险；建议按源细化 |
+| 门户原生网盘共享源为组级粗粒度 ACL | 学生对共享源只读，粒度到源而非到文件 | 需要更细粒度时由 `labfiles` ACL 扩展 |
 | 门户后端单包结构 | 继续膨胀将难维护 | 见优化建议 11 |
 
 ---
@@ -648,15 +625,15 @@ Open WebUI / Quantum 的 issuer 是**静态配置**，无法像 Casdoor 那样�
 门户前后端      /opt/labspace/{frontend,backend,deploy}
 门户 Nginx 源   /opt/labspace/deploy/nginx/labspace.conf → /etc/nginx/sites-available/labspace.conf（软链）
 Agent 网关      /opt/labspace/agent/{gateway.mjs,extensions/lab-portal.js}
-OIDC 同步器     /opt/labspace/ops/oidc-sync.py
+OIDC 同步器     已下线服务的历史 issuer 同步器 /opt/labspace/ops/oidc-sync.py（已停用）
 生信平台        /opt/bioinfo-training/{frontend,backend,deploy,docs,e2e}
 生信 Nginx      /etc/nginx/sites-available/bioinfo.conf
-FQ              /opt/lab-quantum/{compose.yaml,config.yaml,data/}   密钥 /etc/lab-quantum/quantum.env(0600)
-Open WebUI      /opt/lab-core-stack/{compose.yaml,.env}              凭据 /etc/lab-openwebui/credentials(0600)
+FQ              已下线：/opt/lab-quantum（容器、镜像与 lab-quantum_default 网络已于 2026-11-04 清理）
+Open WebUI      已下线：/opt/lab-core-stack（同上，:3000 入口与容器均已清理）
 生信平台 env    /etc/bioinfo-training/platform.env(0600)             资源档 /etc/bioinfo-training/resource-profiles.json
 Casdoor 用户表  /etc/labspace/casdoor-users.txt(0600)
-数据库          lab-postgres 容器（casdoor/labspace/openwebui*）；bioinfo 宿主 5433
+数据库          lab-postgres 容器（casdoor/labspace）；bioinfo 宿主 5433
 数据盘          /srv/labdata（jbrowse / bioinfo-training / 备份）
-FQ 源根         /srv/lab/{public,users,course-materials,projects}
+实验室文件源    /srv/lab/{public,plasmids,genomes,users}（Go 核心 labfiles 索引根）
 e2e             /opt/labspace/e2e（50+ Playwright 脚本）
 ```

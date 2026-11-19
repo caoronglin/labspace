@@ -21,7 +21,7 @@ React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验
 | --- | --- |
 | 门户 D509 工作台 | http://192.0.2.10/ |
 | 统一认证 Casdoor | http://192.0.2.10:8090/ |
-| 文件管理（门户原生网盘） | http://192.0.2.10/files |
+| 文件存储（门户原生网盘） | http://192.0.2.10/files |
 | 文件工坊 SnapOtter | http://192.0.2.10:8092/ |
 | draw.io | http://192.0.2.10:8082/ |
 | Linux 命令速查 | http://192.0.2.10:8086/ |
@@ -47,7 +47,7 @@ Tailscale 入口为 `http://198.51.100.71/`（同端口）。访问控制由 nft
 > 内网客户端访问 `192.0.2.10` 时其它服务也是 `192.0.2.10`；
 > 通过 Tailscale 访问 `198.51.100.71` 时其它服务自动换成 `198.51.100.71`。
 > 门户地址、Casdoor issuer、服务目录、前端外链均已适配；
-> 门户内页面（文件管理 / 文件工坊 / 公共基因组 / 生信实训）与静态站链接同样跟随当前入口。
+> 门户内页面（文件存储 / 文件工坊 / 公共基因组 / 生信实训）与静态站链接同样跟随当前入口。
 
 ## 快速开始
 
@@ -92,9 +92,8 @@ labspace/
 │                  guard,policy,registry,preview,search,knowledge,vault,blast,downloads,imagegen}
 │                        会话/CSRF 校验、实验室文件目录索引与授权、服务探活、
 │                        内嵌探测、服务注册表（唯一权威源）、容器地址映射
-├── agent/               pi RPC 网关与插件
-│   ├── gateway.mjs      Node 22 网关（监听 172.28.0.1:8110）
-│   └── extensions/lab-portal.js   5 个 lab_* 工具（只能回调门户 API）
+├── agent/               助手技能（pi 网关已于 2026-11-10 下线，助手改由 AgentScope 提供）
+│   └── skills/          技能内容：deep-research / literature-search / plant-database-search / research-workflow
 ├── deploy/
 │   ├── compose.yaml     backend + latex-compile + casdoor + drawio + pdf2zh + baserow
 │   ├── .env             真实凭据（0600，不入库）

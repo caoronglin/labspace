@@ -10,11 +10,11 @@
         │  Nginx（宿主机 apt 安装，host-based 路由） │
         │   192.0.2.10:80      → LabSpace 门户 + /api 反代 │
         │   192.0.2.10:8090     → Casdoor（IP 专属端口）│
-        │   192.0.2.10:3000    → Open WebUI         │
-        │   192.0.2.10:8080    → FileBrowser Quantum│
         │   192.0.2.10:8082    → draw.io            │
         │   192.0.2.10:8086    → Linux Command（静态）│
         │   192.0.2.10:8084    → IT-Tools           │
+        │   192.0.2.10:8092   → SnapOtter（文件工坊）│
+        │   192.0.2.10:8091    → JBrowse 2（静态）   │
         │   （未匹配主机名 / IP 直连 → 门户 default_server）│
         │                                          │
         │  ┌──────────── Docker 网络 ───────────┐ │
@@ -25,7 +25,6 @@
         │  │  lab-it-tools (80)                 │ │
         │  │  lab-postgres（既有，PG17）        │ │
         │  │ lab-tools（既有）                  │ │
-        │  │  lab-open-webui / lab-quantum /    │ │
         │  │  lab-searxng / lab-tika /          │ │
         │  │  lab-docling / lab-research-api /  │ │
         │  │  lab-research-mcp / lab-terminal   │ │
@@ -33,6 +32,11 @@
         │  JBrowse(:8091) / 静态与工具站点           │
         └──────────────────────────────────────────┘
 ```
+
+> **Open WebUI（:3000）与 Quantum（:8080）已下线（2026-11-04 清理）**：容器、镜像与 `lab-quantum_default`
+> 网络均已清理，服务目录（Go 核心 `catalog.go`，唯一权威源）也不再收录这两个条目。
+> 文件能力由门户原生网盘 `/files` 与文件工坊 SnapOtter（:8092）承担，
+> 聊天/知识库问答能力由门户 Agent 助手 `/agent` 承担。
 
 ## 2. 端口
 
@@ -49,8 +53,8 @@
 | SnapOtter | `http://192.0.2.10:8092/` | 文件工坊官方界面（门户页 `/snapotter`） |
 | 图纸平台 | `http://192.0.2.29:5244/` | 外部内网服务（当前端口关闭，标记 `external-down`） |
 | PDF 论文翻译 | `http://192.0.2.10/translate` | 门户内页面（AntD 重写），后端为 PDFMathTranslate 工作进程 |
-| Open WebUI | `http://192.0.2.10:3000/` | 应用自身根路径，不做子路径改写 |
-| Quantum | `http://192.0.2.10:8080/files/` | 基础路径 /files/ |
+| 文件存储（门户原生网盘） | `http://192.0.2.10/files` | 门户内页面（Go 核心 `labfiles` 按用户 ACL 授权） |
+| Agent 助手 | `http://192.0.2.10/agent` | 门户内页面（pi RPC 网关），AI 对话与知识库问答 |
 | Tailscale | `http://198.51.100.71/` | 同一套服务，跨网访问（nftables 放行 100.64.0.0/10） |
 
 > **全部服务一律使用 `192.0.2.10 + 端口` 访问，不使用任何域名**：客户端无需 DNS 解析、
@@ -68,8 +72,6 @@
 | 8086 | 0.0.0.0 | Linux Command（静态） |
 | 8091 | 0.0.0.0 | JBrowse 2（静态） |
 | 8092 | 0.0.0.0 | SnapOtter 文件工坊 |
-| 3000 | 0.0.0.0 | Open WebUI |
-| 8080 | 0.0.0.0 | Quantum |
 | 8081 | 127.0.0.1 | SearXNG（容器间访问） |
 
 **没有任何业务端口暴露到公网**：所有对外端口由 nftables 限制为仅内网 `192.0.2.0/24` 与
@@ -86,6 +88,7 @@ set svc_ports { type inet_service
 ```
 
 放行规则：`tcp dport @svc_ports ip saddr @lan_net accept` 与 `tcp dport @svc_ports ip saddr @ts_net accept`。
+（3000 / 8080 是已下线服务遗留的白名单条目，当前无进程监听，可择机从集合中删除。）
 新增对外服务时**必须**把端口加进 `svc_ports`，否则外部客户端连接会被 DROP（本机回环自测仍会通过，是常见盲区）。
 
 > 严禁使用 `flush ruleset`：那会清掉 Docker 注入的 iptables 链。修改后用
@@ -113,10 +116,10 @@ set svc_ports { type inet_service
 
 | 数据 | 位置 | 说明 |
 | --- | --- | --- |
-| LabSpace 业务数据 | 独立库 `labspace`（PG17 内新建，与 Open WebUI 的库完全隔离） | `labspace.favorites` / `labspace.recent` / `labspace.drawings` |
+| LabSpace 业务数据 | 独立库 `labspace`（PG17 内新建，与 `casdoor` 库完全隔离） | `labspace.favorites` / `labspace.recent` / `labspace.drawings` |
 | Casdoor | 独立库 `casdoor`（同一 PG 实例，独立 database + 独立角色） | 组织、应用、组、用户 |
-| 用户绘图文件 | `/srv/lab/users/<user>/drawio/*.drawio` | 与 Quantum 个人目录一致，Quantum 可直接管理 |
-| 既有服务数据 | 未改动 | Open WebUI / Quantum / oikb / 科研 API 等原样保留 |
+| 用户绘图文件 | `/srv/lab/users/<user>/drawio/*.drawio` | 门户原生网盘按用户 ACL 管理，Go 核心 `labfiles` 负责授权 |
+| 既有服务数据 | 未改动 | oikb / 科研 API / SearXNG / Docling 等原样保留 |
 
 ## 5. 服务目录与健康检查
 
@@ -136,6 +139,6 @@ set svc_ports { type inet_service
 
 | 依赖 | 状态 | 影响 |
 | --- | --- | --- |
-| Windows Server 模型 API `100.64.0.10:7997` | 不可达 | Open WebUI 无向量/重排能力，RAG 相关验收无法完成 |
+| Windows Server 模型 API `100.64.0.10:7997` | 不可达 | 门户无向量/重排能力，RAG 相关验收无法完成 |
 | 内网 DNS | 由 Debian 的 dnsmasq 提供 | 客户端需把 DNS 指向 192.0.2.10（或在 hosts 写映射）；未配置时可用 `http://192.0.2.10/` 兜底 |
 | HTTPS 证书 | 未部署 | 当前仅 HTTP，认证凭据在内网链路上是明文传输（见 SECURITY.md 风险条目） |
