@@ -394,6 +394,12 @@ services:
       - PORT=5000
       # 反代在前面（nginx），要读真实客户端 IP
       - TRUSTED_PROXIES=1
+      # 子路径部署：门户把 WebSSH 挂在 /ssh-app/ 下。
+      # 它的模板里有大量**站内绝对路径**（form action="/login"、
+      # redirect("/")、静态资源等），不告诉它前缀的话，浏览器提交表单会
+      # 打回门户根路径 → 登录永远失败（表现为"点了登录还停在登录页"）。
+      # 配合 nginx 的 X-Forwarded-Prefix 使用。
+      - APPLICATION_ROOT=/ssh-app
       # 内网没有 HTTPS，Cookie 不带 Secure；HTTPS 终止在 nginx 之后再改回来
       - SESSION_COOKIE_SECURE=false
       - CORS_ORIGINS=http://198.51.100.71:8105,http://192.0.2.10:8105
@@ -511,12 +517,69 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ────────────────────────────────────────────────────────────────
+  # Mailbox 服务 —— 只做「收信 + 读取」，发信能力关掉
+  #
+  # 用途：把实验室邮箱接进来，成员在门户里读信（前端自绘，见 nginx 的 /mail/）。
+  # 只收不发：MAILBOX_SERVICE_PROVIDERS 只开 IMAP/POP3/JMAP 这类收信协议，
+  # 不接 Microsoft/Google 的发信通道；账号授权也只需 mail.read。
+  #
+  # 安全：
+  #   - 只绑 127.0.0.1:8117，对外经门户 nginx 的 /mail/（同源，免跨域）
+  #   - 只读根文件系统 + tmpfs /tmp（官方推荐跑法）
+  #   - 主密钥是 /etc/labspace/mailbox-master.key（0400，uid 10001），
+  #     不放数据卷里 —— 备份带走数据库也不会带走密钥
+  #   - 邮件凭据由服务自己加密存库（data key 在主密钥保护下）
+  mailbox:
+    image: ghcr.io/benethos-hub/benethos-mailbox-service:0.7.5
+    container_name: lab-mailbox
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:8117:8080"
+    environment:
+      - TZ=Asia/Shanghai
+      - MAILBOX_SERVICE_LOG_LEVEL=INFO
+      # 只开收信协议：IMAP / POP3 / JMAP
+      - 'MAILBOX_SERVICE_PROVIDERS=["imap","pop3","jmap"]'
+      # 反代在后面：nginx 在 127.0.0.1，允许它传真实客户端地址与协议
+      - MAILBOX_SERVICE_FORWARDED_ALLOW_IPS=127.0.0.1
+      - MAILBOX_SERVICE_PUBLIC_URL=http://198.51.100.71/mail
+      # 限流：每人每分钟 120 次、匿名 30 次
+      - MAILBOX_SERVICE_RATE_LIMIT_PER_MINUTE=120
+      - MAILBOX_SERVICE_RATE_LIMIT_ANONYMOUS_PER_MINUTE=30
+      # 同步：每 5 分钟巡检一次，并优先用 IMAP IDLE 等服务端推变更
+      - MAILBOX_SERVICE_SYNC_INTERVAL=300
+      - MAILBOX_SERVICE_SYNC_IDLE=true
+    volumes:
+      - mailbox-data:/data
+      - /etc/labspace/mailbox-master.key:/run/secrets/master_key:ro
+    mem_limit: 512m
+    cpus: 0.8
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3).read(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
 
   # WebSSH：账号、加密密钥、主机信任、审计记录、备份（敏感，单独备份）
   webssh_data:
   # Stirling PDF：上传缓存、用户文件、审计
   stirling_data:
+  # Mailbox：数据库（含加密后的账号凭据）；主密钥在 /etc/labspace，不放这里
+  mailbox-data:
   drawio-config:
 
 networks:
