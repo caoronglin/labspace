@@ -24,13 +24,11 @@ import {
   FolderOpenOutlined,
   GlobalOutlined,
   QuestionCircleOutlined,
-  RobotOutlined,
   RocketOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
   TeamOutlined,
   ThunderboltOutlined,
-  ToolOutlined,
 } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
@@ -65,11 +63,46 @@ const QUICK_START = [
   },
 ];
 
-const QUICK_LINKS = [
-  { label: 'Agent 科研助手', hint: '对话、记忆与代码沙箱', icon: <RobotOutlined />, path: '/agent' },
-  { label: '科研工具', hint: '绘图 · 流程图 · 基因组', icon: <ToolOutlined />, path: '/tools' },
-  { label: '文件存储', hint: '个人与公共文件', icon: <FolderOpenOutlined />, path: '/files' },
-  { label: '知识库', hint: '检索与沉淀结论', icon: <BookOutlined />, path: '/knowledge' },
+/**
+ * 按角色的推荐入口。
+ *
+ * 原来这里是四张固定的卡片（Agent / 科研工具 / 文件存储 / 知识库），
+ * 和上面的「快速上手」四步讲的是同一件事，用户会问"到底看哪个"。
+ * 收敛成一句话的分工：
+ *   - 快速上手 = 通用四步（怎么用这个平台）
+ *   - 这里 = **按你的角色**，第一步该点哪
+ */
+const ROLE_STARTS = [
+  {
+    role: '学生',
+    icon: <FolderOpenOutlined />,
+    items: [
+      { label: '文件空间', hint: '个人目录与共享文件', path: '/files' },
+      { label: '组会汇报', hint: '按周提交材料', path: '/meetings' },
+      { label: 'Agent 助手', hint: '检索、写作与代码', path: '/agent' },
+      { label: '文献检索', hint: '统一检索与每日论文', path: '/literature' },
+    ],
+  },
+  {
+    role: '导师',
+    icon: <TeamOutlined />,
+    items: [
+      { label: '组员名册', hint: '账号、目录与授权', path: '/admin/users' },
+      { label: '课题资料', hint: '逐生的资料目录', path: '/research' },
+      { label: '种子管理', hint: '入库与备份台账', path: '/seeds' },
+      { label: '文献检索', hint: '统一检索与每日论文', path: '/literature' },
+    ],
+  },
+  {
+    role: '管理员',
+    icon: <CloudServerOutlined />,
+    items: [
+      { label: '账号与权限', hint: '用户组与文件授权', path: '/admin/users' },
+      { label: '服务状态', hint: '各服务健康与巡检', path: '/admin/status' },
+      { label: '后台任务', hint: '定时任务与日志', path: '/admin/tasks' },
+      { label: '备份归档', hint: '本地与异地副本', path: '/admin/backups' },
+    ],
+  },
 ];
 
 const FAQ = [
@@ -238,28 +271,64 @@ export default function Help() {
             {needle && <Tag color="blue">筛选：{q.trim()} · {filteredFaq.length + groups.reduce((n, g) => n + g.items.length, 0)} 条</Tag>}
           </Flex>
           <div className="d509-grid d509-grid-sm">
-            {QUICK_LINKS.map((it) => (
+            {ROLE_STARTS.map((grp) => (
               <Card
-                key={it.path}
+                key={grp.role}
                 size="small"
-                hoverable
-                styles={{ body: { padding: 12 } }}
-                onClick={() => navigate(it.path)}
-              >
-                <Flex align="center" gap={10}>
-                  <span style={{ fontSize: 18, color: '#2B5CE6' }}>{it.icon}</span>
-                  <Flex vertical>
-                    <Text strong style={{ fontSize: 13 }}>{it.label}</Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>{it.hint}</Text>
+                title={
+                  <Flex align="center" gap={8}>
+                    <span style={{ color: '#2B5CE6' }}>{grp.icon}</span>
+                    <Text strong style={{ fontSize: 13 }}>
+                      {grp.role}
+                    </Text>
                   </Flex>
-                </Flex>
+                }
+                styles={{ body: { padding: 8 } }}
+              >
+                {grp.items.map((it) => (
+                  <Flex
+                    key={it.path}
+                    align="center"
+                    gap={10}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(it.path)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(it.path);
+                      }
+                    }}
+                    style={{ padding: '6px 4px', borderRadius: 6, cursor: 'pointer' }}
+                  >
+                    <Flex vertical style={{ minWidth: 0 }}>
+                      <Text strong style={{ fontSize: 12.5 }}>
+                        {it.label}
+                      </Text>
+                      <Text type="secondary" style={{ fontSize: 11.5 }}>
+                        {it.hint}
+                      </Text>
+                    </Flex>
+                  </Flex>
+                ))}
               </Card>
             ))}
           </div>
         </Flex>
       </Card>
 
-      <Card id="quick-start" size="small" title={<span><RocketOutlined /> 快速上手</span>}>
+      <Card
+        id="quick-start"
+        size="small"
+        title={<span><RocketOutlined /> 快速上手</span>}
+        extra={
+          // 与新手引导联动：下面的文字步骤看个大概；
+          // 想让人指着界面走一遍，点这个按钮（OnboardingTour 会逐步高亮真实控件）。
+          <Button size="small" type="primary" icon={<CompassOutlined />} onClick={() => requestTour()}>
+            互动引导
+          </Button>
+        }
+      >
         <Steps
           size="small"
           items={QUICK_START.map((s) => ({
