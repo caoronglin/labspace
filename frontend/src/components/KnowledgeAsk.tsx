@@ -5,6 +5,7 @@ import { LinkOutlined, RobotOutlined, ThunderboltOutlined } from '@ant-design/ic
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, type KnowledgeDoc, type RagCitation } from '../services/api';
+import { resolveDisplayName, usePeopleMap, type PeopleMap } from '../utils/displayName';
 
 const PROMPTS = [
   { key: 'qc', label: 'RNA-seq 质控的标准流程是什么？', description: '检索实验流程与工具说明' },
@@ -42,6 +43,8 @@ interface Props {
 
 export default function KnowledgeAsk({ bare = false, height = '58vh' }: Props) {
   const { token } = theme.useToken();
+  // 人员目录：文档作者显示姓名而不是账号名
+  const peopleMap = usePeopleMap();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState('');
@@ -295,7 +298,7 @@ export default function KnowledgeAsk({ bare = false, height = '58vh' }: Props) {
             <Spin />
           </Flex>
         ) : viewDoc.data?.item ? (
-          <CitationDoc doc={viewDoc.data.item} />
+          <CitationDoc doc={viewDoc.data.item} peopleMap={peopleMap} />
         ) : (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="引用文档不存在或无权访问" />
         )}
@@ -323,7 +326,7 @@ export default function KnowledgeAsk({ bare = false, height = '58vh' }: Props) {
   );
 }
 
-function CitationDoc({ doc }: { doc: KnowledgeDoc }) {
+function CitationDoc({ doc, peopleMap }: { doc: KnowledgeDoc; peopleMap: PeopleMap }) {
   return (
     <Flex vertical gap={10}>
       <Flex gap={8} wrap align="center">
@@ -334,7 +337,7 @@ function CitationDoc({ doc }: { doc: KnowledgeDoc }) {
           {doc.category || '未分类'}
         </Tag>
         <Typography.Text type="secondary">
-          {doc.ownerName || doc.owner} · 更新 {formatTime(doc.updatedAt)}
+          {resolveDisplayName(doc.owner, peopleMap, doc.ownerName)} · 更新 {formatTime(doc.updatedAt)}
         </Typography.Text>
       </Flex>
       <Typography.Paragraph

@@ -252,7 +252,7 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
         <Space wrap>
           <Button size="small" icon={<BgColorsOutlined />} onClick={() => navigate('/colors')}>配色搭配</Button>
           <Button size="small" icon={<DatabaseOutlined />} onClick={() => navigate('/tools?tool=genomes')}>公共基因组</Button>
-          <Button size="small" icon={<FolderOpenOutlined />} onClick={() => navigate('/files')}>文件管理</Button>
+          <Button size="small" icon={<FolderOpenOutlined />} onClick={() => navigate('/files')}>文件存储</Button>
           <Button size="small" icon={<CodeOutlined />} onClick={() => setApiOpen(true)}>Agent 调用</Button>
         </Space>
       )}
@@ -267,6 +267,17 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
       )}
 
       <Flex vertical gap={12}>
+        {/* 工具栏吸顶：预览区很长时，「渲染并保存」不应被滚出视野 */}
+        <div
+          style={{
+            position: 'sticky',
+            top: 8,
+            zIndex: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
         <Flex
           gap={8}
           wrap
@@ -276,6 +287,7 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
             border: '1px solid var(--d509-border-soft)',
             borderRadius: 12,
             background: 'var(--ant-color-bg-container, #fff)',
+            boxShadow: 'var(--d509-shadow-sm, 0 1px 2px rgba(16, 24, 40, 0.06))',
           }}
         >
           <Input
@@ -312,6 +324,22 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
             </Button>
           )}
         </Flex>
+          {/* 模板说明常驻在工具栏下方：此前只在「参数与样式」抽屉里能看到，
+              选完模板后基本靠猜数据列与适用场景 */}
+          {chart ? (
+            <Flex gap={8} wrap align="center" style={{ paddingInline: 4 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {chart.description}
+              </Typography.Text>
+              <Tag variant="filled" style={{ marginInlineEnd: 0 }}>
+                数据列 {chart.columns}
+              </Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                · {chart.library}
+              </Typography.Text>
+            </Flex>
+          ) : null}
+        </div>
 
         <Flex
           vertical

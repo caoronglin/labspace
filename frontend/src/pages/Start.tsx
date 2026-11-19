@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Avatar,
   Button,
+  BorderBeam,
   Card,
   Dropdown,
   Empty,
@@ -40,6 +41,7 @@ import {
   TranslationOutlined,
   UserOutlined,
 } from '@ant-design/icons';
+import { redirectSafely } from '../utils/safeNavigate';
 import { api } from '../services/api';
 import { useAuth } from '../app/AuthContext';
 import { useThemeMode } from '../theme/ThemeContext';
@@ -57,6 +59,9 @@ const SOURCES = [
   { key: 'all', label: '全部', categories: 'general,science,videos,news,books,it' },
   { key: 'web', label: '网页', categories: 'general' },
   { key: 'paper', label: '学术', categories: 'science,scientific publications' },
+  // 「论文」只走文献源（OpenAlex → Semantic Scholar → Crossref → arXiv）；
+  // 分类值与后端 searchconfig.py 的 SEARCH_CATEGORIES 一致。
+  { key: 'papers', label: '论文', categories: 'scientific publications' },
   { key: 'video', label: '视频', categories: 'videos' },
   { key: 'image', label: '图片', categories: 'images' },
 ];
@@ -199,16 +204,17 @@ export default function Start() {
               placement="bottomRight"
               menu={{
                 items: [
-                  { key: 'profile', icon: <UserOutlined />, label: me.name || me.email },
+                  { key: 'profile', icon: <UserOutlined />, label: me.displayName || me.name || me.email },
                   { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
                 ],
                 onClick: async ({ key }: { key: string }) => {
                   if (key === 'logout') {
+                    const fallback = '/api/auth/logout-redirect';
                     try {
                       const r = await api.logout();
-                      window.location.href = r.logoutUrl || '/api/auth/logout-redirect';
+                      redirectSafely(r.logoutUrl, fallback);
                     } catch {
-                      window.location.href = '/api/auth/logout-redirect';
+                      redirectSafely(undefined, fallback);
                     }
                   }
                 },
@@ -216,11 +222,11 @@ export default function Start() {
             >
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar size={28} icon={<UserOutlined />} style={{ background: '#2563EB' }} />
-                <Typography.Text style={{ color: fg }}>{me.name || me.email}</Typography.Text>
+                <Typography.Text style={{ color: fg }}>{me.displayName || me.name || me.email}</Typography.Text>
               </Space>
             </Dropdown>
           ) : (
-            <Button type="primary" onClick={() => (window.location.href = '/api/auth/login')}>
+            <Button type="primary" onClick={() => redirectSafely('/api/auth/login', '/')}>
               登录
             </Button>
           )}
@@ -268,16 +274,33 @@ export default function Start() {
               </Button>
             ) : null}
           </Flex>
-          <Input.Search
-            size="large"
-            allowClear
-            enterButton={<SearchOutlined />}
-            placeholder="搜索网页 / 学术文献 / 教学视频，或本地的服务、文件、命令与植物库"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onSearch={onSearch}
-            style={{ background: isDarkBg ? 'rgba(255,255,255,0.08)' : '#fff' }}
-          />
+          {/* Ant Design 6 原生 BorderBeam：整页只在这里用一次，
+              作为唯一动效焦点；周边仍是静态磨砂玻璃，避免"到处在动"。 */}
+          <BorderBeam
+            color={[
+              { color: '#2B5CE6', percent: 0 },
+              { color: '#12A594', percent: 50 },
+              { color: '#7C3AED', percent: 100 },
+            ]}
+            count={2}
+            duration={9}
+            lineWidth={2}
+            outset={2}
+            style={{ borderRadius: 14 }}
+          >
+            <div className="d509-glass" style={{ borderRadius: 14, padding: 6 }}>
+              <Input.Search
+                size="large"
+                allowClear
+                enterButton={<SearchOutlined />}
+                placeholder="搜索网页 / 学术文献 / 教学视频，或本地的服务、文件、命令与植物库"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onSearch={onSearch}
+                variant="borderless"
+              />
+            </div>
+          </BorderBeam>
           {!searching && (
             <Typography.Text style={{ color: sub, fontSize: 12, display: 'block', marginTop: 10 }}>
               回车搜索 · 来源：{SOURCES.find((s) => s.key === source)?.label}

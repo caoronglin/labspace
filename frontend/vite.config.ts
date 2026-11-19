@@ -26,10 +26,15 @@ export default defineConfig({
           groups: [
             { name: 'vendor-charts', test: /node_modules[\\/](@ant-design[\\/]plots|@antv)/, entriesAware: true },
             {
+              // entriesAware 会按「哪些路由用到」把 antd 拆成多个 chunk。
+              // 但 Knowledge / Agent 同时出现在两组里，共享模块会被复制到两个
+              // chunk 并互相 import，形成**循环 chunk 依赖**：
+              //   vendor-antd~SeedStore~...  调用了
+              //   vendor-antd~Drawings~...  导出的一个**对象**（本该是函数）
+              // → 运行时报 "ne is not a function"，/drawings /translate /literature 整页白屏。
+              // 合并成单一 antd chunk 是最稳的解法：体积换正确性。
               name: 'vendor-antd',
               test: /node_modules[\\/](antd|@ant-design|rc-[^\\/]+)[\\/]/,
-              entriesAware: true,
-              entriesAwareMergeThreshold: 40000,
             },
             { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/, entriesAware: true },
             { name: 'vendor-query', test: /node_modules[\\/]@tanstack/, entriesAware: true },

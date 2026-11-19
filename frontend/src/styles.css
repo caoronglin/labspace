@@ -131,11 +131,17 @@
 }
 
 /* 侧栏外壳固定占位（折叠 68px）；内部 Sider 悬浮展开时覆盖内容，不触发布局回流 */
+/* 侧栏外壳固定占位（折叠 68px）；内部 Sider 悬浮展开时覆盖内容，不触发布局回流。
+ *
+ * top 必须等于**页头实际高度**（--d509-header-height，主题里是 60px），不能是 0：
+ * 页头自身 sticky top:0 且高 60px，侧栏若也从 0 开始吸顶，
+ * 顶部 60px 会被页头盖住、底端再空出 60px，
+ * 表现就是"页面一滚，侧栏被整个抽上去、图标被裁"。 */
 .d509-sider-shell {
   position: sticky;
-  top: 0;
+  top: var(--d509-header-height, 60px);
   align-self: flex-start;
-  height: calc(100vh - 64px);
+  height: calc(100vh - var(--d509-header-height, 60px));
   z-index: 20;
 }
 
@@ -1799,6 +1805,63 @@ dd,
   .so-catalog-scroll {
     max-height: 360px;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 磨砂玻璃：只用底色 + backdrop-filter，不引第三方玻璃库                  */
+/* 用法：给卡片/面板加 .d509-glass，深浅色都由 antd 的 CSS 变量驱动        */
+/* ------------------------------------------------------------------ */
+.d509-glass {
+  background: color-mix(in srgb, var(--ant-color-bg-container, #ffffff) 72%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--ant-color-border-secondary, #eef0f4) 80%, transparent);
+  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.06);
+}
+/* 深色下玻璃要更暗一档，否则白边会显得脏 */
+html[data-theme='dark'] .d509-glass {
+  background: color-mix(in srgb, var(--ant-color-bg-container, #141414) 62%, transparent);
+  border-color: color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+/* 减少动效偏好：流光边框本身是装饰，关闭它的动画而不是删除元素 */
+@media (prefers-reduced-motion: reduce) {
+  .ant-border-beam *,
+  .ant-border-beam::before,
+  .ant-border-beam::after {
+    animation: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 文件存储列表：更紧凑的行节奏、清晰的悬停/选中态、克制的表头            */
+/* ------------------------------------------------------------------ */
+.d509-files-table .ant-table-thead > tr > th {
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+  color: var(--ant-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.d509-files-table .ant-table-tbody > tr > td {
+  padding-block: 9px;
+  vertical-align: middle;
+}
+/* 悬停与选中用同一档浅色，避免"悬停一个色、选中又一个色"互相打架 */
+.d509-files-table .ant-table-tbody > tr.ant-table-row:hover > td,
+.d509-files-table .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: var(--ant-color-primary-bg, #eef4ff);
+}
+.d509-files-table .ant-table-cell {
+  font-variant-numeric: tabular-nums;
+}
+/* 行内操作默认降饱和，悬停整行时才完全显形，列表本身更安静 */
+.d509-files-table .ant-table-tbody > tr .ant-btn-text {
+  color: var(--ant-color-text-tertiary);
+}
+.d509-files-table .ant-table-tbody > tr:hover .ant-btn-text,
+.d509-files-table .ant-table-tbody > tr .ant-btn-text:focus-visible {
+  color: var(--ant-color-primary);
 }
 
 /* ------------------------------------------------------------------ */

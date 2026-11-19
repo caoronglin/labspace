@@ -61,7 +61,7 @@ export default function Toolbox() {
       />
       <Flex justify="center">
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          在文件管理中选中的基因组会自动带到「基因组」标签；绘图结果可直接回写个人目录。
+          在文件存储中选中的基因组会自动带到「基因组」标签；绘图结果可直接回写个人目录。
         </Typography.Text>
       </Flex>
     </PageShell>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AutoComplete, Card, Empty, Flex, Input, Segmented, Skeleton, Space, Tag, Typography } from 'antd';
+import { Alert, AutoComplete, Card, Empty, Flex, Input, Segmented, Skeleton, Space, Tag, Typography } from 'antd';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { SearchOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
@@ -176,6 +176,16 @@ export default function SearchPage() {
           <Empty description={`没有找到与「${keyword}」相关的结果`} />
         </Card>
       )}
+
+      {data?.degraded?.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="部分检索类别暂不可用"
+          description={`文献源（${data.degraded.join('、')}）本轮没有响应，已跳过该类别；其余结果不受影响。`}
+          style={{ marginBottom: 8 }}
+        />
+      ) : null}
 
       {results.length > 0 && (
         <Space size={6} wrap>

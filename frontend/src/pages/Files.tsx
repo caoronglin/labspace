@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent, type Key, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type Key, type ReactNode } from 'react';
 import {
   Alert,
   App,
@@ -16,10 +16,12 @@ import {
   Select,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   Tooltip,
   Typography,
+  Progress,
   Upload,
 } from 'antd';
 import {
@@ -29,7 +31,6 @@ import {
   ClearOutlined,
   ClockCircleOutlined,
   CloudUploadOutlined,
-  CodeOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   DownloadOutlined,
@@ -37,14 +38,8 @@ import {
   EllipsisOutlined,
   ExperimentOutlined,
   EyeOutlined,
-  FileExcelOutlined,
-  FileImageOutlined,
   FileOutlined,
-  FilePdfOutlined,
-  FilePptOutlined,
-  FileTextOutlined,
-  FileWordOutlined,
-  FileZipOutlined,
+  FileAddOutlined,
   FolderAddOutlined,
   GlobalOutlined,
   FolderOpenOutlined,
@@ -54,16 +49,18 @@ import {
   ReloadOutlined,
   RestOutlined,
   ShareAltOutlined,
-  SoundOutlined,
+  CopyOutlined,
+  SnippetsOutlined,
   StopOutlined,
+  SwapOutlined,
   TeamOutlined,
   UndoOutlined,
   UnorderedListOutlined,
   UploadOutlined,
-  VideoCameraOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { resolveDisplayName, usePeopleMap } from '../utils/displayName';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   api,
@@ -76,64 +73,53 @@ import {
   type PersonalShare,
 } from '../services/api';
 import { useAuth } from '../app/AuthContext';
+import { useFileUpload } from '../hooks/useFileUpload';
 import OpenFilePreview from '../components/OpenFilePreview';
 import PageShell from '../components/PageShell';
 import OfficeWorkspace from '../components/office/OfficeWorkspace';
 import { hasPresentation, isOfficeEditable } from '../components/office/registry';
+import TimelineView from '../components/files/TimelineView';
+import TextEditorModal from '../components/files/TextEditorModal';
+import {
+  extOf,
+  fileVisual,
+  formatSize,
+  formatTime,
+  isGenomeFile,
+  isImageFile,
+  isTextEditable,
+} from '../components/files/fileMeta';
 
-const GENOME_EXTS = new Set(['fa', 'fna', 'fasta', 'fas', 'ffn', 'frn', 'faa', 'gff', 'gff3', 'gtf', 'bed', 'vcf']);
-
-function isGenomeFile(name: string) {
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  return GENOME_EXTS.has(ext);
-}
-
-type FileVisual = { icon: ReactNode; color: string };
-
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tif', 'tiff', 'heic']);
-const ARCHIVE_EXTS = new Set(['zip', 'gz', 'bz2', 'xz', 'tar', 'tgz', '7z', 'rar']);
-const SHEET_EXTS = new Set(['xls', 'xlsx', 'csv', 'tsv']);
-const DOC_EXTS = new Set(['doc', 'docx', 'rtf', 'odt']);
-const PPT_EXTS = new Set(['ppt', 'pptx', 'odp']);
-const TEXT_EXTS = new Set(['md', 'txt', 'rst', 'log', 'tex']);
-const CODE_EXTS = new Set(['py', 'js', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bash', 'json', 'yaml', 'yml', 'toml', 'c', 'cpp', 'h', 'hpp', 'java', 'r', 'sql', 'html', 'css']);
-const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm']);
-const AUDIO_EXTS = new Set(['mp3', 'wav', 'flac', 'ogg', 'm4a']);
-const BIO_EXTS = new Set([...GENOME_EXTS, 'fastq', 'fq', 'bam', 'sam', 'pdb', 'gb', 'gbk', 'genbank']);
-
-function fileVisual(name: string, dir: boolean): FileVisual {
-  if (dir) return { icon: <FolderOpenOutlined />, color: '#D97706' };
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  if (IMAGE_EXTS.has(ext)) return { icon: <FileImageOutlined />, color: '#7C3AED' };
-  if (ext === 'pdf') return { icon: <FilePdfOutlined />, color: '#DC2626' };
-  if (SHEET_EXTS.has(ext)) return { icon: <FileExcelOutlined />, color: '#16A34A' };
-  if (PPT_EXTS.has(ext)) return { icon: <FilePptOutlined />, color: '#EA580C' };
-  if (DOC_EXTS.has(ext)) return { icon: <FileWordOutlined />, color: '#2563EB' };
-  if (ARCHIVE_EXTS.has(ext)) return { icon: <FileZipOutlined />, color: '#CA8A04' };
-  if (TEXT_EXTS.has(ext)) return { icon: <FileTextOutlined />, color: '#0891B2' };
-  if (CODE_EXTS.has(ext)) return { icon: <CodeOutlined />, color: '#4F46E5' };
-  if (BIO_EXTS.has(ext)) return { icon: <ExperimentOutlined />, color: '#059669' };
-  if (VIDEO_EXTS.has(ext)) return { icon: <VideoCameraOutlined />, color: '#DB2777' };
-  if (AUDIO_EXTS.has(ext)) return { icon: <SoundOutlined />, color: '#EA580C' };
-  return { icon: <FileOutlined />, color: '#64748B' };
-}
-
-function extOf(name: string) {
-  const parts = name.split('.');
-  return parts.length > 1 ? (parts.pop() ?? '').toLowerCase() : '';
-}
-
-function formatSize(n: number) {
-  if (!n) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
-  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-function formatTime(v: string) {
-  if (!v) return '—';
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString('zh-CN');
+/** 缩略图：只有图片走 <img>，其余保持图标。
+ *  preview 接口本身已按会话鉴权，且带 maxPreviewBytes 限制，不会把大图拖进列表。 */
+function FileThumb({ id, name, size = 26 }: { id: string; name: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const visual = fileVisual(name, false);
+  if (!isImageFile(name) || failed) {
+    return (
+      <span style={{ color: visual.color, fontSize: size * 0.62, lineHeight: 1, display: 'inline-flex' }}>
+        {visual.icon}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={`/api/files/${encodeURIComponent(id)}/preview`}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'cover',
+        borderRadius: 6,
+        border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
+        background: 'var(--ant-color-fill-quaternary, rgba(0,0,0,0.03))',
+        flex: '0 0 auto',
+      }}
+    />
+  );
 }
 
 function shortDate(v: string) {
@@ -142,7 +128,7 @@ function shortDate(v: string) {
   return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('zh-CN');
 }
 
-/** 回收站条目的剩余保留期：只说"30 天"是不够的，用户关心还剩几天。 */
+/** 回收站条目的剩余保留期：只说"7 天"是不够的，用户关心还剩几天。 */
 function trashLeft(expiresAt: string) {
   const ms = new Date(expiresAt).getTime() - Date.now();
   if (Number.isNaN(ms)) return '—';
@@ -341,6 +327,20 @@ type FileRow = FileEntry & { owner?: string };
 
 const SORT_KEYS: FileSortKey[] = ['name', 'size', 'modified', 'created'];
 
+/**
+ * 按存储用途推荐默认视图。
+ *
+ * - 普通个人文件（users）：条目多、命名杂，列表视图按名字/大小扫一眼最快，默认列表。
+ * - 公共基因组 / 公共资料（genomes、public）：内容是持续堆积的“资料堆”，
+ *   更关心“什么时候进来的”，默认时间线（按创建时间分组）。
+ */
+const TIMELINE_FIRST_SOURCES = new Set(['genomes', 'public']);
+
+function recommendedView(source: string): 'list' | 'timeline' {
+  return TIMELINE_FIRST_SOURCES.has(source) ? 'timeline' : 'list';
+}
+
+
 /** 生信格式交给后端结构化解析：Open File Viewer 只会把 .dna 之类的二进制当文本画出来。 */
 const BIO_PREVIEW_EXTS = new Set([
   'dna', 'gb', 'gbk', 'genbank', 'embl',
@@ -396,6 +396,17 @@ export default function Files() {
   const [officeTarget, setOfficeTarget] = useState<{ entry: FileEntry; mode: 'edit' | 'present' } | null>(null);
   const [dialog, setDialog] = useState<{ mode: 'mkdir' | 'rename'; entry?: FileEntry } | null>(null);
   const [dialogName, setDialogName] = useState('');
+  /**
+   * 「新建文件」弹窗。
+   *
+   * 为什么要有：文件存储以前只能"上传"或"新建文件夹"，想记一段文字、
+   * 起草一个脚本都得先在本地建好再传上来 —— 手机上根本做不到。
+   * 新建的文件落在当前目录，随后可以直接用在线编辑器打开。
+   */
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const [newFileBody, setNewFileBody] = useState('');
+  const [newFileBusy, setNewFileBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
@@ -404,14 +415,27 @@ export default function Files() {
   const [personalScope, setPersonalScope] = useState<'mine' | 'shared'>('mine');
   const [shareTarget, setShareTarget] = useState<FileEntry | null>(null);
   const [sharePicks, setSharePicks] = useState<string[]>([]);
+  // 「允许对方编辑」：共享默认只读，只有 owner 显式勾选才带上写权限。
+  const [shareWritable, setShareWritable] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [batchBusy, setBatchBusy] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'details' | 'timeline'>(() => {
     const raw = urlParams.get('view');
-    return raw === 'grid' || raw === 'details' || raw === 'timeline' ? raw : 'list';
+    if (raw === 'grid' || raw === 'details' || raw === 'timeline') return raw;
+    // 没有 URL 指定视图时，按存储用途给默认建议（见 recommendedView）。
+    return recommendedView(urlParams.get('source') || 'public');
   });
+  // 用户手动切过视图后就不再自动跟随存储用途的推荐（URL 指定视图也算手动）。
+  const [viewPinned, setViewPinned] = useState(() => Boolean(urlParams.get('view')));
+  // 在线编辑（纯文本）：行菜单点「在线编辑」打开。
+  const [textEditTarget, setTextEditTarget] = useState<FileEntry | null>(null);
+  /**
+   * 上传进度：批量/文件夹上传动辄几百个文件，必须让用户看得见
+   * 「传到第几个 / 有没有失败」，否则界面像卡死了。
+   */
+
 
   // 切换文件源、目录或搜索词后，旧选择不再对应当前列表，必须整体丢弃，
   // 否则批量操作会作用到用户已经看不到的条目上。
@@ -423,11 +447,25 @@ export default function Files() {
     setNativePreview(false);
   }, [previewId]);
 
+  // 切换存储源时自动套用该用途的推荐视图（用户手动选过就不再打扰）。
+  useEffect(() => {
+    if (viewPinned) return;
+    setViewMode(recommendedView(source));
+  }, [source, viewPinned]);
+
   const sources = useQuery({ queryKey: ['file-sources'], queryFn: api.fileSources, staleTime: 60_000 });
+  /**
+   * 文件列表要**看得见别人的改动**：别人删了共享给我的文件，
+   * 我的页面不能还留着那条（点开才发现是 404）。
+   * 因此这里开窗口聚焦刷新 + 30 秒轮询（后台标签页会自动暂停），
+   * 而不是全局那个「聚焦不刷新」的默认设置。
+   */
   const list = useQuery({
     queryKey: ['files', source, sortKey, order],
     queryFn: () => api.files(source, sortKey, order),
     staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
     enabled: Boolean(source) && (sources.data?.sources ?? []).some((s) => s.id === source && s.listable),
   });
   const entries = list.data?.entries ?? [];
@@ -443,7 +481,7 @@ export default function Files() {
     enabled: isAdmin && auditOpen,
     staleTime: 5_000,
   });
-  const retentionDays = trash.data?.retentionDays ?? 30;
+  const retentionDays = trash.data?.retentionDays ?? 7;
   const retentionHint = `删除的内容会进入回收站，保留 ${retentionDays} 天，可原样恢复到删除前的位置。`;
   const previewEntry = entries.find((e) => e.id === previewId);
   const bioDirect = preferNativePreview(previewEntry?.name);
@@ -455,11 +493,19 @@ export default function Files() {
   });
 
   const activeSource = sources.data?.sources.find((s) => s.id === source);
+  // 人员目录：把共享者/拥有者显示成姓名而不是用户名
+  const peopleMap = usePeopleMap();
   const sourceWritable = Boolean(activeSource?.writable);
   const writePaths = activeSource?.writePaths ?? [];
   const canWrite = (path: string) =>
     sourceWritable &&
     writePaths.some((p) => p === '' || path === p || path.startsWith(`${p}/`));
+  // 「能传文件」与「能建目录」是两件事：共享目录里的学生只准上传材料，
+  // 目录结构由导师维护，所以新建文件夹按钮要单独判。
+  const mkdirPaths = activeSource?.mkdirPaths ?? [];
+  const canMkdir = (path: string) =>
+    sourceWritable &&
+    mkdirPaths.some((p) => p === '' || path === p || path.startsWith(`${p}/`));
   const isPersonal = source === 'users';
   const isSharedView = isPersonal && personalScope === 'shared';
 
@@ -469,6 +515,8 @@ export default function Files() {
     queryFn: api.fileShares,
     enabled: isPersonal,
     staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 
   // 本人空间根目录由服务端认定（登录名），不能靠"只有一个顶层目录"来猜。
@@ -481,9 +529,49 @@ export default function Files() {
     sharedRoots
       .filter((r) => p === r || p.startsWith(`${r}/`))
       .sort((a, b) => b.length - a.length)[0] ?? '';
+  // 共享子树里的写权限来自共享 scope，而不是自己的家目录：可写共享的条目
+  // （含其子目录）才可以移动/改名/上传。
+  const sharedWritableOf = (p: string) => {
+    const root = sharedRootOf(p);
+    if (!root) return false;
+    return sharedWith.some((s) => s.path === root && s.writable);
+  };
+  // 自己空间里看写路径（服务端返回的 writePaths），共享视图里看可写共享。
+  const canMoveEntry = (p: string) => (isSharedView ? sharedWritableOf(p) : canWrite(p));
 
   const baseDir = isPersonal ? (isSharedView ? dir : dir || homePath) : dir;
   const writable = !isSharedView && canWrite(baseDir);
+  // 可写共享的目录同样允许上传/新建：写权限来自共享 scope，而不是自己的家目录。
+  const writableHere = writable || (isSharedView && sharedWritableOf(baseDir));
+  const mkdirHere = canMkdir(baseDir) || (isSharedView && sharedWritableOf(baseDir));
+
+  /**
+   * 上传逻辑（单文件 / 批量 / 文件夹树 / 拖拽目录）整体在 hook 里，
+   * 页面只负责显示进度与失败明细。详见 hooks/useFileUpload.ts。
+   */
+  const {
+    uploading,
+    uploadErrors,
+    setUploadErrors,
+    uploadOne,
+    uploadTree,
+    handleDrop,
+  } = useFileUpload({
+    target: () => ({ source, dir: isPersonal ? baseDir : dir }),
+    onUploaded: () => refresh(),
+    confirmOverwrite: (name) =>
+      new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: '同名文件已存在',
+          content: `${name} 已存在于当前目录，是否覆盖？`,
+          okText: '覆盖',
+          okButtonProps: { danger: true },
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      }),
+  });
   const scopeRoot = isPersonal ? (isSharedView ? '' : homePath) : '';
 
   useEffect(() => {
@@ -558,17 +646,6 @@ export default function Files() {
   const toggleSelect = (id: string) =>
     setSelectedKeys((keys) => (keys.includes(id) ? keys.filter((k) => k !== id) : [...keys, id]));
 
-  const timelineGroups = useMemo(() => {
-    const groups = new Map<string, FileRow[]>();
-    for (const r of rows) {
-      const day = (r.modified || '').slice(0, 10) || '未知时间';
-      const list = groups.get(day) ?? [];
-      list.push(r);
-      groups.set(day, list);
-    }
-    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [rows]);
-
   // 用量优先取服务端汇总（usage 覆盖整个源，按目录前缀分桶）；
   // 当前目录的作用域统计在本地按前缀过滤，保证"看到的即所选目录"。
   const stats = useMemo(() => {
@@ -626,37 +703,28 @@ export default function Files() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['files', source] });
 
-  const uploadFile = async (file: File) => {
-    const target = isPersonal ? baseDir : dir;
+  /**
+   * 新建文件：把内容当作一个空文件上传到当前目录。
+   *
+   * 复用上传通道而不是新增后端接口 —— 少一条路径少一份权限逻辑，
+   * 而且"新建"和"上传"在文件核心里本来就是同一件事。
+   */
+  const submitNewFile = async () => {
+    const name = newFileName.trim();
+    if (!name) return;
+    setNewFileBusy(true);
     try {
-      await api.fileUpload(source, target, file);
+      const file = new File([newFileBody], name, { type: 'text/plain;charset=utf-8' });
+      await uploadOne(file);
+      message.success(`已新建「${name}」`);
+      setNewFileOpen(false);
+      setNewFileName('');
+      setNewFileBody('');
+      await refresh();
     } catch (e) {
-      if (!(e as Error).message.includes('already exists')) throw e;
-      const ok = await new Promise<boolean>((resolve) => {
-        modal.confirm({
-          title: '同名文件已存在',
-          content: `${file.name} 已存在于当前目录，是否覆盖？`,
-          okText: '覆盖',
-          okButtonProps: { danger: true },
-          cancelText: '取消',
-          onOk: () => resolve(true),
-          onCancel: () => resolve(false),
-        });
-      });
-      if (!ok) return;
-      await api.fileUpload(source, target, file, true);
-    }
-    message.success(`已上传 ${file.name}`);
-    await refresh();
-  };
-
-  const uploadFiles = async (files: File[]) => {
-    for (const file of files) {
-      try {
-        await uploadFile(file);
-      } catch (e) {
-        message.error(`上传 ${file.name} 失败：${fileErrorText((e as Error).message)}`);
-      }
+      message.error(fileErrorText((e as Error).message));
+    } finally {
+      setNewFileBusy(false);
     }
   };
 
@@ -694,6 +762,7 @@ export default function Files() {
   const openShare = (entry: FileEntry) => {
     const existing = shareOf(entry.path);
     setSharePicks(existing?.recipients ?? []);
+    setShareWritable(existing?.writable ?? false);
     setShareTarget(entry);
   };
 
@@ -701,8 +770,12 @@ export default function Files() {
     if (!shareTarget) return;
     setShareBusy(true);
     try {
-      await api.fileShare(relPath(shareTarget.path), sharePicks);
-      message.success(sharePicks.length ? `已共享给 ${sharePicks.length} 人` : '已收回该路径的共享');
+      await api.fileShare(relPath(shareTarget.path), sharePicks, shareWritable);
+      message.success(
+        sharePicks.length
+          ? `已共享给 ${sharePicks.map((n) => resolveDisplayName(n, peopleMap, n)).join('、')}（${sharePicks.length} 人）${shareWritable ? '（可编辑）' : ''}`
+          : '已收回该路径的共享',
+      );
       setShareTarget(null);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['file-shares'] }),
@@ -720,6 +793,7 @@ export default function Files() {
     const entry = viewEntries.find((e) => relPath(e.path) === share.path);
     const full = homePath ? `${homePath}/${share.path}` : share.path;
     setSharePicks(share.recipients);
+    setShareWritable(share.writable);
     setShareTarget(
       entry ?? {
         id: '',
@@ -737,7 +811,7 @@ export default function Files() {
   const revokeShare = (share: PersonalShare) => {
     modal.confirm({
       title: `收回「${share.path}」的共享？`,
-      content: `${share.recipients.join('、')} 将不能再查看该路径；已下载的副本无法收回。`,
+      content: `${share.recipients.map((n) => resolveDisplayName(n, peopleMap, n)).join('、')} 将不能再查看该路径；已下载的副本无法收回。`,
       okText: '收回',
       okButtonProps: { danger: true },
       cancelText: '取消',
@@ -766,6 +840,44 @@ export default function Files() {
     } catch (e) {
       message.error(fileErrorText((e as Error).message));
     }
+  };
+
+  /**
+   * 直接删除：不进回收站、不可恢复。
+   *
+   * 与"移入回收站"的区别要说清楚——回收站保留 7 天可恢复，
+   * 这里是从磁盘抹掉，误操作就没了。所以确认框必须写明不可恢复。
+   */
+  const destroyEntry = async (entry: FileEntry) => {
+    try {
+      await api.fileDestroy(entry.id);
+      message.success(`已永久删除 ${entry.name}`);
+      if (previewId === entry.id) setPreviewId(null);
+      await refreshAll();
+    } catch (e) {
+      message.error(fileErrorText((e as Error).message));
+    }
+  };
+
+  /** 确认"直接删除"：二次确认 + 明确不可恢复。 */
+  const confirmDestroy = (entry: FileEntry) => {
+    modal.confirm({
+      title: `永久删除 ${entry.name}？`,
+      content: (
+        <Flex vertical gap={6}>
+          <Typography.Text type="danger">
+            这会**直接从磁盘删除**，不进回收站、无法恢复。
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {formatSize(entry.size || 0)} · {entry.path}
+          </Typography.Text>
+        </Flex>
+      ),
+      okText: '永久删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => destroyEntry(entry),
+    });
   };
 
   const restoreItem = async (item: FileTrashItem) => {
@@ -841,6 +953,11 @@ export default function Files() {
           <Typography.Text>
             {formatSize(entry.size || 0)} · {entry.path}
           </Typography.Text>
+          {isSharedView ? (
+            <Typography.Text type="warning">
+              这是共享文件：删除后共享人那边的副本会同时消失。
+            </Typography.Text>
+          ) : null}
           <Typography.Text type="secondary">{retentionHint}</Typography.Text>
         </Flex>
       ),
@@ -914,6 +1031,92 @@ export default function Files() {
     document.body.appendChild(link);
     link.click();
     link.remove();
+  };
+
+  // ---------------------------------------------------------------- 移动
+  // 目标目录来自服务端返回的可读目录清单（list.data.dirs），不在前端推断权限。
+  const moveTargets = useMemo(() => {
+    const dirs = list.data?.dirs ?? [''];
+    if (!isSharedView) return dirs;
+    // 共享视图里只有"可写共享目录"与"自己的家目录"是合法目标：
+    // 存储源根目录不属于任何人，放进去必然被拒。
+    return dirs.filter((d) => {
+      if (!d) return false;
+      if (homePath && (d === homePath || d.startsWith(`${homePath}/`))) return true;
+      return sharedWritableOf(d);
+    });
+  }, [list.data?.dirs, isSharedView, homePath, sharedWith]);
+  const [moveIds, setMoveIds] = useState<string[]>([]);
+  // 复制/粘贴：与「移动」分开，复制不动原件，更符合日常文件操作习惯。
+  const [clipboard, setClipboard] = useState<{ ids: string[]; names: string[] } | null>(null);
+  const [moveTo, setMoveTo] = useState<string>('');
+
+  const openMove = (entries: FileEntry[]) => {
+    // 共享给我的内容默认只读（见 SetPersonalShare）：移动必须对源条目有 modify、
+    // 对目标有 create，只读共享必然 403，所以直说并给出"复制"路径。
+    // 只有 owner 显式勾选了「允许对方编辑」的共享才可以移动。
+    const movable = entries.filter((e) => canMoveEntry(e.path));
+    if (!movable.length) {
+      if (isSharedView) {
+        message.info('共享内容是只读的：请用「复制」，再切到「个人文件」里点「粘贴」，即可得到一份可编辑的副本。');
+        return;
+      }
+      message.warning('所选条目都不在当前可写范围内');
+      return;
+    }
+    if (movable.length < entries.length) {
+      message.info(`已跳过 ${entries.length - movable.length} 个无写权限的条目`);
+    }
+    setMoveIds(movable.map((e) => e.id));
+    // 共享视图的默认目标是自己的家目录：存储源根目录不属于任何人，放进去必被拒。
+    setMoveTo(isSharedView ? (moveTargets.find((d) => d === homePath) ?? moveTargets[0] ?? '') : '');
+  };
+
+  const copyToClipboard = (entries: FileEntry[]) => {
+    if (!entries.length) return;
+    setClipboard({ ids: entries.map((e) => e.id), names: entries.map((e) => e.name) });
+    message.success(`已复制 ${entries.length} 项，切换到目标目录后点「粘贴」`);
+  };
+
+  const pasteHere = async () => {
+    if (!clipboard?.ids.length) return;
+    setBatchBusy(true);
+    let ok = 0;
+    const failures: string[] = [];
+    for (const id of clipboard.ids) {
+      try {
+        await api.fileCopy(id, baseDir || '');
+        ok += 1;
+      } catch (err) {
+        failures.push((err as Error).message);
+      }
+    }
+    setBatchBusy(false);
+    if (ok) message.success(`已粘贴 ${ok} 项到当前目录`);
+    if (failures.length) message.warning(`有 ${failures.length} 项未能粘贴：${failures[0]}`);
+    await list.refetch();
+  };
+
+  const doMove = async () => {
+    if (!moveIds.length) return;
+    setBatchBusy(true);
+    try {
+      const res = await api.fileMove(moveIds, moveTo);
+      const ok = res.moved.length;
+      const bad = res.failed.length;
+      if (ok) message.success(`已移动 ${ok} 项`);
+      if (bad) {
+        const first = res.failed[0];
+        message.warning(`${bad} 项未能移动：${first.error}${bad > 1 ? ' 等' : ''}`);
+      }
+      setMoveIds([]);
+      setSelectedKeys([]);
+      await list.refetch();
+    } catch (err) {
+      message.error((err as Error).message || '移动失败');
+    } finally {
+      setBatchBusy(false);
+    }
   };
 
   const batchRemove = () => {
@@ -1010,6 +1213,15 @@ export default function Files() {
         });
       }
     }
+    // 在线编辑：只给纯文本类扩展名（txt/md/csv/json/代码等），二进制文件不出现入口。
+    if (!entry.dir && isTextEditable(entry.name)) {
+      items.push({
+        key: 'text-edit',
+        icon: <EditOutlined />,
+        label: '在线编辑',
+        onClick: () => setTextEditTarget(entry),
+      });
+    }
     if (!entry.dir && isGenomeFile(entry.name)) {
       const toGenomes = (action: 'jbrowse' | 'analyze') =>
         navigate(
@@ -1029,8 +1241,23 @@ export default function Files() {
         onClick: () => toGenomes('analyze'),
       });
     }
+    if (canMoveEntry(entry.path)) {
+      items.push({
+        key: 'move',
+        icon: <SwapOutlined />,
+        label: '移动到…',
+        onClick: () => openMove([entry]),
+      });
+    }
     if (canWrite(entry.path)) {
-      items.push({ type: 'divider' });
+      items.push({
+        key: 'copy',
+        icon: <CopyOutlined />,
+        label: '复制',
+        onClick: () => copyToClipboard([entry]),
+      });
+    }
+    if (canMoveEntry(entry.path)) {
       items.push({
         key: 'rename',
         icon: <EditOutlined />,
@@ -1040,24 +1267,27 @@ export default function Files() {
           setDialogName(entry.name);
         },
       });
+    }
+    // 删除：自己空间按写权限；共享视图里**任何人都能删**（物理只有一份，
+    // 删了共享人那边同步消失），所以共享条目也给删除入口并写清后果。
+    if (canWrite(entry.path) || isSharedView) {
       items.push({ type: 'divider' });
       items.push({
         key: 'delete',
         danger: true,
         icon: <DeleteOutlined />,
-        label: '删除',
+        label: isSharedView ? '删除（共享人同步删除）' : '删除',
         onClick: () => confirmRemove(entry),
+      });
+      items.push({
+        key: 'destroy',
+        danger: true,
+        icon: <DeleteOutlined />,
+        label: '直接删除（不保留）',
+        onClick: () => confirmDestroy(entry),
       });
     }
     return items;
-  };
-
-  const onDrop = async (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragging(false);
-    if (!writable) return;
-    const files = Array.from(e.dataTransfer.files ?? []);
-    if (files.length) await uploadFiles(files);
   };
 
   const parentDir = (() => {
@@ -1138,23 +1368,36 @@ export default function Files() {
       description="公共资料、质粒与基因组按用户组授权共享；个人文件默认私密，可单独指定共享人。"
       extra={
         <Space wrap>
-          {writable ? (
+          {writableHere ? (
             <>
+              {mkdirHere ? (
+                <Button
+                  icon={<FolderAddOutlined />}
+                  onClick={() => {
+                    setDialog({ mode: 'mkdir' });
+                    setDialogName('');
+                  }}
+                >
+                  新建文件夹
+                </Button>
+              ) : null}
+              {/* 新建文件：手机上是刚需（不能先在本地建好再传） */}
               <Button
-                icon={<FolderAddOutlined />}
+                icon={<FileAddOutlined />}
                 onClick={() => {
-                  setDialog({ mode: 'mkdir' });
-                  setDialogName('');
+                  setNewFileOpen(true);
+                  setNewFileName('');
+                  setNewFileBody('');
                 }}
               >
-                新建文件夹
+                新建文件
               </Button>
               <Upload
                 multiple
                 showUploadList={false}
                 customRequest={async ({ file, onSuccess, onError }) => {
                   try {
-                    await uploadFile(file as File);
+                    await uploadOne(file as File);
                     onSuccess?.({});
                   } catch (e) {
                     message.error(`上传失败：${fileErrorText((e as Error).message)}`);
@@ -1162,8 +1405,32 @@ export default function Files() {
                   }
                 }}
               >
-                <Button type="primary" icon={<UploadOutlined />}>
+                <Button type="primary" icon={<UploadOutlined />} loading={Boolean(uploading)}>
                   上传文件
+                </Button>
+              </Upload>
+              {/* 文件夹上传：按 webkitRelativePath 还原目录结构（见 uploadTree） */}
+              <Upload
+                multiple
+                directory
+                showUploadList={false}
+                customRequest={async ({ file, onSuccess, onError }) => {
+                  // directory 模式下 antd 仍然逐文件回调；这里只做单文件兜底，
+                  // 真正的树状上传由下方的 onBatch 统一处理。
+                  onSuccess?.({});
+                  void file;
+                  void onError;
+                }}
+                beforeUpload={(file, fileList) => {
+                  // 只在最后一个文件时触发一次批量处理，避免每文件重复建目录。
+                  if (file === fileList[fileList.length - 1]) {
+                    void uploadTree(fileList as File[]);
+                  }
+                  return Upload.LIST_IGNORE;
+                }}
+              >
+                <Button icon={<FolderAddOutlined />} loading={Boolean(uploading)}>
+                  上传文件夹
                 </Button>
               </Upload>
             </>
@@ -1246,7 +1513,11 @@ export default function Files() {
                 </Tag>
               </Tooltip>
               {activeSource?.shared ? <Tag color="green">共享空间</Tag> : <Tag>私人空间</Tag>}
-              {isSharedView ? <Tag color="blue">他人共享 · 只读</Tag> : null}
+              {isSharedView ? (
+                <Tag color="blue">
+                  他人共享{sharedWith.some((s) => s.writable) ? ' · 部分可编辑' : ' · 只读'}
+                </Tag>
+              ) : null}
               {!isSharedView && activeSource && activeSource.listable && !writable ? (
                 <Tag color="default">{sourceWritable ? '当前目录只读' : '只读'}</Tag>
               ) : null}
@@ -1266,17 +1537,28 @@ export default function Files() {
               <Breadcrumb items={breadcrumb} />
             </Space>
             <Space size={8} wrap>
-              <Segmented
-                size="small"
-                value={viewMode}
-                onChange={(v) => setViewMode(v as typeof viewMode)}
-                options={[
-                  { value: 'list', icon: <UnorderedListOutlined />, title: '列表视图' },
-                  { value: 'grid', icon: <AppstoreOutlined />, title: '网格视图' },
-                  { value: 'details', icon: <ProfileOutlined />, title: '详情视图' },
-                  { value: 'timeline', icon: <ClockCircleOutlined />, title: '时间线视图' },
-                ]}
-              />
+              <Tooltip
+                title={
+                  TIMELINE_FIRST_SOURCES.has(source)
+                    ? '公共资料/基因组按“加入时间”浏览更顺手，已默认时间线视图'
+                    : '个人文件按名称检索更快，已默认列表视图'
+                }
+              >
+                <Segmented
+                  size="small"
+                  value={viewMode}
+                  onChange={(v) => {
+                    setViewMode(v as typeof viewMode);
+                    setViewPinned(true);
+                  }}
+                  options={[
+                    { value: 'list', icon: <UnorderedListOutlined />, title: '列表视图' },
+                    { value: 'grid', icon: <AppstoreOutlined />, title: '网格视图' },
+                    { value: 'details', icon: <ProfileOutlined />, title: '详情视图' },
+                    { value: 'timeline', icon: <ClockCircleOutlined />, title: '时间线视图' },
+                  ]}
+                />
+              </Tooltip>
               <Input.Search
                 allowClear
                 placeholder="在文件源中搜索名称或路径"
@@ -1294,6 +1576,57 @@ export default function Files() {
         </Flex>
       </Card>
 
+      {/* 上传进度：批量/文件夹上传时给实时反馈，避免界面像卡死 */}
+      {uploading ? (
+        <Alert
+          type="info"
+          showIcon
+          icon={<CloudUploadOutlined />}
+          title={`正在上传 ${uploading.done} / ${uploading.total}`}
+          description={
+            <Flex vertical gap={6}>
+              <Progress
+                percent={uploading.total ? Math.round((uploading.done / uploading.total) * 100) : 0}
+                size="small"
+                status="active"
+              />
+              <Typography.Text type="secondary" ellipsis style={{ fontSize: 12 }}>
+                {uploading.current}
+              </Typography.Text>
+            </Flex>
+          }
+        />
+      ) : null}
+
+      {/* 失败明细：把"哪几个失败、为什么"摊开，而不是只弹一条 message */}
+      {uploadErrors.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          title={`有 ${uploadErrors.length} 个文件没有上传成功`}
+          description={
+            <Flex vertical gap={2} style={{ maxHeight: 140, overflowY: 'auto' }}>
+              {uploadErrors.slice(0, 20).map((e, i) => (
+                <Typography.Text key={`${e.name}-${i}`} style={{ fontSize: 12 }}>
+                  <Typography.Text strong>{e.name}</Typography.Text>
+                  <Typography.Text type="secondary"> — {e.reason}</Typography.Text>
+                </Typography.Text>
+              ))}
+              {uploadErrors.length > 20 ? (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  …另有 {uploadErrors.length - 20} 个
+                </Typography.Text>
+              ) : null}
+            </Flex>
+          }
+          action={
+            <Button size="small" onClick={() => setUploadErrors([])}>
+              知道了
+            </Button>
+          }
+        />
+      ) : null}
+
       <Card
         size="small"
         onDragOver={(e) => {
@@ -1302,7 +1635,11 @@ export default function Files() {
           setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
+        onDrop={(e) => {
+          setDragging(false);
+          if (!writableHere) return;
+          void handleDrop(e);
+        }}
         style={{
           borderColor: dragging ? 'var(--ant-color-primary)' : undefined,
           boxShadow: dragging ? '0 0 0 2px var(--ant-color-primary-border)' : undefined,
@@ -1347,9 +1684,19 @@ export default function Files() {
                   </Typography.Text>
                 </Space>
                 <Space size={8} wrap>
+                  {writable && clipboard ? (
+                    <Button type="primary" icon={<SnippetsOutlined />} loading={batchBusy} onClick={() => void pasteHere()}>
+                      粘贴 {clipboard.ids.length} 项到此目录
+                    </Button>
+                  ) : null}
                   <Button icon={<DownloadOutlined />} onClick={batchDownload}>
                     批量下载
                   </Button>
+                  {writable ? (
+                    <Button icon={<CopyOutlined />} onClick={() => copyToClipboard(selectedEntries)}>
+                      复制
+                    </Button>
+                  ) : null}
                   <Button
                     icon={<BookOutlined />}
                     onClick={ingestSelection}
@@ -1358,15 +1705,26 @@ export default function Files() {
                     入库知识库
                   </Button>
                   {writable ? (
-                    <Button
-                      danger
-                      icon={<DeleteOutlined />}
-                      loading={batchBusy}
-                      disabled={!removableSelection.length}
-                      onClick={batchRemove}
-                    >
-                      批量删除
-                    </Button>
+                    <>
+                      {!isSharedView ? (
+                        <Button
+                          icon={<SwapOutlined />}
+                          disabled={!removableSelection.length}
+                          onClick={() => openMove(selectedEntries)}
+                        >
+                          移动
+                        </Button>
+                      ) : null}
+                      <Button
+                        danger
+                        icon={<DeleteOutlined />}
+                        loading={batchBusy}
+                        disabled={!removableSelection.length}
+                        onClick={batchRemove}
+                      >
+                        批量删除
+                      </Button>
+                    </>
                   ) : null}
                   <Button type="text" onClick={() => setSelectedKeys([])}>
                     取消选择
@@ -1376,15 +1734,17 @@ export default function Files() {
             ) : null}
             {viewMode === 'list' ? (
             <Table<FileRow>
-              size="small"
+              className="d509-files-table"
+              size="middle"
               rowKey="id"
               dataSource={rows}
+              sticky
               rowSelection={{
                 selectedRowKeys: selectedKeys,
                 onChange: (keys) => setSelectedKeys(keys),
-                columnWidth: 40,
+                columnWidth: 44,
               }}
-              scroll={{ x: 640 }}
+              scroll={{ x: 720 }}
             onChange={(_pagination, _filters, sorter) => {
               const active = Array.isArray(sorter) ? sorter[0] : sorter;
               const field = active?.field as FileSortKey | undefined;
@@ -1407,128 +1767,176 @@ export default function Files() {
                 sorter: true,
                 sortOrder: sortKey === 'name' ? (order === 'asc' ? 'ascend' : 'descend') : null,
                 render: (name: string, r) => {
-                  const v = fileVisual(name, r.dir);
+                  // 次要信息合并进名称列：窄屏时不再靠横向滚动才能看到大小与时间，
+                  // 宽屏仍保留独立列（lg/xl 断点显示）。
+                  const meta: ReactNode[] = [];
+                  if (!r.dir) meta.push(formatSize(r.size));
+                  meta.push(formatTime(r.modified));
                   return (
-                  <Flex vertical gap={0} style={{ minWidth: 0 }}>
-                    <Space size={8}>
-                      <span style={{ color: v.color, fontSize: 15, lineHeight: 1, display: 'inline-flex' }}>
-                        {v.icon}
-                      </span>
-                      {r.dir ? (
-                        <Typography.Link onClick={() => openEntry(r)}>{name}</Typography.Link>
-                      ) : (
-                        <Typography.Link onClick={() => openPreview(r.id)}>{name}</Typography.Link>
-                      )}
-                      {!r.dir ? <ExtTag name={name} /> : null}
-                    </Space>
-                    {/* 列表已取消「位置」列；跨目录搜索结果仍需区分同名文件 */}
-                    {searching ? (
+                    <Flex vertical gap={2} style={{ minWidth: 0 }}>
+                      <Space size={8} style={{ minWidth: 0 }}>
+                        <FileThumb id={r.id} name={name} size={26} />
+                        {r.dir ? (
+                          <Typography.Link onClick={() => openEntry(r)} ellipsis style={{ fontWeight: 500 }}>
+                            {name}
+                          </Typography.Link>
+                        ) : (
+                          <Typography.Link onClick={() => openPreview(r.id)} ellipsis style={{ fontWeight: 500 }}>
+                            {name}
+                          </Typography.Link>
+                        )}
+                        {!r.dir ? <ExtTag name={name} /> : null}
+                      </Space>
                       <Typography.Text
                         type="secondary"
                         ellipsis
-                        style={{ fontSize: 12, paddingLeft: 24 }}
+                        style={{ fontSize: 12, paddingLeft: 24, lineHeight: 1.4 }}
                       >
-                        {r.path.split('/').slice(0, -1).join('/') || '根目录'}
+                        {searching
+                          ? `${r.path.split('/').slice(0, -1).join('/') || '根目录'} · ${meta.join(' · ')}`
+                          : meta.join(' · ')}
+                        {isSharedView ? (
+                          <>
+                            {' · '}
+                            <TeamOutlined /> {resolveDisplayName(r.owner, peopleMap, r.path.split('/')[0])}
+                          </>
+                        ) : null}
                       </Typography.Text>
-                    ) : isSharedView ? (
-                      <Typography.Text type="secondary" ellipsis style={{ fontSize: 12, paddingLeft: 24 }}>
-                        <TeamOutlined /> {r.owner ?? r.path.split('/')[0]} 共享
-                      </Typography.Text>
-                    ) : isPersonal && shareOf(r.path) ? (
-                      <Space size={4} style={{ paddingLeft: 24 }} wrap>
-                        <TeamOutlined style={{ fontSize: 11, color: 'var(--ant-color-text-tertiary)' }} />
-                        {shareOf(r.path)!.recipients.map((n) => (
-                          <Tag key={n} variant="filled" style={{ fontSize: 11, marginInlineEnd: 0 }}>
-                            {n}
+                      {isSharedView && sharedWritableOf(r.path) ? (
+                        <Space size={4} style={{ paddingLeft: 24 }} wrap>
+                          <Tag color="green" variant="filled" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                            可编辑
                           </Tag>
-                        ))}
-                      </Space>
-                    ) : null}
-                  </Flex>
+                        </Space>
+                      ) : null}
+                      {isPersonal && !isSharedView && !searching && shareOf(r.path) ? (
+                        <Space size={4} style={{ paddingLeft: 24 }} wrap>
+                          <TeamOutlined style={{ fontSize: 11, color: 'var(--ant-color-text-tertiary)' }} />
+                          {shareOf(r.path)!.recipients.map((n) => (
+                            <Tag
+                              key={n}
+                              variant="filled"
+                              title={n}
+                              style={{ fontSize: 11, marginInlineEnd: 0 }}
+                            >
+                              {resolveDisplayName(n, peopleMap, n)}
+                            </Tag>
+                          ))}
+                        </Space>
+                      ) : null}
+                    </Flex>
                   );
                 },
               },
               {
                 title: '大小',
                 dataIndex: 'size',
-                width: 110,
+                width: 104,
                 align: 'right',
+                responsive: ['lg'],
                 sorter: true,
                 sortOrder: sortKey === 'size' ? (order === 'asc' ? 'ascend' : 'descend') : null,
                 // 目录自身字节数为 0，展示"—"，真实占用见用量标签
-                render: (n: number, r) => (r.dir ? '—' : formatSize(n)),
+                render: (n: number, r) => (
+                  <Typography.Text
+                    type={r.dir && !r.dirSize ? 'secondary' : undefined}
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                    title={r.dir ? '目录内所有文件的字节数之和' : undefined}
+                  >
+                    {r.dir ? (r.dirSize ? formatSize(r.dirSize) : '空') : formatSize(n)}
+                  </Typography.Text>
+                ),
               },
               {
                 title: '修改时间',
                 dataIndex: 'modified',
-                width: 180,
-                responsive: ['lg'],
+                width: 168,
+                responsive: ['xl'],
                 sorter: true,
                 sortOrder: sortKey === 'modified' ? (order === 'asc' ? 'ascend' : 'descend') : null,
-                render: formatTime,
+                render: (v: string) => (
+                  <Typography.Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatTime(v)}
+                  </Typography.Text>
+                ),
               },
               {
                 title: '创建时间',
                 dataIndex: 'created',
-                width: 180,
-                responsive: ['xl'],
+                width: 168,
+                responsive: ['xxl'],
                 sorter: true,
                 sortOrder: sortKey === 'created' ? (order === 'asc' ? 'ascend' : 'descend') : null,
-                render: formatTime,
+                render: (v: string) => (
+                  <Typography.Text type="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatTime(v)}
+                  </Typography.Text>
+                ),
               },
               {
-                title: '操作',
-                width: isPersonal && !isSharedView ? 260 : sourceWritable ? 190 : 140,
+                title: '',
+                key: 'actions',
+                width: 148,
                 align: 'right',
                 render: (_: unknown, r) => (
-                  <Space size={0}>
-                    {isPersonal && !isSharedView && r.path !== homePath ? (
-                      <Button
-                        size="small"
-                        type="link"
-                        icon={<TeamOutlined />}
-                        onClick={() => openShare(r)}
-                      >
-                        {shareOf(r.path) ? '共享中' : '共享'}
-                      </Button>
-                    ) : null}
+                  <Space size={2}>
                     {r.dir ? (
-                      <Button size="small" type="link" onClick={() => openEntry(r)}>
+                      <Button size="small" type="text" icon={<FolderOpenOutlined />} onClick={() => openEntry(r)}>
                         打开
                       </Button>
                     ) : (
                       <>
-                        <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openPreview(r.id)}>
-                          预览
-                        </Button>
+                        <Tooltip title="预览">
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<EyeOutlined />}
+                            aria-label="预览"
+                            onClick={() => openPreview(r.id)}
+                          />
+                        </Tooltip>
+                        <Tooltip title="下载">
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<DownloadOutlined />}
+                            aria-label="下载"
+                            href={`/api/files/${encodeURIComponent(r.id)}/download`}
+                          />
+                        </Tooltip>
                         {hasPresentation(r.name) ? (
                           <Tooltip title="放映幻灯片">
                             <Button
                               size="small"
-                              type="link"
+                              type="text"
                               icon={<PlayCircleOutlined />}
+                              aria-label="放映幻灯片"
                               onClick={() => openOffice(r, 'present')}
                             />
                           </Tooltip>
                         ) : null}
-                        <Button
-                          size="small"
-                          type="link"
-                          icon={<DownloadOutlined />}
-                          href={`/api/files/${encodeURIComponent(r.id)}/download`}
-                        >
-                          下载
-                        </Button>
                       </>
                     )}
+                    {isPersonal && !isSharedView && r.path !== homePath ? (
+                      <Tooltip title={shareOf(r.path) ? '共享设置' : '共享给…'}>
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<TeamOutlined />}
+                          aria-label="共享"
+                          onClick={() => openShare(r)}
+                        />
+                      </Tooltip>
+                    ) : null}
                     <Dropdown trigger={['click']} menu={{ items: rowMenu(r) }}>
-                      <Button size="small" type="link" icon={<EllipsisOutlined />} aria-label="更多操作" />
+                      <Button size="small" type="text" icon={<EllipsisOutlined />} aria-label="更多操作" />
                     </Dropdown>
                   </Space>
                 ),
               },
             ]}
             />
+
             ) : viewMode === 'grid' ? (
               rows.length ? (
                 <div
@@ -1688,6 +2096,11 @@ export default function Files() {
                                 {(r as FileRow).owner ?? r.path.split('/')[0]} 共享
                               </Tag>
                             ) : null}
+                            {isSharedView && sharedWritableOf(r.path) ? (
+                              <Tag variant="filled" color="green">
+                                可编辑
+                              </Tag>
+                            ) : null}
                           </Space>
                           {rowActions(r)}
                         </Flex>
@@ -1698,66 +2111,18 @@ export default function Files() {
               ) : (
                 emptyView
               )
-            ) : rows.length ? (
-              <Flex vertical gap={16}>
-                {timelineGroups.map(([day, dayRows]) => (
-                  <Flex vertical gap={8} key={day}>
-                    <Flex align="center" gap={8}>
-                      <Tag color="blue" variant="filled">
-                        {day}
-                      </Tag>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {dayRows.length} 项
-                      </Typography.Text>
-                    </Flex>
-                    <div
-                      style={{
-                        marginLeft: 6,
-                        paddingLeft: 16,
-                        borderLeft: '2px solid var(--ant-color-border-secondary)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8,
-                      }}
-                    >
-                      {dayRows.map((r) => {
-                        const v = fileVisual(r.name, r.dir);
-                        return (
-                          <Card
-                            key={r.id}
-                            size="small"
-                            hoverable
-                            onClick={() => openRow(r)}
-                            styles={{ body: { padding: '8px 12px' } }}
-                          >
-                            <Flex align="center" gap={10} wrap>
-                              <span style={{ color: v.color, fontSize: 16, lineHeight: 1 }}>{v.icon}</span>
-                              <Tooltip title={r.name}>
-                                <Typography.Link ellipsis style={{ flex: 1, minWidth: 140 }}>
-                                  {r.name}
-                                </Typography.Link>
-                              </Tooltip>
-                              <Tag variant="filled">
-                                {r.dir ? '文件夹' : formatSize(r.size)}
-                              </Tag>
-                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                {formatTime(r.modified)}
-                              </Typography.Text>
-                              <span onClick={(e) => e.stopPropagation()}>
-                                <Dropdown trigger={['click']} menu={{ items: rowMenu(r) }}>
-                                  <Button size="small" type="text" icon={<EllipsisOutlined />} aria-label="更多操作" />
-                                </Dropdown>
-                              </span>
-                            </Flex>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </Flex>
-                ))}
-              </Flex>
             ) : (
-              emptyView
+              <TimelineView
+                entries={rows}
+                groupBy={TIMELINE_FIRST_SOURCES.has(source) ? 'created' : 'modified'}
+                emptyText={emptyDescription}
+                onOpen={(entry) => openRow(entry)}
+                renderActions={(entry) => (
+                  <Dropdown trigger={['click']} menu={{ items: rowMenu(entry) }}>
+                    <Button size="small" type="text" icon={<EllipsisOutlined />} aria-label="更多操作" />
+                  </Dropdown>
+                )}
+              />
             )}
           </>
         )}
@@ -1771,6 +2136,38 @@ export default function Files() {
           />
         ) : null}
       </Card>
+
+      <Modal
+        open={moveIds.length > 0}
+        title={`移动到文件夹（${moveIds.length} 项）`}
+        okText="移动"
+        cancelText="取消"
+        confirmLoading={batchBusy}
+        onOk={doMove}
+        onCancel={() => setMoveIds([])}
+        destroyOnHidden
+      >
+        <Flex vertical gap={12}>
+          <Typography.Text type="secondary">
+            {isSharedView
+              ? '目标目录仅列出可写共享目录与你的个人目录；目标处同名条目会被拒绝，不会覆盖。'
+              : '目标目录仅列出你在当前存储源中有读权限的文件夹；目标处同名条目会被拒绝，不会覆盖。'}
+          </Typography.Text>
+          <Select
+            showSearch
+            open
+            value={moveTo}
+            onChange={(v) => setMoveTo(v)}
+            style={{ width: '100%' }}
+            placeholder="选择目标文件夹"
+            optionFilterProp="label"
+            options={moveTargets.map((d) => ({
+              value: d,
+              label: d ? d.split('/').join(' / ') : '（存储源根目录）',
+            }))}
+          />
+        </Flex>
+      </Modal>
 
       <Modal
         open={Boolean(previewId)}
@@ -1837,6 +2234,15 @@ export default function Files() {
         }}
       />
 
+      <TextEditorModal
+        open={Boolean(textEditTarget)}
+        entry={textEditTarget}
+        onClose={() => setTextEditTarget(null)}
+        onSaved={() => {
+          void refreshAll();
+        }}
+      />
+
       <Modal
         open={Boolean(dialog)}
         title={dialog?.mode === 'mkdir' ? '新建文件夹' : '重命名'}
@@ -1862,6 +2268,40 @@ export default function Files() {
         </Typography.Text>
       </Modal>
 
+      {/* 新建文件：名字 + 初始内容。留空内容就是空文件，随后可用在线编辑器补。 */}
+      <Modal
+        open={newFileOpen}
+        title="新建文件"
+        okText="创建"
+        cancelText="取消"
+        confirmLoading={newFileBusy}
+        onOk={submitNewFile}
+        onCancel={() => setNewFileOpen(false)}
+        destroyOnHidden
+        width={560}
+      >
+        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+          <Input
+            autoFocus
+            value={newFileName}
+            maxLength={120}
+            placeholder="文件名，例如 实验记录.md"
+            onChange={(e) => setNewFileName(e.target.value)}
+            onPressEnter={submitNewFile}
+          />
+          <Input.TextArea
+            value={newFileBody}
+            rows={8}
+            placeholder="初始内容（可留空，之后用在线编辑器补）"
+            onChange={(e) => setNewFileBody(e.target.value)}
+            style={{ fontFamily: 'monospace' }}
+          />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            创建位置：{baseDir || '当前目录'}
+          </Typography.Text>
+        </Space>
+      </Modal>
+
       <Modal
         open={Boolean(shareTarget)}
         title={`共享「${shareTarget?.name ?? ''}」`}
@@ -1874,7 +2314,7 @@ export default function Files() {
       >
         <Flex vertical gap={10}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            被选择的同学会在「文件管理 → 个人文件 → 共享给我」中看到该路径，只读预览与下载；名单留空保存即收回共享。
+            被选择的同学会在「文件存储 → 个人文件 → 共享给我」中看到该路径，默认只读预览与下载；名单留空保存即收回共享。
           </Typography.Text>
           <Select
             mode="multiple"
@@ -1883,9 +2323,23 @@ export default function Files() {
             onChange={setSharePicks}
             placeholder={shareRecipients.length ? '选择共享人' : '暂无可共享的其他账号'}
             showSearch={{ optionFilterProp: 'label' }}
-            options={shareRecipients.map((name) => ({ value: name, label: name }))}
+            // 共享名单一律显示**姓名**：value 仍是账号名（后端按账号名授权），
+            // 但用户看到的必须是「陈同学」而不是「adminlegacy」。
+            options={shareRecipients.map((name) => ({
+              value: name,
+              label: resolveDisplayName(name, peopleMap, name),
+            }))}
             style={{ width: '100%' }}
           />
+          <Flex align="center" justify="space-between" gap={12} wrap>
+            <Typography.Text style={{ fontSize: 13 }}>允许对方编辑（移动/改名/上传，不含删除）</Typography.Text>
+            <Switch
+              checked={shareWritable}
+              onChange={setShareWritable}
+              disabled={!sharePicks.length}
+              aria-label="允许对方编辑"
+            />
+          </Flex>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             路径：{shareTarget ? relPath(shareTarget.path) : ''} · 可共享对象：{shareRecipients.length} 人
           </Typography.Text>
@@ -1907,8 +2361,8 @@ export default function Files() {
           <Alert
             type="info"
             showIcon
-            title="个人文件默认仅本人可见；共享为只读，名单变更立即生效。"
-            description="收回共享后，对方将无法继续预览或下载该路径，但已下载的副本无法追回。"
+            title="个人文件默认仅本人可见；共享默认只读，勾选「允许对方编辑」后对方才能移动/改名/上传（不含删除），名单变更立即生效。"
+            description="收回共享后，对方将无法继续预览或下载该路径，但已下载的副本无法追回。删除权始终属于本人。"
           />
           <Table<PersonalShare>
             size="small"
@@ -1928,11 +2382,21 @@ export default function Files() {
                 render: (names: string[]) => (
                   <Space size={4} wrap>
                     {names.map((n) => (
-                      <Tag key={n} variant="filled">
-                        {n}
+                      <Tag key={n} variant="filled" title={n}>
+                        {resolveDisplayName(n, peopleMap, n)}
                       </Tag>
                     ))}
                   </Space>
+                ),
+              },
+              {
+                title: '权限',
+                dataIndex: 'writable',
+                width: 90,
+                render: (writable: boolean) => (
+                  <Tag color={writable ? 'green' : 'default'} variant="filled">
+                    {writable ? '可编辑' : '只读'}
+                  </Tag>
                 ),
               },
               {
@@ -2101,7 +2565,7 @@ export default function Files() {
           <Alert
             type="info"
             showIcon
-            title={`记录全站文件的预览与下载行为，保留 ${audit.data?.retentionDays ?? 90} 天，仅管理员可见。`}
+            title={`记录全站文件的预览与下载行为，保留 ${audit.data?.retentionDays ?? 7} 天，仅管理员可见。`}
             description="事件由服务端在预览/下载成功时写入；服务令牌的内部读取不计入个人记录。"
           />
           <Segmented

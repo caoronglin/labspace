@@ -60,6 +60,13 @@ export function highlight(text: string, kw: string) {
   return text.split(re).map((seg, i) => (i % 2 === 1 ? <mark key={i}>{seg}</mark> : <span key={i}>{seg}</span>));
 }
 
+const PAPER_SOURCES: Record<string, string> = {
+  openalex: 'OpenAlex',
+  semanticscholar: 'Semantic Scholar',
+  crossref: 'Crossref',
+  arxiv: 'arXiv',
+};
+
 function HitLine({ hit, keyword }: { hit: SearchHit; keyword: string }) {
   const meta = hit.kind === 'local' ? LOCAL_META[hit.category ?? ''] : WEB_GROUPS[webGroup(hit.category)];
   const target = hit.url || hit.path || '';
@@ -96,6 +103,36 @@ function HitLine({ hit, keyword }: { hit: SearchHit; keyword: string }) {
           title
         )}
       </div>
+      {(hit.kind === 'paper' || hit.hitSource) && (
+        <Space size={6} style={{ marginTop: 4 }} wrap>
+          {/* 文献必须标明数据实际来自哪个源：OpenAlex 挂掉时命中会降级到 Crossref，
+              用户有权知道这条是谁给的。 */}
+          <Tag variant="filled" color="purple" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+            {PAPER_SOURCES[hit.hitSource ?? ''] ?? hit.hitSource ?? '文献'}
+          </Tag>
+          {hit.year ? (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {hit.year}
+            </Typography.Text>
+          ) : null}
+          {hit.venue ? (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {hit.venue}
+            </Typography.Text>
+          ) : null}
+          {hit.authors?.length ? (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }} ellipsis>
+              {hit.authors.slice(0, 3).join('、')}
+              {hit.authors.length > 3 ? ' 等' : ''}
+            </Typography.Text>
+          ) : null}
+          {hit.doi ? (
+            <Typography.Text code style={{ fontSize: 11 }}>
+              {hit.doi}
+            </Typography.Text>
+          ) : null}
+        </Space>
+      )}
       {hit.category === 'knowledge' && (hit.docCategory || hit.updatedAt) && (
         <Space size={6} style={{ marginTop: 4 }}>
           <Tag variant="filled" style={{ fontSize: 11, marginInlineEnd: 0 }}>

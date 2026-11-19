@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   App,
+  AutoComplete,
   Button,
   Card,
   Col,
@@ -26,12 +27,14 @@ import { useQuery } from '@tanstack/react-query';
 import {
   CheckCircleOutlined,
   CloudUploadOutlined,
+  DeleteOutlined,
   CustomerServiceOutlined,
   DownloadOutlined,
   FilePdfOutlined,
   FileTextOutlined,
   LoadingOutlined,
   PictureOutlined,
+  PlusOutlined,
   ReloadOutlined,
   SwapOutlined,
   ThunderboltOutlined,
@@ -41,6 +44,7 @@ import PageShell from '../components/PageShell';
 import { readCookie } from '../services/api';
 import { SECTION_META, toolMeta } from './snapotterCatalog';
 
+import { formatSize } from '../utils/format';
 interface SoTool {
   section: string;
   id: string;
@@ -49,6 +53,35 @@ interface SoTool {
   icon?: string;
   accept?: string;
   settingsHint?: string;
+}
+
+/** 各分区常见参数名：只做"建议"，不臆造上游 schema —— 用户可自由输入别的键。 */
+const PARAM_SUGGESTIONS: Record<string, string[]> = {
+  video: ['fps', 'width', 'height', 'start', 'end', 'duration', 'crf', 'quality', 'codec', 'format', 'speed', 'rotate', 'bitrate', 'resolution', 'mute'],
+  audio: ['bitrate', 'sample_rate', 'channels', 'format', 'codec', 'start', 'end', 'volume', 'normalize'],
+  image: ['quality', 'width', 'height', 'format', 'dpi', 'background', 'rotate', 'crop', 'watermark'],
+  pdf: ['dpi', 'pages', 'password', 'quality', 'grayscale', 'compress'],
+  files: ['password', 'compress_level', 'encoding', 'delimiter', 'sheet'],
+};
+
+/** 参数值的可接受形状：就是 JSON 能表达的那几种，递归定义。 */
+type ParamValue = string | number | boolean | null | ParamValue[] | { [key: string]: ParamValue };
+
+/** 值统一按字符串录入，提交前推断成数字/布尔/JSON，避免 "90" 被当成字符串。 */
+function coerceParam(raw: string): ParamValue {
+  const value = raw.trim();
+  if (value === '') return '';
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
 }
 
 interface SoStatus {
@@ -95,13 +128,6 @@ function toolIcon(tool: SoTool) {
   return SECTION_ICON[tool.section] ?? <ThunderboltOutlined />;
 }
 
-function formatBytes(bytes?: number) {
-  if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return '-';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
-
 function readRecent(): RecentRef[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
@@ -122,8 +148,24 @@ export default function SnapOtter() {
   const [keyword, setKeyword] = useState('');
   const [section, setSection] = useState<string>('all');
   const [active, setActive] = useState<SoTool | null>(null);
-  const [settings, setSettings] = useState('{}');
+  // 参数改成「键 = 值」行编辑：让不会写 JSON 的人也能加参数，
+  // 同时保留原始 JSON 作为高级入口（提交时以键值对为准）。
+  const [paramRows, setParamRows] = useState<{ key: string; value: string }[]>([]);
   const [advOpen, setAdvOpen] = useState(false);
+
+  const addParam = () => setParamRows((rows) => [...rows, { key: '', value: '' }]);
+  const updateParam = (index: number, field: 'key' | 'value', value: string) =>
+    setParamRows((rows) => rows.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  const removeParam = (index: number) => setParamRows((rows) => rows.filter((_, i) => i !== index));
+  const settings = useMemo(() => {
+    const obj: Record<string, ParamValue> = {};
+    for (const row of paramRows) {
+      const k = row.key.trim();
+      if (!k) continue;
+      obj[k] = coerceParam(row.value);
+    }
+    return JSON.stringify(obj);
+  }, [paramRows]);
   const [file, setFile] = useState<File | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -223,7 +265,7 @@ export default function SnapOtter() {
     setActive(tool);
     setFile(null);
     setResult(null);
-    setSettings('{}');
+    setParamRows([]);
     setAdvOpen(Boolean(tool.settingsHint));
     const next = new URLSearchParams(params);
     next.set('section', tool.section);
@@ -258,7 +300,10 @@ export default function SnapOtter() {
         message.warning('文件超过 200 MB 上限');
         return Upload.LIST_IGNORE;
       }
-      setFile(f as unknown as File);
+      // SAFETY: antd Upload 的 beforeUpload 收到的是 RcFile（File 的子类，
+      // 额外带 uid/name 等字段）。本组件只把它当 File 使用（name/size/type），
+      // 不需要 RcFile 的附加字段，因此这里是一次收窄而非伪装。
+      setFile(f as File);
       setResult(null);
       return false;
     },
@@ -581,7 +626,7 @@ export default function SnapOtter() {
                   <p className="ant-upload-text">点击或拖拽文件到此处</p>
                   <p className="ant-upload-hint">
                     {file
-                      ? `已选择：${file.name}（${formatBytes(file.size)}）`
+                      ? `已选择：${file.name}（${formatSize(file.size)}）`
                       : `单个文件，最大 200 MB${active.accept ? `；支持 ${active.accept}` : ''}`}
                   </p>
                 </Upload.Dragger>
@@ -616,16 +661,53 @@ export default function SnapOtter() {
                               }
                             />
                           )}
-                          <Input.TextArea
-                            rows={4}
-                            value={settings}
-                            onChange={(e) => setSettings(e.target.value)}
-                            placeholder='例如 {"quality": 90}；留空则使用默认参数'
-                            style={{
-                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                              fontSize: 12.5,
-                            }}
-                          />
+                          {/* 键值对表单：不会写 JSON 的人也能加参数；键有建议但可自由输入，
+                              值按字符串录入、提交前推断类型（见 coerceParam）。 */}
+                          <Flex vertical gap={8}>
+                            {paramRows.length === 0 ? (
+                              <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+                                当前使用工具默认参数。需要调参时点「添加参数」。
+                              </Typography.Text>
+                            ) : null}
+                            {paramRows.map((row, index) => (
+                              <Flex key={index} gap={8} align="center">
+                                <AutoComplete
+                                  value={row.key}
+                                  onChange={(value: string) => updateParam(index, 'key', value)}
+                                  options={(PARAM_SUGGESTIONS[active.section] ?? []).map((k) => ({
+                                    value: k,
+                                    label: k,
+                                  }))}
+                                  placeholder="参数名"
+                                  style={{ flex: '1 1 200px', minWidth: 140 }}
+                                  filterOption={(input: string, option) =>
+                                    String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+                                  }
+                                />
+                                <Input
+                                  value={row.value}
+                                  onChange={(e) => updateParam(index, 'value', e.target.value)}
+                                  placeholder="值（数字 / true / false / 文本）"
+                                  style={{ flex: '1 1 220px', minWidth: 160 }}
+                                />
+                                <Button
+                                  type="text"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                  aria-label="删除该参数"
+                                  onClick={() => removeParam(index)}
+                                />
+                              </Flex>
+                            ))}
+                            <Flex gap={8} align="center" wrap>
+                              <Button size="small" icon={<PlusOutlined />} onClick={addParam}>
+                                添加参数
+                              </Button>
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                提交时为 {settings}
+                              </Typography.Text>
+                            </Flex>
+                          </Flex>
                         </Flex>
                       ),
                     },
@@ -673,13 +755,13 @@ export default function SnapOtter() {
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           原始大小
                         </Typography.Text>
-                        <div style={{ fontSize: 16, fontWeight: 600 }}>{formatBytes(originalSize)}</div>
+                        <div style={{ fontSize: 16, fontWeight: 600 }}>{formatSize(originalSize)}</div>
                       </div>
                       <div className="so-result-stat">
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                           输出大小
                         </Typography.Text>
-                        <div style={{ fontSize: 16, fontWeight: 600 }}>{formatBytes(processedSize)}</div>
+                        <div style={{ fontSize: 16, fontWeight: 600 }}>{formatSize(processedSize)}</div>
                       </div>
                       <div className="so-result-stat">
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>

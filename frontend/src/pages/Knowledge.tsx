@@ -56,7 +56,9 @@ import {
   type KnowledgeSpace,
 } from '../services/api';
 import KnowledgeAsk from '../components/KnowledgeAsk';
+import { resolveDisplayName, usePeopleMap } from '../utils/displayName';
 
+import { formatSize } from '../utils/format';
 const VISIBILITY: Record<string, { label: string; color: string; icon: ReactNode; hint: string }> = {
   private: { label: '仅自己', color: 'default', icon: <LockOutlined />, hint: '只有你和管理员可见' },
   roles: { label: '指定角色', color: 'blue', icon: <TeamOutlined />, hint: '指定角色组的成员可见' },
@@ -99,18 +101,8 @@ function formatTime(v?: string) {
   return Number.isNaN(d.getTime()) ? v : d.toLocaleString('zh-CN');
 }
 
-function formatBytes(v?: number) {
-  const n = Number(v ?? 0);
-  if (n <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  let x = n;
-  while (x >= 1024 && i < units.length - 1) {
-    x /= 1024;
-    i += 1;
-  }
-  return `${x >= 10 || i === 0 ? Math.round(x) : x.toFixed(1)} ${units[i]}`;
-}
+// 大小格式化统一走 utils/format（见该文件顶部说明）
+const formatBytes = formatSize;
 
 /** 抽取出来的正文字数，用于判断"入库了但几乎没内容"。 */
 function formatChars(v?: number) {
@@ -178,6 +170,8 @@ function IngestReport({ report }: { report: { results: IngestResult[]; summary: 
 
 export default function Knowledge() {
   const { message, modal } = App.useApp();
+  // 人员目录：作者/拥有者显示姓名而不是账号名
+  const peopleMap = usePeopleMap();
   const { token } = theme.useToken();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -202,7 +196,7 @@ export default function Knowledge() {
   const [picked, setPicked] = useState<FileEntry[]>([]);
   const [spaceOpen, setSpaceOpen] = useState(false);
   const [spaceEditing, setSpaceEditing] = useState<KnowledgeSpace | null>(null);
-  // 深链进来的条目（搜索页、文件管理）可能不在当前筛选结果里，单独记住它免得被列表重置掉选中项。
+  // 深链进来的条目（搜索页、文件存储）可能不在当前筛选结果里，单独记住它免得被列表重置掉选中项。
   const [deepDoc, setDeepDoc] = useState<number | null>(null);
   const [urlParams] = useSearchParams();
   const [form] = Form.useForm<DocForm>();
@@ -638,7 +632,7 @@ export default function Knowledge() {
             <Flex gap={8} align="center" wrap>
               <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
                 {currentSpace.description || '暂无说明'} · {formatChars(currentSpace.chars)} ·{' '}
-                {currentSpace.ownerName || currentSpace.owner}
+                {resolveDisplayName(currentSpace.owner, peopleMap, currentSpace.ownerName)}
               </Typography.Text>
               <VisibilityTag value={currentSpace.visibility} />
               {currentSpace.canEdit ? (
@@ -791,12 +785,12 @@ export default function Knowledge() {
                             </Tag>
                           ))}
                           {doc.filePath ? (
-                            <Tooltip title={`来自文件管理：${doc.filePath} · ${formatBytes(doc.fileBytes)}`}>
+                            <Tooltip title={`来自文件存储：${doc.filePath} · ${formatBytes(doc.fileBytes)}`}>
                               <LinkOutlined style={{ color: token.colorPrimary, fontSize: 12 }} />
                             </Tooltip>
                           ) : null}
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            {doc.ownerName || doc.owner} · {formatTime(doc.updatedAt)}
+                            {resolveDisplayName(doc.owner, peopleMap, doc.ownerName)} · {formatTime(doc.updatedAt)}
                           </Typography.Text>
                         </Space>
                       </Flex>
@@ -824,7 +818,7 @@ export default function Knowledge() {
                       上传文档
                     </Button>
                     <Button icon={<FolderOpenOutlined />} onClick={openPicker}>
-                      从文件管理入库
+                      从文件存储入库
                     </Button>
                   </Space>
                 )}
@@ -873,7 +867,7 @@ export default function Knowledge() {
           {current ? (
             <Flex vertical gap={12}>
               <Space size={8} wrap>
-                <Typography.Text type="secondary">作者 {current.ownerName || current.owner}</Typography.Text>
+                <Typography.Text type="secondary">作者 {resolveDisplayName(current.owner, peopleMap, current.ownerName)}</Typography.Text>
                 <Typography.Text type="secondary">更新 {formatTime(current.updatedAt)}</Typography.Text>
                 <Typography.Text type="secondary">正文 {formatChars((current.body ?? current.excerpt ?? '').length)}</Typography.Text>
                 {current.roles.length ? (
@@ -897,7 +891,7 @@ export default function Knowledge() {
                       )
                     }
                   >
-                    在文件管理中打开
+                    在文件存储中打开
                   </Button>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     源文件改动后重新入库会覆盖这条记录，不会产生重复条目。
@@ -989,7 +983,7 @@ export default function Knowledge() {
                   上传文档
                 </Button>
                 <Button icon={<FolderOpenOutlined />} onClick={openPicker}>
-                  从文件管理入库
+                  从文件存储入库
                 </Button>
                 <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                   新建文档
@@ -1176,7 +1170,7 @@ export default function Knowledge() {
 
       <Modal
         open={pickerOpen}
-        title="从文件管理入库"
+        title="从文件存储入库"
         width={860}
         okText={`入库${picked.length ? `（${picked.length}）` : ''}`}
         cancelText="取消"
@@ -1380,7 +1374,7 @@ export default function Knowledge() {
             <Space size={8} wrap>
               <VisibilityTag value={viewDoc.data.item.visibility} />
               <Typography.Text type="secondary">
-                {viewDoc.data.item.ownerName || viewDoc.data.item.owner} · 更新{' '}
+                {resolveDisplayName(viewDoc.data.item.owner, peopleMap, viewDoc.data.item.ownerName)} · 更新{' '}
                 {formatTime(viewDoc.data.item.updatedAt)}
               </Typography.Text>
             </Space>

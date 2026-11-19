@@ -4,6 +4,7 @@ import {
   BellOutlined,
   BookOutlined,
   CloudServerOutlined,
+  CompassOutlined,
   DashboardOutlined,
   FolderOpenOutlined,
   HomeOutlined,
@@ -20,46 +21,19 @@ import { Avatar, Breadcrumb, Button, ColorPicker, Descriptions, Drawer, Dropdown
 import { api, loginUrl } from '../services/api';
 import { useAuth } from './AuthContext';
 import { PRIMARY_PRESETS, useThemeMode } from '../theme/ThemeContext';
-import { NAV_GROUPS, visibleNavItems } from './navigation';
+import { navBreadcrumb, resolveNavPath, sidebarSections, subKeyOfPath } from './navigation';
 import CommandPalette from '../components/CommandPalette';
 import AnnouncementsPanel from '../components/AnnouncementsPanel';
 import HelpOnboarding from '../components/HelpOnboarding';
+import OnboardingTour from '../components/OnboardingTour';
+import { requestTour } from '../components/onboardingState';
+import ForcePasswordChange from '../components/ForcePasswordChange';
+import { safeExternalUrl } from '../utils/safeNavigate';
+
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
-/** 面包屑标签：模块级常量，避免每次渲染重建对象。 */
-const PAGE_LABELS: Record<string, string> = {
-  '/': '首页',
-  '/tools': '科研工具',
-  '/drawio': '科研工具 · 流程图',
-  '/drawings': '我的图形',
-  '/colors': '配色搭配',
-  '/plot': '科研工具 · 绘图',
-  '/literature': '科研文献搜索',
-  '/lab': '实验室中心',
-  '/search': '统一搜索',
-  '/docparse': '文档解析',
-  '/translation': '文本翻译',
-  '/translate': '翻译中心',
-  '/weather': '天气',
-  '/workbench': '个人工作台',
-  '/agent': 'Agent 与知识库',
-  '/databases': '数据库速查',
-  '/genomes': '科研工具 · 基因组',
-  '/baserow': '多维表格',
-  '/files': '文件共享',
-  '/knowledge': '知识库',
-  '/start': '起始页',
-  '/bioinfo': '生信实训',
-  '/snapotter': '文件工坊',
-  '/network': '访问与诊断',
-  '/help': '帮助中心',
-  '/admin/status': '服务状态',
-  '/admin/users': '用户和权限',
-  '/admin/settings': '配置与日志',
-  '/admin/backups': '备份与恢复',
-};
 
 /**
  * 顶栏搜索：受控输入 + 提交跳转。
@@ -91,12 +65,14 @@ export default function AppLayout() {
   // 默认折叠，仅保留图标栏；鼠标悬浮时以浮层展开显示文字，不挤压内容
   const [collapsed, setCollapsed] = useState(true);
   const [siderHover, setSiderHover] = useState(false);
+  /** 实际呈现形态：折叠且没在悬浮 → 只剩图标；否则是展开列表。 */
+  const siderCollapsed = collapsed && !siderHover;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { me, isAdmin, loading } = useAuth();
+  const { me, isAdmin, isTeacher, loading, mustChangePassword, refetch: refetchMe } = useAuth();
   const { resolved, setMode, primary, setPrimary, resetPrimary } = useThemeMode();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.lg;
@@ -120,43 +96,57 @@ export default function AppLayout() {
 
   const menuItems = useMemo(() => {
     // 侧栏直接由 navigation.tsx 注册表生成，避免菜单、面包屑、命令面板各写一份。
-    const entries = visibleNavItems(isAdmin).filter((it) => !it.noCommand);
-    return NAV_GROUPS.filter((g) => !g.adminOnly || isAdmin).map((g) => ({
-      key: g.key,
+    // 高频页面平铺，低频页面进子菜单：折叠态只留十几个入口，一眼能数完。
+    return sidebarSections(isAdmin, isTeacher).map((group) => ({
+      key: group.key,
       type: 'group' as const,
-      label: g.label,
-      children: entries
-        .filter((it) => it.group === g.key)
-        .map((it) => ({ key: it.path, icon: it.icon, label: <Link to={it.path}>{it.label}</Link> })),
+      label: group.label,
+      children: (group.children ?? []).map((entry) =>
+        entry.children
+          ? {
+              key: entry.key,
+              icon: entry.icon,
+              label: entry.label,
+              children: entry.children.map((child) => ({
+                key: child.key,
+                icon: child.icon,
+                label: <Link to={child.key}>{child.label}</Link>,
+              })),
+            }
+          : {
+              key: entry.key,
+              icon: entry.icon,
+              label: <Link to={entry.key}>{entry.label}</Link>,
+            },
+      ),
     }));
-  }, [isAdmin]);
+  }, [isAdmin, isTeacher]);
 
   const goSearch = useCallback(
     (q: string) => navigate(`/search?q=${encodeURIComponent(q)}`),
     [navigate],
   );
 
-  const selectedKey = useMemo(() => {
-    const path = location.pathname;
-    if (path === '/') return '/';
-    if (path.startsWith('/knowledge')) return '/agent';
-    if (path.startsWith('/docparse')) return '/agent';
-    if (path === '/tools') return '/tools';
-    if (path.startsWith('/drawio') || path.startsWith('/drawings')) return '/tools';
-    if (path.startsWith('/translation')) return '/translate';
-    if (path === '/network') return '/help';
-    if (path === '/plot' || path === '/genomes') return '/tools';
-    if (path.startsWith('/admin/users')) return '/admin/users';
-    if (path.startsWith('/admin/settings')) return '/admin/settings';
-    if (path.startsWith('/admin/backups')) return '/admin/backups';
-    if (path.startsWith('/admin')) return '/admin/status';
-    return path;
+  // 高亮项由导航注册表派生：手工映射一份会与注册表漂移（曾经把
+  // /docparse 指向 /agent、/drawings 指向 /tools，结果进页面高亮的是别的菜单项）。
+  const selectedKey = useMemo(() => resolveNavPath(location.pathname), [location.pathname]);
+
+  // 子菜单默认收起；当前页在某个子菜单里时自动展开它，
+  // 否则「课题资料」这种藏得深的页面在侧栏里看不到自己被选中了。
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
+  useEffect(() => {
+    const sub = subKeyOfPath(location.pathname);
+    if (!sub) return;
+    setOpenKeys((prev) => (prev.includes(sub) ? prev : [...prev, sub]));
   }, [location.pathname]);
 
+  // 面包屑同样取自注册表；多级路径（/admin/users）拼出可读层级。
   const breadcrumbItems = useMemo(
     () => [
       { title: <Link to="/">D509 工作台</Link> },
-      { title: PAGE_LABELS[location.pathname] ?? location.pathname.replace('/', '') },
+      ...navBreadcrumb(location.pathname).map((c) =>
+        c.path === location.pathname ? { title: c.label } : { title: <Link to={c.path}>{c.label}</Link> },
+      ),
     ],
     [location.pathname],
   );
@@ -176,6 +166,8 @@ export default function AppLayout() {
       { key: 'kb', icon: <BookOutlined />, label: <Link to="/agent?mode=kb">知识库问答</Link> },
       { key: 'workbench', icon: <DashboardOutlined />, label: <Link to="/workbench">个人工作台</Link> },
       { key: 'help', icon: <QuestionCircleOutlined />, label: <Link to="/help">帮助中心</Link> },
+      // 引导的「重看」入口：移动端顶栏按钮被隐藏，头像菜单是唯一稳定入口
+      { key: 'tour', icon: <CompassOutlined />, label: '新手引导' },
       ...(isAdmin
         ? [{ key: 'settings', icon: <SettingOutlined />, label: <Link to="/admin/settings">系统设置</Link> }]
         : []),
@@ -184,16 +176,32 @@ export default function AppLayout() {
     ],
     onClick: async ({ key }: { key: string }) => {
       if (key === 'profile') setProfileOpen(true);
+      if (key === 'tour') requestTour();
       if (key === 'cmdk') setCmdkOpen(true);
       if (key === 'start') navigate('/start');
       if (key === 'help') navigate('/help');
       if (key === 'theme') setMode(resolved === 'dark' ? 'light' : 'dark');
       if (key === 'logout') {
+        // 登出后要跳到 IdP 的登出地址；该地址来自服务端响应，
+        // 但仍按"只允许 http(s) 且必须是本站或已配置的 Casdoor 主机"校验，
+        // 避免响应被篡改时把用户带去钓鱼站点。
+        const fallback = '/api/auth/logout-redirect';
+        let target = fallback;
         try {
           const res = await api.logout();
-          window.location.href = res.logoutUrl || '/api/auth/logout-redirect';
+          target = safeExternalUrl(res.logoutUrl, fallback);
         } catch {
-          window.location.href = '/api/auth/logout-redirect';
+          target = fallback;
+        }
+        // 只允许站内相对路径或 http(s) 绝对地址：
+        // target 已在 safeExternalUrl 里校验过，这里再显式判一次，
+        // 让"跳转目标是受控的"在赋值现场就能看出来。
+        if (target.startsWith('/') && !target.startsWith('//')) {
+          window.location.replace(target);
+        } else if (/^https?:\/\//i.test(target)) {
+          window.location.replace(target);
+        } else {
+          window.location.replace(fallback);
         }
       }
     },
@@ -220,6 +228,9 @@ export default function AppLayout() {
         selectedKeys={[selectedKey]}
         items={menuItems}
         style={{ borderInlineEnd: 'none' }}
+        // 侧栏悬浮展开时也算「展开态」，否则当前页所属子菜单不会自动展开。
+        openKeys={siderCollapsed ? undefined : openKeys}
+        onOpenChange={(keys) => setOpenKeys(keys as string[])}
         onClick={() => isMobile && setMobileOpen(false)}
       />
     </div>
@@ -235,6 +246,7 @@ export default function AppLayout() {
   const desktopSider = (
     <div
       className="d509-sider-shell"
+      data-tour="sider"
       style={{ width: collapsed ? 68 : 232, flex: `0 0 ${collapsed ? 68 : 232}px` }}
       onMouseEnter={() => setSiderHover(true)}
       onMouseLeave={() => setSiderHover(false)}
@@ -243,7 +255,7 @@ export default function AppLayout() {
         theme={resolved === 'dark' ? 'dark' : 'light'}
         width={232}
         collapsedWidth={68}
-        collapsed={collapsed && !siderHover}
+        collapsed={siderCollapsed}
         trigger={null}
         style={{
           borderRight: '1px solid var(--ant-color-border-secondary, #eef0f4)',
@@ -290,16 +302,10 @@ export default function AppLayout() {
           />
         )}
 
+        {/* 页头只保留品牌图形：文字块（工作台名 + 副标题）在宽屏占用三段高度，
+            使左侧导航与搜索框基线上下错位；页面标题已由 Breadcrumb 承担。 */}
         <Link to="/" className="d509-brand" aria-label="D509 工作台首页">
           <img className="d509-logo d509-logo-img" src="/logo.svg" alt="" width={32} height={32} decoding="async" />
-          {!isMobile && (
-            <div className="d509-brand-text">
-              <div className="d509-brand-name">
-                D509 工作台<span className="d509-brand-dot" aria-hidden="true" />
-              </div>
-              <div className="d509-brand-sub">实验室一体化服务</div>
-            </div>
-          )}
         </Link>
 
         {!isMobile && (
@@ -309,11 +315,11 @@ export default function AppLayout() {
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           {!isMobile && (
             <Flex gap={8} align="center" style={{ width: '100%', maxWidth: 460 }}>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1 }} data-tour="search">
                 <HeaderSearch onSearch={goSearch} />
               </div>
               <Tooltip title="命令面板（⌘K）">
-                <Button icon={<ThunderboltOutlined />} onClick={() => setCmdkOpen(true)} />
+                <Button icon={<ThunderboltOutlined />} data-tour="cmdk" onClick={() => setCmdkOpen(true)} />
               </Tooltip>
             </Flex>
           )}
@@ -323,13 +329,18 @@ export default function AppLayout() {
           {!isMobile && (
             <>
               <Tooltip title="命令面板">
-                <Button type="text" icon={<ThunderboltOutlined />} onClick={() => setCmdkOpen(true)} />
+                <Button type="text" icon={<ThunderboltOutlined />} data-tour="cmdk" onClick={() => setCmdkOpen(true)} />
               </Tooltip>
               <Tooltip title="浏览器主页">
                 <Button type="text" icon={<HomeOutlined />} onClick={() => navigate('/start')} />
               </Tooltip>
               <Tooltip title="帮助中心">
-                <Button type="text" icon={<QuestionCircleOutlined />} onClick={() => navigate('/help')} />
+                <Button
+                  type="text"
+                  icon={<QuestionCircleOutlined />}
+                  data-tour="help"
+                  onClick={() => navigate('/help')}
+                />
               </Tooltip>
             </>
           )}
@@ -410,6 +421,9 @@ export default function AppLayout() {
         </Content>
       </Layout>
 
+      {/* 初始口令未改：全站不可关闭的改密框（服务端同时用 428 挡住其它接口） */}
+      <ForcePasswordChange mustChange={mustChangePassword} onChanged={refetchMe} />
+
       <Modal
         open={profileOpen}
         onCancel={() => setProfileOpen(false)}
@@ -443,7 +457,9 @@ export default function AppLayout() {
       </Modal>
 
       <CommandPalette open={cmdkOpen} onClose={() => setCmdkOpen(false)} />
-      <HelpOnboarding />
+      {/* 强制改密期间不再弹新手引导：两个弹窗叠在一起只会挡住改密框 */}
+      {mustChangePassword ? null : <HelpOnboarding />}
+      {mustChangePassword ? null : <OnboardingTour />}
     </Layout>
   );
 }

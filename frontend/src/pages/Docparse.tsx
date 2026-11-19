@@ -30,13 +30,8 @@ import { api } from '../services/api';
 import { errText } from '../utils/err';
 import SaveKnowledgeModal from '../components/SaveKnowledgeModal';
 
+import { formatSize } from '../utils/format';
 const ACCEPT = '.pdf,.docx,.txt,.md,.csv,.xlsx,.pptx';
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
 
 export default function Docparse() {
   const { message } = App.useApp();
@@ -271,7 +266,7 @@ export default function Docparse() {
               <p className="ant-upload-text">点击或拖拽文件到此处上传，支持 PDF / Word / Markdown / 文本 / 表格</p>
               <p className="ant-upload-hint">
                 支持 PDF、Word（.docx）、Markdown、纯文本、CSV / Excel、PowerPoint 单文件解析
-                {maxBytes > 0 ? `，单个文件不超过 ${formatBytes(maxBytes)}` : ''}
+                {maxBytes > 0 ? `，单个文件不超过 ${formatSize(maxBytes)}` : ''}
               </p>
             </Upload.Dragger>
 
@@ -281,14 +276,14 @@ export default function Docparse() {
                   <Tag color="blue" variant="filled">
                     {file.name}
                   </Tag>
-                  <Tag>{formatBytes(file.size)}</Tag>
+                  <Tag>{formatSize(file.size)}</Tag>
                 </Space>
                 {oversized && (
                   <Alert
                     type="error"
                     showIcon
-                    title={`文件超过解析上限（${formatBytes(maxBytes)}）`}
-                    description={`当前文件 ${formatBytes(file.size)}，请压缩或拆分后再试。`}
+                    title={`文件超过解析上限（${formatSize(maxBytes)}）`}
+                    description={`当前文件 ${formatSize(file.size)}，请压缩或拆分后再试。`}
                   />
                 )}
                 <Flex gap={8}>

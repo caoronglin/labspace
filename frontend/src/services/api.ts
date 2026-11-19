@@ -29,7 +29,13 @@ export interface SearchHit {
   content: string;
   engine: string;
   category?: string;
-  kind?: 'web' | 'local';
+  kind?: 'web' | 'local' | 'paper';
+  /** 文献类命中的实际数据源（openalex / semanticscholar / crossref / arxiv）。 */
+  hitSource?: string;
+  doi?: string;
+  authors?: string[];
+  year?: number | null;
+  venue?: string;
   path?: string;
   /** 仅知识库命中：条目自己的分类与更新时间。 */
   docCategory?: string;
@@ -49,6 +55,8 @@ export interface SearchResponse {
   localTotal?: number;
   webTotal?: number;
   hasMore?: boolean;
+  /** 降级的检索类别（例如文献源全挂时的 papers）。 */
+  degraded?: string[];
 }
 
 export interface KnowledgeDoc {
@@ -65,7 +73,7 @@ export interface KnowledgeDoc {
   visibility: 'private' | 'roles' | 'public';
   roles: string[];
   source: string;
-  /** 从文件管理入库时记录的原始位置，用于回链。 */
+  /** 从文件存储入库时记录的原始位置，用于回链。 */
   fileSource: string;
   filePath: string;
   fileBytes: number;
@@ -177,6 +185,58 @@ export interface DatabaseHit {
   type: string;
 }
 
+/** 每日论文条目（后端 /api/daily-papers 返回）。 */
+/** 一条每日论文订阅。 */
+export interface DailySub {
+  topic: string;
+  limit: number;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastRun?: string;
+  lastCount?: number;
+  lastError?: string;
+}
+
+export interface DailyPaper {
+  title: string;
+  doi: string;
+  authors: string[];
+  venue: string;
+  year?: number | null;
+  abstract: string;
+  snippet: string;
+  url: string;
+  pdfUrl: string;
+  citations?: number | null;
+  /** 文献源标识：openalex / semanticscholar / crossref / arxiv。 */
+  source: string;
+  score?: number | null;
+  /** 后端若附了 AI 摘要则渲染，没有就不渲染整块。 */
+  aiSummary?: string;
+}
+
+/** 每个文献源的一轮抓取结果（全源失败时用来说明原因）。 */
+export interface DailyPaperAttempt {
+  source: string;
+  status: string;
+}
+
+export interface DailyPapersResponse {
+  day: string;
+  topic: string;
+  /** 本批条目的来源标签：单一源给源名，混合给 mixed，全败给 none。 */
+  source: string;
+  sources?: string[];
+  count: number;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  papers: DailyPaper[];
+  attempts?: DailyPaperAttempt[];
+  cached?: boolean;
+}
+
 export interface CorpusItem {
   type: 'service' | 'database' | 'command' | 'tool' | 'page' | 'snapotter';
   id: string;
@@ -240,12 +300,77 @@ export interface WeComConfig {
   lastDigestDate: string;
 }
 
+/**
+ * 管理端概览（/api/admin/info）。
+ *
+ * 之前这里写的是 ``Record<string, any>``：调用方拿到的每个字段都是 any，
+ * 拼错字段名（roles.admin → role.admin）不会有任何提示。这里按后端实际返回
+ * 的形状声明，未列出的扩展字段保留在 index signature 里（unknown，用前需收窄）。
+ */
+export interface AdminInfo {
+  host?: { platform?: string; python?: string; hostname?: string };
+  disk: { total: number; used: number; free: number; mount?: string };
+  containers: string[];
+  casdoor: { issuer: string; clientId: string };
+  roles: { admin: string[]; teacher: string[] };
+  [key: string]: unknown;
+}
+
 export interface BackupSnapshot {
   id: string;
   time: string;
   hostname?: string;
   tags: string[];
   paths: string[];
+}
+
+/** 人员目录条目：只有 id / 用户名 / 姓名，不含邮箱与用户组。 */
+export interface PeopleEntry {
+  id: string;
+  name: string;
+  displayName: string;
+}
+
+/** 一个后台任务（systemd 定时器 / 一次性任务 / 常驻服务）。 */
+export interface AdminTask {
+  unit: string;
+  label: string;
+  kind: 'timer' | 'oneshot' | 'service';
+  /** systemd ActiveState：active / inactive / failed / activating … */
+  active: string;
+  /** systemd Result（失败时为 failed）。 */
+  result: string;
+  sub: string;
+  enabled: string;
+  /** 上次运行时间（ISO，可能为空）。 */
+  last: string;
+  /** 下次运行时间（仅定时器有）。 */
+  next: string;
+  activates: string;
+  /** 是否允许「立即执行」（常驻服务为 false）。 */
+  triggerable: boolean;
+}
+
+export interface AdminTaskList {
+  ok: boolean;
+  units: AdminTask[];
+  failed: number;
+}
+
+/** 异地归档（Git LFS）状态。后端只读状态文件，不接触口令与 git 凭据。 */
+export interface BackupGitStatus {
+  available: boolean;
+  detail?: string;
+  outcome?: string;
+  /** 最近一次是否真的推送成功。 */
+  pushed?: boolean;
+  detailMsg?: string;
+  keep?: number;
+  branch?: string;
+  remote?: string;
+  generatedAt?: string;
+  totalBytes?: number;
+  archives?: { name: string; size: number; time: string }[];
 }
 
 export interface BackupStatus {
@@ -268,6 +393,8 @@ export interface FileSource {
   writable?: boolean;
   /** 可写目录（源内相对路径）；空字符串表示整个源可写。 */
   writePaths?: string[];
+  /** 可**新建文件夹**的目录（与 writePaths 分开：学生只准上传、不准改目录结构）。 */
+  mkdirPaths?: string[];
 }
 
 export interface FileGrant {
@@ -321,8 +448,31 @@ export interface FileEntry {
   name: string;
   dir: boolean;
   size: number;
+  /** 目录子树内所有文件的字节数之和；文件条目没有这个字段（用 size）。 */
+  dirSize?: number;
   modified: string;
   created: string;
+}
+
+/** 文本文件正文（Go 核心 /v1/files/{id}/content，经 nginx 同源转发）。 */
+export interface FileContent {
+  text: string;
+  /** 版本标识：保存时回传，服务端据此判断内容是否已被他人改动。 */
+  etag: string;
+}
+
+/**
+ * 乐观并发冲突（HTTP 409）：文件内容已被他人修改。
+ *
+ * `etag` 是服务端当前的版本号，带它再存一次即"覆盖保存"。
+ */
+export class FileContentConflictError extends Error {
+  readonly etag?: string;
+  constructor(message: string, etag?: string) {
+    super(message);
+    this.name = 'FileContentConflictError';
+    this.etag = etag;
+  }
 }
 
 /** Office 编辑：DOCX 段落/表格、XLSX 单元格窗口、PPTX 文本框/备注。 */
@@ -577,9 +727,11 @@ export type FileSortKey = 'name' | 'size' | 'modified' | 'created' | 'path';
 export interface PersonalShare {
   path: string;
   recipients: string[];
+  /** 是否授予写权限（可改名/移动/上传，不含删除）；默认 false。 */
+  writable: boolean;
 }
 
-/** 别人共享给我的个人文件（只读）。 */
+/** 别人共享给我的个人文件；writable 为真时才可以编辑/移动。 */
 export interface SharedEntry {
   id: string;
   owner: string;
@@ -589,6 +741,8 @@ export interface SharedEntry {
   size: number;
   modified: string;
   created: string;
+  /** 对方是否授予了写权限（可改名/移动/上传，不含删除）。 */
+  writable: boolean;
 }
 
 /** 回收站条目：原路径与删除现场，保留期内可原地恢复。 */
@@ -714,11 +868,18 @@ export interface Me {
   authenticated: boolean;
   id?: string;
   email?: string;
+  /** 会话里的名字（历史账号可能是账号名）。 */
   name?: string;
+  /** 服务端从 Casdoor 解析的**中文姓名**，界面应优先用它。 */
+  displayName?: string;
   roles?: string[];
   isAdmin?: boolean;
   isTeacher?: boolean;
+  /** 系统管理员（lab-superadmin）：在平台管理员之上，能执行平台级运维操作。 */
+  isSuperAdmin?: boolean;
   canDispatch?: boolean;
+  /** 初始口令还没改：前端必须弹不可关闭的改密框。 */
+  mustChangePassword?: boolean;
 }
 
 // ---------------- 个人工作台 ----------------
@@ -1231,6 +1392,17 @@ export interface LabopsInventoryItem {
   updated_at: string;
 }
 
+export interface LabopsPublishResult {
+  workspaceId: number;
+  workspaceName: string;
+  databaseId: number;
+  databaseName: string;
+  /** tables: [{ id, name, rows, inserted }] */
+  tables: { id: number; name: string; rows: number; inserted: number }[];
+  /** 本次是否新建了工作区/数据库/表 */
+  created: boolean;
+}
+
 export interface LabopsTx {
   id: number;
   delta: number;
@@ -1287,8 +1459,34 @@ export interface LabopsLiterature {
   tags: string[];
   notes: string;
   status: string;
+  library_id?: string;
+  folder_id?: string;
   score?: number;
   mode?: string;
+  updated_at: string;
+}
+
+/** 文献库：一个人可以有多个库，默认库不可删除。 */
+export interface LabopsLibrary {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  is_default: boolean;
+  item_count: number;
+  folder_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 文献库里的文件夹，parent_id 为空表示库根目录。 */
+export interface LabopsLibraryFolder {
+  id: string;
+  library_id: string;
+  parent_id: string;
+  name: string;
+  item_count: number;
+  created_at: string;
   updated_at: string;
 }
 
@@ -1341,6 +1539,22 @@ export class SessionExpiredError extends Error {
   }
 }
 
+/**
+ * 会话过期时跳登录页。
+ *
+ * 这里是唯一一处跳转：目标固定为同源 ``/api/auth/login``，回跳参数只接受
+ * 站内相对路径（以单个 ``/`` 开头，排除 `//host` 这类协议相对地址）。
+ * 用 URL 构造而不是字符串拼接，origin 由浏览器给出，不可能被外部值改写。
+ */
+export function redirectToLogin(): void {
+  const back = `${window.location.pathname}${window.location.search}`;
+  const target = new URL('/api/auth/login', window.location.origin);
+  if (back.startsWith('/') && !back.startsWith('//')) {
+    target.searchParams.set('back', back);
+  }
+  window.location.assign(target.toString());
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const csrf = readCookie('labspace_csrf');
   const isForm = typeof FormData !== 'undefined' && init.body instanceof FormData;
@@ -1351,10 +1565,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   };
   const res = await fetch(path, { credentials: 'include', ...init, headers });
   if (res.status === 401 && !path.startsWith('/api/me')) {
-    // 会话过期：回登录页并带上原路径
-    const back = encodeURIComponent(window.location.pathname + window.location.search);
+    // 会话过期：回登录页并带上原路径（跳转逻辑集中在 redirectToLogin）
     if (!window.location.pathname.startsWith('/login')) {
-      window.location.href = `/api/auth/login?back=${back}`;
+      redirectToLogin();
     }
     throw new SessionExpiredError();
   }
@@ -1377,9 +1590,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 async function requestBlob(path: string): Promise<Blob> {
   const res = await fetch(path, { credentials: 'include' });
   if (res.status === 401) {
-    const back = encodeURIComponent(window.location.pathname + window.location.search);
     if (!window.location.pathname.startsWith('/login')) {
-      window.location.href = `/api/auth/login?back=${back}`;
+      redirectToLogin();
     }
     throw new SessionExpiredError();
   }
@@ -1396,9 +1608,93 @@ async function requestBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/**
+ * 保存文本文件正文。
+ *
+ * 单独写一个请求函数而不是复用 request()：409（内容已被他人修改）需要单独识别，
+ * 并把服务端当前的 etag 带回去，前端才能提示用户"重新加载"还是"覆盖保存"。
+ */
+async function requestFileContentPut(
+  path: string,
+  body: { text: string; etag: string },
+): Promise<void> {
+  const csrf = readCookie('labspace_csrf');
+  const res = await fetch(path, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      ...JSON_HEADERS,
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    if (!window.location.pathname.startsWith('/login')) {
+      redirectToLogin();
+    }
+    throw new SessionExpiredError();
+  }
+  if (res.status === 409) {
+    let detail = '内容已被他人修改';
+    let etag: string | undefined;
+    try {
+      const payload = await res.json();
+      detail = payload?.error ?? payload?.detail ?? detail;
+      etag = payload?.etag ? String(payload.etag) : undefined;
+    } catch {
+      /* ignore */
+    }
+    throw new FileContentConflictError(detail, etag);
+  }
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try {
+      const payload = await res.json();
+      detail = payload?.detail ?? payload?.error ?? payload?.message ?? detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+}
+
+/** 组会汇报：按自然周（yearWeek）归集的文件。 */
+export interface MeetingWeekGrant {
+  userId: string;
+  displayName: string;
+}
+
+export interface MeetingWeek {
+  /** 形如 2026-W07 的自然周标识。 */
+  yearWeek: string;
+  files: string[];
+  size: number;
+  /** 该周有权限查看的成员。 */
+  grants: MeetingWeekGrant[];
+  /** 是否已压缩归档。 */
+  compressed: boolean;
+}
+
+export interface MeetingWeekFiles {
+  yearWeek: string;
+  files: string[];
+  size: number;
+}
+
+/** 课题资料目录：管理员视角的每位成员资料夹。 */
+export interface ResearchFolder {
+  name: string;
+  folder: string;
+  joinDate: string;
+  displayName: string;
+  size: number;
+}
+
 export const api = {
   me: () => request<Me>('/api/me'),
-  saying: () => request<{ text: string; date: string; cached: boolean }>('/api/saying'),
+  /** 每日诗词（今日诗词 jinrishici.com）：诗句 + 作者 + 出处，按自然日缓存。 */
+  saying: () =>
+    request<{ text: string; author?: string; origin?: string; date: string; cached: boolean }>('/api/saying'),
   services: () => request<{ services: ServiceItem[] }>('/api/services'),
   servicesHealth: () => request<{ services: ServiceItem[] }>('/api/services/health'),
   serviceHealth: (id: string) => request<{ status: string; latency_ms?: number; detail?: string }>(`/api/services/${id}/health`),
@@ -1448,6 +1744,8 @@ export const api = {
       home?: string;
       sharedWith?: SharedEntry[];
       shares?: PersonalShare[];
+      /** 可读目录（源相对路径，含 "" 源根），供移动目标选择器使用。 */
+      dirs?: string[];
     }>(`/api/files?source=${encodeURIComponent(source)}&sort=${sort}&order=${order}`),
   fileShares: () =>
     request<{
@@ -1456,10 +1754,10 @@ export const api = {
       sharedWith: SharedEntry[];
       recipients: string[];
     }>('/api/files/shares'),
-  fileShare: (path: string, recipients: string[]) =>
+  fileShare: (path: string, recipients: string[], writable = false) =>
     request<{ ok: boolean; share: PersonalShare }>('/api/files/shares', {
       method: 'POST',
-      body: JSON.stringify({ path, recipients }),
+      body: JSON.stringify({ path, recipients, writable }),
     }),
   fileDetail: (id: string) => request<FileEntry>(`/api/files/${encodeURIComponent(id)}`),
   filePreview: (id: string) => request<FilePreview>(`/api/files/${encodeURIComponent(id)}/preview`),
@@ -1481,8 +1779,35 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ id, name }),
     }),
+  /**
+   * 把文件/文件夹移动到同一存储源内的另一个目录。
+   * 服务端逐条鉴权：需要源条目的 modify 与目标目录的 create；
+   * 返回里成功与失败分开，便于批量移动后逐条提示。
+   */
+  /** 把文件/目录复制到同一存储源的目标目录（服务端递归复制、不覆盖同名）。 */
+  fileCopy: (id: string, target: string, name?: string) =>
+    request<{ entry: FileEntry }>('/api/files/copy', {
+      method: 'POST',
+      body: JSON.stringify({ id, target, name: name ?? '' }),
+    }),
+  fileMove: (ids: string[], target: string) =>
+    request<{ moved: FileEntry[]; failed: { id: string; error: string }[] }>('/api/files/move', {
+      method: 'POST',
+      body: JSON.stringify({ entries: ids.map((id) => ({ id })), target }),
+    }),
   fileDelete: (id: string) =>
     request<{ ok: boolean; trash: FileTrashItem }>(`/api/files/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /**
+   * 直接删除（不进回收站，不可恢复）。
+   *
+   * 与 fileDelete 的区别：普通删除进回收站保留 7 天可恢复；
+   * 这里立刻从磁盘抹掉，用于"确定不要了"的场景（误传大文件、涉密材料、批量清理）。
+   */
+  fileDestroy: (id: string) =>
+    request<{ ok: boolean; destroyed: { id: string; path: string; size: number } }>(
+      `/api/files/${encodeURIComponent(id)}?permanent=1`,
+      { method: 'DELETE' },
+    ),
   fileTrash: () =>
     request<{
       items: FileTrashItem[];
@@ -1517,6 +1842,35 @@ export const api = {
     if (!res.ok) throw new Error(`读取文件失败（${res.status}）`);
     return res.text();
   },
+  /** 读取文本文件正文（带 etag，供在线编辑做乐观并发）。 */
+  fileContent: (id: string) =>
+    request<FileContent>(`/api/files/${encodeURIComponent(id)}/content`),
+  /** 保存文本文件正文；etag 与服务端不一致时抛 FileContentConflictError（409）。 */
+  fileSaveContent: (id: string, text: string, etag: string) =>
+    requestFileContentPut(`/api/files/${encodeURIComponent(id)}/content`, { text, etag }),
+
+  // ---- 组会汇报（按自然周归集） ----
+  /** 组会周列表：每个自然周的文件、体积、可见成员。 */
+  meetingWeeks: () => request<{ weeks: MeetingWeek[] }>('/api/meetings/weeks'),
+  /** 某个自然周内的文件明细。 */
+  meetingWeekFiles: (yearWeek: string) =>
+    request<MeetingWeekFiles>(`/api/meetings/weeks/${encodeURIComponent(yearWeek)}/files`),
+  /** 上传组会材料；yearWeek 省略时由服务端归档到当前周。 */
+  meetingUpload: (file: File, yearWeek?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (yearWeek) fd.append('yearWeek', yearWeek);
+    return request<{ ok?: boolean; yearWeek?: string; files?: string[] }>('/api/meetings/upload', {
+      method: 'POST',
+      body: fd,
+    });
+  },
+
+  // ---- 课题资料（个人资料目录） ----
+  /** 管理员视角：所有成员的课题资料目录与加入时间。 */
+  adminResearchFolders: () => request<{ folders: ResearchFolder[] }>('/api/admin/research/folders'),
+  /** 当前用户自己的课题资料目录。 */
+  researchMine: () => request<{ folder: string; path: string }>('/api/research/mine'),
   officeContent: (id: string) =>
     request<OfficeContent>(`/api/office/files/${encodeURIComponent(id)}/content`),
   officeSave: (id: string, payload: OfficeSavePayload) =>
@@ -1734,6 +2088,36 @@ export const api = {
     request<{ query: string; count: number; items: CorpusItem[] }>(
       `/api/corpus?q=${encodeURIComponent(q)}&limit=${limit}`,
     ),
+  /** 每日论文列表：按人按天读取，topic 为空表示当天全部主题。 */
+  /** 每日论文订阅：每人每主题一条，开启后由每日维护自动抓取。 */
+  dailySubs: () =>
+    request<{ subscriptions: DailySub[] }>('/api/daily-papers/subscriptions'),
+  dailySubUpsert: (body: { topic: string; limit?: number; enabled?: boolean }) =>
+    request<{ ok: boolean; subscription: DailySub }>('/api/daily-papers/subscriptions', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  dailySubDelete: (topic: string) =>
+    request<{ ok: boolean; topic: string }>(
+      `/api/daily-papers/subscriptions/${encodeURIComponent(topic)}`,
+      { method: 'DELETE' },
+    ),
+  dailySubRun: () =>
+    request<{ ok: boolean; total: number; done: number; failed: number }>(
+      '/api/daily-papers/subscriptions/run',
+      { method: 'POST' },
+    ),
+  dailyPapers: (day: string, topic = '', page = 1, pageSize = 20) =>
+    request<DailyPapersResponse>(
+      `/api/daily-papers?day=${encodeURIComponent(day)}&topic=${encodeURIComponent(topic)}` +
+        `&page=${page}&page_size=${pageSize}`,
+    ),
+  /** 每日论文刷新：抓取某天某主题的新文献（topic 必填）。 */
+  dailyPapersRefresh: (body: { day?: string; topic: string }) =>
+    request<DailyPapersResponse>('/api/daily-papers/refresh', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   literature: (q: string, source = 'pubmed') =>
     request<Record<string, unknown>>(`/api/literature?q=${encodeURIComponent(q)}&source=${source}`),
 
@@ -1785,6 +2169,10 @@ export const api = {
     ),
   labopsLowStock: () => request<{ items: LabopsInventoryItem[]; count: number }>('/api/labops/inventory/low-count'),
 
+  /** 把本地库存发布到多维表格工作区（幂等；后端只读本地库存表）。 */
+  labopsPublishInventory: () =>
+    request<LabopsPublishResult>('/api/labops/inventory/publish', { method: 'POST' }),
+
   labopsPipelineMeta: () =>
     request<{
       catalog: LabopsPipeline[];
@@ -1809,15 +2197,20 @@ export const api = {
   labopsJobFileUrl: (id: string, path: string) =>
     `/api/labops/pipelines/jobs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`,
 
-  labopsLiterature: (q = '', status = '') =>
-    request<{ items: LabopsLiterature[] }>(
-      `/api/labops/literature?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`,
-    ),
+  labopsLiterature: (q = '', status = '', libraryId = '', folderId?: string) => {
+    const query = new URLSearchParams();
+    query.set('q', q);
+    query.set('status', status);
+    query.set('library_id', libraryId);
+    // folderId 传 '' 表示只看未分类；不传表示整个库都看
+    if (folderId !== undefined) query.set('folder_id', folderId);
+    return request<{ items: LabopsLiterature[] }>(`/api/labops/literature?${query.toString()}`);
+  },
   labopsLiteratureSearch: (q: string) =>
     request<{ items: LabopsLiterature[]; semantic: boolean; mode: string }>(
       `/api/labops/literature/search?q=${encodeURIComponent(q)}`,
     ),
-  labopsImportLiterature: (body: { doi?: string; title?: string; tags?: string[] }) =>
+  labopsImportLiterature: (body: { doi?: string; title?: string; tags?: string[]; library_id?: string; folder_id?: string }) =>
     request<{ id: string; duplicate: boolean }>('/api/labops/literature/import', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -1835,6 +2228,42 @@ export const api = {
     ),
   labopsLiteratureExportUrl: (ids: string[] = [], style = 'bibtex') =>
     `/api/labops/literature/export?style=${style}&ids=${encodeURIComponent(ids.join(','))}`,
+
+  labopsLibraries: () => request<{ items: LabopsLibrary[]; defaultId: string }>('/api/labops/libraries'),
+  labopsCreateLibrary: (body: { name: string; description?: string; color?: string }) =>
+    request<{ id: string }>('/api/labops/libraries', { method: 'POST', body: JSON.stringify(body) }),
+  labopsUpdateLibrary: (id: string, body: { name?: string; description?: string; color?: string }) =>
+    request<LabopsLibrary>(`/api/labops/libraries/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  labopsDeleteLibrary: (id: string, moveTo?: string) =>
+    request<{ ok: boolean; moved: number }>(
+      `/api/labops/libraries/${encodeURIComponent(id)}${moveTo ? `?move_to=${encodeURIComponent(moveTo)}` : ''}`,
+      { method: 'DELETE' },
+    ),
+  labopsLibraryFolders: (libraryId: string) =>
+    request<{ items: LabopsLibraryFolder[] }>(`/api/labops/libraries/${encodeURIComponent(libraryId)}/folders`),
+  labopsCreateLibraryFolder: (libraryId: string, body: { name: string; parent_id?: string }) =>
+    request<{ id: string }>(`/api/labops/libraries/${encodeURIComponent(libraryId)}/folders`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  labopsUpdateLibraryFolder: (folderId: string, body: { name?: string; parent_id?: string }) =>
+    request<LabopsLibraryFolder>(`/api/labops/folders/${encodeURIComponent(folderId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  labopsDeleteLibraryFolder: (folderId: string, moveTo?: string) =>
+    request<{ ok: boolean; moved: number }>(
+      `/api/labops/folders/${encodeURIComponent(folderId)}${moveTo ? `?move_to=${encodeURIComponent(moveTo)}` : ''}`,
+      { method: 'DELETE' },
+    ),
+  labopsMoveLiterature: (ids: string[], libraryId: string, folderId: string) =>
+    request<{ ok: boolean; moved: number }>('/api/labops/literature/move', {
+      method: 'POST',
+      body: JSON.stringify({ ids, libraryId, folderId }),
+    }),
 
   labopsResources: () => request<{ items: LabopsResource[] }>('/api/labops/resources'),
   labopsCreateResource: (body: Partial<LabopsResource>) =>
@@ -1879,9 +2308,44 @@ export const api = {
   exportDrawing: (id: string, content: string, name: string) =>
     request<{ path: string }>(`/api/drawings/${id}/export`, { method: 'POST', body: JSON.stringify({ content, name }) }),
   announcements: () => request<{ announcements: Announcement[] }>('/api/announcements'),
-  adminInfo: () => request<Record<string, any>>('/api/admin/info'),
+  /** 轻量人员目录：把用户名/账号 id 显示成姓名。 */
+  people: () => request<{ people: PeopleEntry[] }>('/api/people'),
+  /** 自助改密：必须校验旧口令；新口令 ≥10 位且不能与初始口令相同。 */
+  changeMyPassword: (oldPassword: string, newPassword: string) =>
+    request<{ ok: boolean }>('/api/me/password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+    }),
+  adminInfo: () => request<AdminInfo>('/api/admin/info'),
   adminHealth: () => request<{ services: any[] }>('/api/admin/health'),
   adminBackups: () => request<BackupStatus>('/api/admin/backups'),
+  /** 异地归档（Git LFS）状态：本地仓库之外的第二条腿。 */
+  adminBackupGit: () => request<BackupGitStatus>('/api/admin/backups/git'),
+  /** 后台任务列表（定时器 / 一次性任务 / 常驻服务的状态与下次运行时间）。 */
+  adminTasks: () => request<AdminTaskList>('/api/admin/tasks'),
+  /** 某个后台任务最近的日志行。 */
+  adminTaskLogs: (unit: string, lines = 60) =>
+    request<{ ok: boolean; unit: string; lines: string[] }>(
+      `/api/admin/tasks/${encodeURIComponent(unit)}/logs?lines=${lines}`,
+    ),
+  /** 立即执行一个（可触发的）后台任务；不等待跑完。 */
+  adminTaskRun: (unit: string) =>
+    request<{ ok: boolean; unit: string }>(
+      `/api/admin/tasks/${encodeURIComponent(unit)}/run`,
+      { method: 'POST' },
+    ),
+  /** 清除失败状态（systemctl reset-failed）。 */
+  adminTaskReset: (unit: string) =>
+    request<{ ok: boolean; unit: string }>(
+      `/api/admin/tasks/${encodeURIComponent(unit)}/reset`,
+      { method: 'POST' },
+    ),
+  /** 删除一个备份快照（不可撤销；服务端只接受 8–64 位十六进制 ID）。 */
+  adminBackupDelete: (snapshot: string) =>
+    request<{ ok: boolean; snapshot: string }>(
+      `/api/admin/backups/${encodeURIComponent(snapshot)}`,
+      { method: 'DELETE' },
+    ),
   wecomConfig: () => request<WeComConfig>('/api/admin/wecom'),
   updateWecom: (body: {
     enabled: boolean;
@@ -1899,7 +2363,7 @@ export const api = {
     email?: string;
     groups: string[];
     password: string;
-  }) => request<{ ok: boolean; account: AccountItem }>('/api/admin/accounts', { method: 'POST', body: JSON.stringify(body) }),
+  }) => request<{ ok: boolean; account: AccountItem; initialPassword?: string }>('/api/admin/accounts', { method: 'POST', body: JSON.stringify(body) }),
   updateAccount: (
     name: string,
     body: { newName?: string; displayName?: string; email?: string; groups?: string[]; isForbidden?: boolean },
@@ -1991,13 +2455,18 @@ export const api = {
   workbenchPlans: () => request<{ plans: WorkbenchPlan[] }>('/api/workbench/plans'),
   workbenchCreatePlan: (body: Partial<WorkbenchPlan>) =>
     request<{ plan: WorkbenchPlan }>('/api/workbench/plans', { method: 'POST', body: JSON.stringify(body) }),
+  /** 更新计划（PATCH /api/workbench/plans/{id}，后端已实现） */
+  workbenchUpdatePlan: (id: string, body: Partial<WorkbenchPlan>) =>
+    request<{ plan: WorkbenchPlan }>(`/api/workbench/plans/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  /** 删除计划（DELETE /api/workbench/plans/{id}，后端已实现） */
+  workbenchDeletePlan: (id: string) =>
+    request<{ ok: boolean }>(`/api/workbench/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   workbenchBriefs: () => request<{ briefs: WorkbenchBrief[] }>('/api/workbench/briefs'),
 
   // ---- 导师指派 ----
-  workbenchAssignments: () =>
-    request<{ incoming: WorkbenchAssignment[]; outgoing: WorkbenchAssignment[] }>(
-      '/api/workbench/assignments',
-    ),
   workbenchAssignmentPeople: () =>
     request<{ people: AssignmentPerson[] }>('/api/workbench/assignment-people'),
   workbenchMentorBindings: () => request<MentorBindings>('/api/workbench/mentor-bindings'),
@@ -2068,6 +2537,17 @@ export const api = {
     ),
   latexDocument: (id: string) =>
     request<{ document: LatexDocument }>(`/api/latex/documents/${encodeURIComponent(id)}`),
+  /** 把 .docx 转成 LaTeX 并建成新文稿；warnings 是转换器的如实提示（图片/公式等）。 */
+  latexImportDocx: (file: File, template = 'article') => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('template', template);
+    return request<{
+      document: LatexDocument;
+      warnings: string[];
+      stats: Record<string, number>;
+    }>('/api/latex/import-docx', { method: 'POST', body: fd });
+  },
   latexCreate: (body: {
     title: string;
     template: string;
@@ -2112,6 +2592,60 @@ export const api = {
     }),
   latexPdfUrl: (id: string, download = false) =>
     `/api/latex/documents/${encodeURIComponent(id)}/pdf${download ? '?download=1' : ''}`,
+  /** 单个模板（含源码）：新建文稿时「预览源码」用。 */
+  latexTemplate: (id: string) =>
+    request<{ template: LatexTemplate & { content: string } }>(
+      `/api/latex/templates/${encodeURIComponent(id)}`,
+    ),
+  latexReviews: (id: string) =>
+    request<{ reviews: LatexReview[] }>(`/api/latex/documents/${encodeURIComponent(id)}/reviews`),
+  latexCreateReview: (id: string, body: { lineFrom: number; lineTo: number; quote: string; comment: string }) =>
+    request<{ review: LatexReview }>(`/api/latex/documents/${encodeURIComponent(id)}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  latexUpdateReview: (id: string, reviewId: string, status: LatexReviewStatus) =>
+    request<{ review: LatexReview }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/reviews/${encodeURIComponent(reviewId)}`,
+      { method: 'PATCH', body: JSON.stringify({ status }) },
+    ),
+  latexDeleteReview: (id: string, reviewId: string) =>
+    request<{ ok: boolean }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/reviews/${encodeURIComponent(reviewId)}`,
+      { method: 'DELETE' },
+    ),
+  latexReviewReplies: (id: string, reviewId: string) =>
+    request<{ replies: LatexReviewReply[] }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/reviews/${encodeURIComponent(reviewId)}/replies`,
+    ),
+  latexAddReviewReply: (id: string, reviewId: string, content: string) =>
+    request<{ reply: LatexReviewReply }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/reviews/${encodeURIComponent(reviewId)}/replies`,
+      { method: 'POST', body: JSON.stringify({ content }) },
+    ),
+  latexVersions: (id: string) =>
+    request<{ versions: LatexVersion[] }>(`/api/latex/documents/${encodeURIComponent(id)}/versions`),
+  latexVersion: (id: string, versionId: number) =>
+    request<{ version: LatexVersion & { content: string } }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/versions/${versionId}`,
+    ),
+  /** 编译素材列表（不含二进制内容） */
+  latexAssets: (id: string) =>
+    request<{ assets: LatexAsset[] }>(`/api/latex/documents/${encodeURIComponent(id)}/assets`),
+  /** 上传编译素材：.cls / .sty / .bib / .bst / 图片等 */
+  latexUploadAsset: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request<{ asset: LatexAsset }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/assets`,
+      { method: 'POST', body: fd },
+    );
+  },
+  latexDeleteAsset: (id: string, assetId: string) =>
+    request<{ ok: boolean }>(
+      `/api/latex/documents/${encodeURIComponent(id)}/assets/${encodeURIComponent(assetId)}`,
+      { method: 'DELETE' },
+    ),
 
   // ---- Agent 助手 ----
   agentStatus: () => request<AgentStatus>('/api/agent/status'),
@@ -2298,24 +2832,298 @@ export interface BaserowMember {
   email: string;
   permissions: string;
 }
+/**
+ * Baserow 用户文件（附件）。
+ *
+ * `name` 是 user-files 的校验名（哈希串），写回文件字段时必须原样带上；
+ * `visible_name` 才是用户可读的原始文件名。
+ */
+export interface BaserowFile {
+  url: string;
+  name: string;
+  visible_name?: string;
+  size?: number;
+  mime?: string;
+}
 
-function baserowRowQuery(p: { page: number; size: number; search?: string; order_by?: string }): string {
+/** 视图（Baserow 的 view）：表格/画廊/看板/日历/表单都是视图的一种类型。 */
+export interface BaserowViewFilter {
+  id: number;
+  field: number;
+  type: string;
+  value: string;
+  group: number | null;
+}
+export interface BaserowViewSort {
+  id: number;
+  field: number;
+  order: 'ASC' | 'DESC';
+  type: string;
+}
+export interface BaserowViewFilterGroup {
+  id: number;
+  filter_type: 'AND' | 'OR';
+  parent_group: number | null;
+}
+export interface BaserowView {
+  id: number;
+  name: string;
+  type: string;
+  order: number;
+  filter_type: 'AND' | 'OR';
+  filters_disabled: boolean;
+  filters: BaserowViewFilter[];
+  sortings: BaserowViewSort[];
+  filter_groups: BaserowViewFilterGroup[];
+}
+/** 行评论（Baserow 的 row_comments；未开启该能力的部署会返回 402）。 */
+export interface BaserowRowComment {
+  id: number;
+  message: string;
+  first_name: string;
+  created_on: string;
+  updated_on: string;
+  edited: boolean;
+}
+/** 回收站条目。 */
+export interface BaserowTrashItem {
+  id: number;
+  trash_item_id: number;
+  trash_item_type: string;
+  parent_trash_item_id: number | null;
+  trashed_at: string;
+  name: string;
+  names: string[];
+  parent_name: string;
+  user_who_trashed: string;
+}
+/** 关联行（link_row）候选。 */
+export interface BaserowLinkRow {
+  id: number;
+  label: string;
+}
+/** 视图的字段选项（Baserow 的 grid/gallery/... view field options）。 */
+export interface BaserowViewFieldOption {
+  width?: number;
+  hidden?: boolean;
+  order?: number;
+  [key: string]: unknown;
+}
+
+/** 种子管理模板的字段描述。 */
+export interface BaserowSeedTemplateField {
+  id: number;
+  name: string;
+  type: string;
+  /** 后端标注的必填字段；缺失时前端按字段语义推断。 */
+  required?: boolean;
+}
+
+/** 种子管理模板：工作区 / 数据库 / 表 + 字段。 */
+export interface BaserowSeedTemplate {
+  workspaceId: number;
+  databaseId: number;
+  tableId: number;
+  fields: BaserowSeedTemplateField[];
+}
+
+function baserowRowQuery(p: {
+  page: number;
+  size: number;
+  search?: string;
+  order_by?: string;
+  view_id?: number | null;
+}): string {
   const sp = new URLSearchParams({ page: String(p.page), size: String(p.size) });
   if (p.search) sp.set('search', p.search);
   if (p.order_by) sp.set('order_by', p.order_by);
+  if (p.view_id) sp.set('view_id', String(p.view_id));
   return sp.toString();
 }
 
+/** 种子标签 OCR 结果：只用于预填表单，不自动入库。 */
+export type SeedOcrResult = {
+  ok: boolean;
+  reason?: string;
+  fields: Record<string, string>;
+  lines: string[];
+  text?: string;
+  matched?: number;
+};
+
 export const baserowApi = {
   overview: () => request<BaserowOverview>('/api/baserow/overview'),
+  /** 读取种子管理模板（幂等，模板不存在时返回 404）。 */
+  seedTemplate: () => request<BaserowSeedTemplate>('/api/baserow/templates/seed'),
+  /** 创建/修复种子管理模板（幂等），返回可用的表与字段。 */
+  ensureSeedTemplate: () =>
+    request<BaserowSeedTemplate>('/api/baserow/templates/seed', { method: 'POST' }),
+  /** 导入 .xlsx 到指定表（服务端用 openpyxl 解析，表头自动匹配已有字段）。 */
+  importExcel: async (tableId: number, file: File): Promise<{ created: number; fields_added: string[]; skipped: number }> => {
+    const csrf = readCookie('labspace_csrf');
+    const form = new FormData();
+    form.append('file', file, file.name || 'import.xlsx');
+    const res = await fetch(`/api/baserow/tables/${tableId}/import/excel`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+      headers: csrf ? { 'X-CSRF-Token': csrf } : {},
+    });
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        const body = await res.json();
+        detail = body?.detail ?? body?.error ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return (await res.json()) as { created: number; fields_added: string[]; skipped: number };
+  },
+  /** 导出整表为 .xlsx（管理员）。 */
+  exportExcel: async (tableId: number): Promise<Blob> => {
+    const res = await fetch(`/api/baserow/tables/${tableId}/export/excel`, { credentials: 'include' });
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        const body = await res.json();
+        detail = body?.detail ?? body?.error ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return await res.blob();
+  },
+  /** 识别种子标签照片，返回预填字段（multipart 直传，不走 JSON 代理）。 */
+  seedOcr: async (file: File): Promise<SeedOcrResult> => {
+    const csrf = readCookie('labspace_csrf');
+    const form = new FormData();
+    form.append('image', file, file.name || 'label.jpg');
+    const res = await fetch('/api/baserow/seed/ocr', {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+      headers: csrf ? { 'X-CSRF-Token': csrf } : {},
+    });
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        const body = await res.json();
+        detail = body?.detail ?? body?.error ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return (await res.json()) as SeedOcrResult;
+  },
   tables: (databaseId: number) =>
     request<{ tables: BaserowTableRef[] }>(`/api/baserow/databases/${databaseId}/tables`),
   fields: (tableId: number) =>
     request<{ fields: BaserowField[] }>(`/api/baserow/tables/${tableId}/fields`),
   people: (tableId: number) =>
     request<{ table_id: number; people: BaserowPerson[] }>(`/api/baserow/tables/${tableId}/people`),
-  rows: (tableId: number, p: { page: number; size: number; search?: string; order_by?: string }) =>
+  rows: (tableId: number, p: { page: number; size: number; search?: string; order_by?: string; view_id?: number | null }) =>
     request<BaserowRows>(`/api/baserow/tables/${tableId}/rows?${baserowRowQuery(p)}`),
+  /** 视图列表（含各自的筛选与排序）。 */
+  views: (tableId: number) => request<{ views: BaserowView[] }>(`/api/baserow/tables/${tableId}/views`),
+  createView: (tableId: number, name: string, type: string) =>
+    request<BaserowView>(`/api/baserow/tables/${tableId}/views`, {
+      method: 'POST',
+      body: JSON.stringify({ name, type }),
+    }),
+  updateView: (
+    tableId: number,
+    viewId: number,
+    patch: { name?: string; filter_type?: string; filters_disabled?: boolean },
+  ) =>
+    request<BaserowView>(`/api/baserow/tables/${tableId}/views/${viewId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  deleteView: (tableId: number, viewId: number) =>
+    request<{ ok: boolean }>(`/api/baserow/tables/${tableId}/views/${viewId}`, { method: 'DELETE' }),
+  createViewFilter: (tableId: number, viewId: number, body: { field: number; type: string; value: string }) =>
+    request<unknown>(`/api/baserow/tables/${tableId}/views/${viewId}/filters`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateViewFilter: (tableId: number, viewId: number, filterId: number, body: { value?: string; type?: string }) =>
+    request<unknown>(`/api/baserow/tables/${tableId}/views/${viewId}/filters/${filterId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteViewFilter: (tableId: number, viewId: number, filterId: number) =>
+    request<{ ok: boolean }>(`/api/baserow/tables/${tableId}/views/${viewId}/filters/${filterId}`, { method: 'DELETE' }),
+  createViewSort: (tableId: number, viewId: number, body: { field: number; order: 'ASC' | 'DESC' }) =>
+    request<unknown>(`/api/baserow/tables/${tableId}/views/${viewId}/sortings`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateViewSort: (tableId: number, viewId: number, sortId: number, body: { order: 'ASC' | 'DESC' }) =>
+    request<unknown>(`/api/baserow/tables/${tableId}/views/${viewId}/sortings/${sortId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteViewSort: (tableId: number, viewId: number, sortId: number) =>
+    request<{ ok: boolean }>(`/api/baserow/tables/${tableId}/views/${viewId}/sortings/${sortId}`, { method: 'DELETE' }),
+  createViewFilterGroup: (tableId: number, viewId: number, filterType: 'AND' | 'OR') =>
+    request<unknown>(`/api/baserow/tables/${tableId}/views/${viewId}/filter-groups`, {
+      method: 'POST',
+      body: JSON.stringify({ filter_type: filterType }),
+    }),
+  deleteViewFilterGroup: (tableId: number, viewId: number, groupId: number) =>
+    request<{ ok: boolean }>(`/api/baserow/tables/${tableId}/views/${viewId}/filter-groups/${groupId}`, {
+      method: 'DELETE',
+    }),
+  /** 批量删除记录。 */
+  batchDeleteRows: (tableId: number, ids: number[]) =>
+    request<{ deleted: number }>(`/api/baserow/tables/${tableId}/rows/batch-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ items: ids }),
+    }),
+  /** 批量更新记录（items 里每项带 id 与要写的字段）。 */
+  batchUpdateRows: (tableId: number, items: Record<string, unknown>[]) =>
+    request<{ updated: number }>(`/api/baserow/tables/${tableId}/rows/batch`, {
+      method: 'PATCH',
+      body: JSON.stringify({ items }),
+    }),
+  /** 行评论时间线。 */
+  comments: (tableId: number, rowId: number) =>
+    request<{ comments: BaserowRowComment[] }>(`/api/baserow/tables/${tableId}/rows/${rowId}/comments`),
+  addComment: (tableId: number, rowId: number, message: string) =>
+    request<unknown>(`/api/baserow/tables/${tableId}/rows/${rowId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+  /** 关联行候选（link_row 选择器用）。 */
+  linkRows: (tableId: number, linkedTableId: number, search = '') =>
+    request<{ primary_field: string; rows: BaserowLinkRow[] }>(
+      `/api/baserow/tables/${tableId}/link-rows/${linkedTableId}?search=${encodeURIComponent(search)}`,
+    ),
+  /** 回收站条目。 */
+  trash: (workspaceId: number) =>
+    request<{ count: number; items: BaserowTrashItem[] }>(`/api/baserow/trash?workspace_id=${workspaceId}`),
+  /** 视图的字段选项（列宽 / 隐藏 / 顺序）。 */
+  viewFieldOptions: (tableId: number, viewId: number) =>
+    request<{ field_options: Record<string, BaserowViewFieldOption> }>(
+      `/api/baserow/tables/${tableId}/views/${viewId}/field-options`,
+    ),
+  /** 更新视图的字段选项。 */
+  updateViewFieldOptions: (
+    tableId: number,
+    viewId: number,
+    fieldOptions: Record<string, BaserowViewFieldOption>,
+  ) =>
+    request<{ field_options: Record<string, BaserowViewFieldOption> }>(
+      `/api/baserow/tables/${tableId}/views/${viewId}/field-options`,
+      { method: 'PATCH', body: JSON.stringify({ field_options: fieldOptions }) },
+    ),
+  /** 从回收站恢复。 */
+  restoreTrash: (body: { trash_item_id: number; trash_item_type: string; parent_trash_item_id?: number | null }) =>
+    request<unknown>('/api/baserow/trash/restore', { method: 'POST', body: JSON.stringify(body) }),
   createWorkspace: (name: string) =>
     request<{ id: number; name: string }>('/api/baserow/workspaces', {
       method: 'POST',
@@ -2373,6 +3181,27 @@ export const baserowApi = {
     request<{ ok: boolean }>(`/api/baserow/tables/${tableId}`, { method: 'DELETE' }),
   deleteDatabase: (databaseId: number) =>
     request<{ ok: boolean }>(`/api/baserow/databases/${databaseId}`, { method: 'DELETE' }),
+  /** 重命名数据表（Baserow 的 application 名称）。 */
+  renameDatabase: (databaseId: number, name: string) =>
+    request<{ id: number; name: string }>(`/api/baserow/databases/${databaseId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  /** 重命名工作区。 */
+  renameWorkspace: (workspaceId: number, name: string) =>
+    request<{ id: number; name: string }>(`/api/baserow/workspaces/${workspaceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  /** 删除工作区（其中的数据表与记录一并删除）。 */
+  deleteWorkspace: (workspaceId: number) =>
+    request<{ ok: boolean }>(`/api/baserow/workspaces/${workspaceId}`, { method: 'DELETE' }),
+  /** 上传附件到 Baserow 的 user-files，返回可写回文件字段的对象。 */
+  uploadFile: async (tableId: number, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request<BaserowFile>(`/api/baserow/tables/${tableId}/files`, { method: 'POST', body: fd });
+  },
   importTable: async (tableId: number, file: File) => {
     const fd = new FormData();
     fd.append('file', file);
@@ -2484,11 +3313,55 @@ export interface LatexTemplate {
   name: string;
   description: string;
   kind: string;
+  tags: string[];
+}
+
+/** 批注状态：待处理 / 已接受 / 已拒绝 */
+export type LatexReviewStatus = 'open' | 'accepted' | 'rejected';
+
+export interface LatexReview {
+  id: string;
+  docId: string;
+  author: string;
+  lineFrom: number;
+  lineTo: number;
+  quote: string;
+  comment: string;
+  status: LatexReviewStatus;
+  replyCount: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface LatexReviewReply {
+  id: string;
+  reviewId: string;
+  author: string;
+  content: string;
+  createdAt?: string | null;
+}
+
+/** 一次可对比的版本（创建 / 保存 / 编译） */
+export interface LatexVersion {
+  id: number;
+  kind: string;
+  note: string;
+  createdAt?: string | null;
+  hasContent: boolean;
 }
 
 export interface LatexEvent {
   kind: string;
   note: string;
+  createdAt?: string | null;
+}
+
+/** 编译素材（.cls / .sty / 图片等）：编译时与源码一起进沙箱 */
+export interface LatexAsset {
+  id: string;
+  name: string;
+  bytes: number;
+  contentType: string;
   createdAt?: string | null;
 }
 

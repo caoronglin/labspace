@@ -1,42 +1,41 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   App,
   Button,
   Card,
-  Checkbox,
   Col,
   DatePicker,
   Descriptions,
-  Divider,
   Empty,
   Flex,
   Form,
   Input,
   Modal,
   Popconfirm,
-  Popover,
-  Progress,
   Row,
   Segmented,
   Select,
   Skeleton,
+  Space,
   Statistic,
   Tag,
   Tabs,
   Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { labSharedApi } from '../services/labShared';
 import {
-  BarChartOutlined,
   BookOutlined,
-  CalendarOutlined,
   CheckOutlined,
+  CloudUploadOutlined,
   DeleteOutlined,
   EditOutlined,
   ExperimentOutlined,
   FileTextOutlined,
   FlagOutlined,
+  FolderOpenOutlined,
   InboxOutlined,
   PlusOutlined,
   RocketOutlined,
@@ -53,10 +52,15 @@ import {
   type WorkbenchPlan,
   type WorkbenchProject,
 } from '../services/api';
-import WorkbenchAssignments from '../components/WorkbenchAssignments';
-import WorkbenchDailyReading from '../components/WorkbenchDailyReading';
-import LazyMount from '../components/LazyMount';
-import ErrorBoundary from '../components/ErrorBoundary';
+import InternsPanel from '../components/workbench/InternsPanel';
+import BriefPanel from '../components/workbench/BriefPanel';
+import DailyReadingPanel from '../components/workbench/DailyReadingPanel';
+import GrowthPanel from '../components/workbench/GrowthPanel';
+import PlanPanel from '../components/workbench/PlanPanel';
+import ProjectsPanel from '../components/workbench/ProjectsPanel';
+import RecordsPanel from '../components/workbench/RecordsPanel';
+import TasksPanel from '../components/workbench/TasksPanel';
+import { useAuth } from '../app/AuthContext';
 import { useUrlState } from '../hooks/useTableState';
 import { useDebounced } from '../hooks/useDebounced';
 import { errText } from '../utils/err';
@@ -64,18 +68,9 @@ import { errText } from '../utils/err';
 dayjs.locale('zh-cn');
 
 /* 图表组件懒加载：@ant-design/plots 不进入工作台首屏 chunk */
-const TaskStatusDonut = lazy(() => import('../components/charts/TaskStatusDonut'));
 /* 实验记录面板按需加载，避免首发 chunk 带上模板表格 */
-const ElnPanel = lazy(() => import('./lab/ElnPanel'));
 
 /** 图表懒加载占位 */
-function ChartFallback() {
-  return (
-    <Card size="small">
-      <Skeleton active title={{ width: '38%' }} paragraph={{ rows: 3 }} />
-    </Card>
-  );
-}
 
 /** URL 查询参数的默认值（useUrlState 要求默认值引用稳定） */
 const FILTER_DEFAULTS = { q: '', kind: 'all', tab: 'tasks' };
@@ -92,12 +87,6 @@ const KIND_CN: Record<string, string> = {
   note: '随手记',
 };
 
-const STATUS_CN: Record<string, string> = {
-  active: '进行中',
-  done: '已完成',
-  paused: '已暂停',
-  archived: '已归档',
-};
 
 const HEALTH_CN: Record<string, string> = {
   on_track: '正常',
@@ -120,16 +109,8 @@ const PRIORITY_COLOR: Record<string, string> = {
   urgent: 'red',
 };
 
-const HEALTH_COLOR: Record<string, string> = {
-  on_track: 'green',
-  at_risk: 'gold',
-  blocked: 'red',
-  done: 'default',
-};
 
 const kindCn = (k?: string) => (k && KIND_CN[k]) || '条目';
-const statusCn = (s?: string) => (s && STATUS_CN[s]) || '未知';
-const healthCn = (h?: string) => (h && HEALTH_CN[h]) || '未知';
 const priorityCn = (p?: string) => (p && PRIORITY_CN[p]) || '中';
 
 /* ------------------------------------------------------------------ 样式 */
@@ -272,334 +253,12 @@ function ItemRow({
 
 /* ------------------------------------------------------------------ 页面 */
 
-const WEEK_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
-const GANTT_DAY_W = 26;
-const GANTT_LABEL_W = 200;
-
-/** 日历/甘特共用的强调色：完成→青绿，逾期或紧急→红，高→橙，其余品牌蓝 */
-function itemAccent(item: WorkbenchItem): string {
-  if (item.status === 'done') return '#12A594';
-  if (item.due_date && dayjs(item.due_date).isBefore(dayjs(), 'day')) return '#DC2626';
-  if (item.priority === 'urgent') return '#DC2626';
-  if (item.priority === 'high') return '#D97706';
-  return '#2B5CE6';
-}
 
 /** 点击日历块 / 甘特条后的快捷操作 */
-function ItemPeek({
-  item,
-  onDone,
-  onDelete,
-  onEdit,
-}: {
-  item: WorkbenchItem;
-  onDone: (item: WorkbenchItem) => void;
-  onDelete: (item: WorkbenchItem) => void;
-  onEdit?: (item: WorkbenchItem) => void;
-}) {
-  return (
-    <Flex vertical gap={8} style={{ maxWidth: 260 }}>
-      <Typography.Text strong style={{ fontSize: 13 }}>
-        {item.title}
-      </Typography.Text>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        {statusCn(item.status)} · 截止 {item.due_date ? dayjs(item.due_date).format('YYYY-MM-DD') : '未设置'}
-      </Typography.Text>
-      <Flex gap={6}>
-        {onEdit ? (
-          <Button size="small" icon={<EditOutlined />} onClick={() => onEdit(item)}>
-            编辑
-          </Button>
-        ) : null}
-        <Button size="small" type="primary" disabled={item.status === 'done'} onClick={() => onDone(item)}>
-          标记完成
-        </Button>
-        <Popconfirm title="确定删除这条记录？" okText="删除" cancelText="取消" onConfirm={() => onDelete(item)}>
-          <Button size="small" danger>
-            删除
-          </Button>
-        </Popconfirm>
-      </Flex>
-    </Flex>
-  );
-}
 
 /** 月历视图：按截止日期铺排任务，可前后翻月 */
-function TaskCalendar({
-  items,
-  onDone,
-  onDelete,
-  onEdit,
-}: {
-  items: WorkbenchItem[];
-  onDone: (item: WorkbenchItem) => void;
-  onDelete: (item: WorkbenchItem) => void;
-  onEdit?: (item: WorkbenchItem) => void;
-}) {
-  const [month, setMonth] = useState(() => dayjs().startOf('month'));
-  const [showDone, setShowDone] = useState(false);
-
-  const visible = useMemo(
-    () => (showDone ? items : items.filter((it) => it.status !== 'done')),
-    [items, showDone],
-  );
-
-  const byDay = useMemo(() => {
-    const map = new Map<string, WorkbenchItem[]>();
-    for (const it of visible) {
-      if (!it.due_date) continue;
-      const key = dayjs(it.due_date).format('YYYY-MM-DD');
-      const arr = map.get(key);
-      if (arr) arr.push(it);
-      else map.set(key, [it]);
-    }
-    return map;
-  }, [visible]);
-
-  const gridStart = month.startOf('week');
-  const gridEnd = month.endOf('month').endOf('week');
-  const days: Dayjs[] = [];
-  for (let d = gridStart; d.isBefore(gridEnd) || d.isSame(gridEnd, 'day'); d = d.add(1, 'day')) days.push(d);
-  const today = dayjs();
-  const todayTasks = byDay.get(today.format('YYYY-MM-DD')) ?? [];
-
-  return (
-    <Flex vertical gap={12}>
-      <Flex gap={8} align="center" wrap>
-        <Button size="small" onClick={() => setMonth((m) => m.subtract(1, 'month'))}>
-          上月
-        </Button>
-        <Typography.Text strong style={{ fontSize: 14, minWidth: 92, textAlign: 'center' }}>
-          {month.format('YYYY 年 M 月')}
-        </Typography.Text>
-        <Button size="small" onClick={() => setMonth((m) => m.add(1, 'month'))}>
-          下月
-        </Button>
-        <Button size="small" type="link" onClick={() => setMonth(dayjs().startOf('month'))}>
-          回到本月
-        </Button>
-        <Checkbox checked={showDone} onChange={(e) => setShowDone(e.target.checked)}>
-          <span style={{ fontSize: 12.5 }}>显示已完成</span>
-        </Checkbox>
-        <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 'auto' }}>
-          按截止日期展示，点击事项可编辑 / 完成 / 删除
-        </Typography.Text>
-      </Flex>
-      <Alert
-        type={todayTasks.length ? 'info' : 'success'}
-        showIcon
-        variant="filled"
-        message={
-          todayTasks.length
-            ? `今天有 ${todayTasks.length} 项任务到期`
-            : '今天没有到期任务，保持节奏。'
-        }
-        description={
-          todayTasks.length ? (
-            <Flex gap={6} wrap>
-              {todayTasks.map((it) => (
-                <Tag
-                  key={it.id}
-                  color={it.status === 'done' ? 'default' : PRIORITY_COLOR[it.priority || 'normal']}
-                  style={{ margin: 0, cursor: 'pointer' }}
-                  onClick={() => onEdit?.(it)}
-                >
-                  {it.title}
-                </Tag>
-              ))}
-            </Flex>
-          ) : undefined
-        }
-      />
-      <div className="d509-cal">
-        <div className="d509-cal-week">
-          {WEEK_LABELS.map((w) => (
-            <div key={w} className="d509-cal-wd">
-              {w}
-            </div>
-          ))}
-        </div>
-        <div className="d509-cal-grid">
-          {days.map((d) => {
-            const list = byDay.get(d.format('YYYY-MM-DD')) ?? [];
-            return (
-              <div
-                key={d.valueOf()}
-                className={`d509-cal-cell${d.isSame(month, 'month') ? '' : ' is-out'}${d.isSame(today, 'day') ? ' is-today' : ''}`}
-              >
-                <div className="d509-cal-num">{d.date()}</div>
-                <Flex vertical gap={3} style={{ minWidth: 0 }}>
-                  {list.slice(0, 3).map((it) => (
-                    <Popover
-                      key={it.id}
-                      trigger="click"
-                      placement="right"
-                      content={<ItemPeek item={it} onDone={onDone} onDelete={onDelete} onEdit={onEdit} />}
-                    >
-                      <button
-                        type="button"
-                        className={`d509-cal-chip${it.status === 'done' ? ' is-done' : ''}`}
-                        style={{ borderLeftColor: itemAccent(it) }}
-                        title={it.title}
-                      >
-                        {it.title}
-                      </button>
-                    </Popover>
-                  ))}
-                  {list.length > 3 ? <span className="d509-cal-more">+{list.length - 3} 项</span> : null}
-                </Flex>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Flex>
-  );
-}
 
 /** 甘特视图：以创建日期为起点、截止日期为终点绘制任务条 */
-function TaskGantt({
-  items,
-  onDone,
-  onDelete,
-  onEdit,
-}: {
-  items: WorkbenchItem[];
-  onDone: (item: WorkbenchItem) => void;
-  onDelete: (item: WorkbenchItem) => void;
-  onEdit?: (item: WorkbenchItem) => void;
-}) {
-  const today = dayjs().startOf('day');
-  const rows = useMemo(
-    () =>
-      items
-        .filter((i) => i.due_date)
-        .map((i) => {
-          const end = dayjs(i.due_date).startOf('day');
-          const created = i.created_at ? dayjs(i.created_at).startOf('day') : end.subtract(2, 'day');
-          return { item: i, start: created.isAfter(end) ? end : created, end };
-        })
-        .sort((a, b) => a.end.valueOf() - b.end.valueOf()),
-    [items],
-  );
-
-  if (rows.length === 0) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有带截止日期的事项，先给任务设置一个截止日期" />;
-  }
-
-  let rangeStart = today;
-  let rangeEnd = today;
-  for (const { start, end } of rows) {
-    if (start.isBefore(rangeStart)) rangeStart = start;
-    if (end.isAfter(rangeEnd)) rangeEnd = end;
-  }
-  rangeStart = rangeStart.startOf('week').subtract(7, 'day');
-  rangeEnd = rangeEnd.startOf('week').add(8, 'week').endOf('week');
-
-  const days: Dayjs[] = [];
-  for (let d = rangeStart; d.isBefore(rangeEnd) || d.isSame(rangeEnd, 'day'); d = d.add(1, 'day')) days.push(d);
-  const totalW = days.length * GANTT_DAY_W;
-  const nowLeft = (today.diff(rangeStart, 'day') + 0.5) * GANTT_DAY_W;
-
-  const months: { key: string; label: string; days: number }[] = [];
-  for (const d of days) {
-    const key = d.format('YYYY-MM');
-    const last = months[months.length - 1];
-    if (last && last.key === key) last.days += 1;
-    else months.push({ key, label: d.format('YYYY 年 M 月'), days: 1 });
-  }
-
-  return (
-    <Flex vertical gap={10}>
-      <Flex gap={14} wrap align="center" style={{ fontSize: 11.5, color: 'var(--d509-text-secondary)' }}>
-        <span>
-          <i className="d509-gantt-dot" style={{ background: '#2B5CE6' }} />
-          进行中
-        </span>
-        <span>
-          <i className="d509-gantt-dot" style={{ background: '#D97706' }} />
-          高优先级
-        </span>
-        <span>
-          <i className="d509-gantt-dot" style={{ background: '#DC2626' }} />
-          逾期 / 紧急
-        </span>
-        <span>
-          <i className="d509-gantt-dot" style={{ background: '#12A594' }} />
-          已完成
-        </span>
-        <span style={{ marginLeft: 'auto' }}>
-          共 {rows.length} 项 · 按截止日期排序
-        </span>
-      </Flex>
-      <div className="d509-gantt">
-        <div className="d509-gantt-inner" style={{ width: GANTT_LABEL_W + totalW }}>
-          <div className="d509-gantt-row is-head">
-            <div className="d509-gantt-label">事项</div>
-            <div className="d509-gantt-track">
-              <div className="d509-gantt-days">
-                {months.map((m) => (
-                  <div key={m.key} className="d509-gantt-month" style={{ width: m.days * GANTT_DAY_W }}>
-                    {m.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="d509-gantt-row is-head">
-            <div className="d509-gantt-label" style={{ fontSize: 11, color: 'var(--d509-text-secondary)' }}>
-              截止日期
-            </div>
-            <div className="d509-gantt-track">
-              <div className="d509-gantt-days">
-                {days.map((d) => (
-                  <div
-                    key={d.valueOf()}
-                    className={`d509-gantt-day${d.day() === 0 || d.day() === 6 ? ' is-weekend' : ''}${d.isSame(today, 'day') ? ' is-today' : ''}`}
-                  >
-                    {d.date()}
-                    <span className="d509-gantt-wd">{WEEK_LABELS[(d.day() + 6) % 7]}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          {rows.map(({ item, start, end }) => {
-            const left = start.diff(rangeStart, 'day') * GANTT_DAY_W + 2;
-            const width = Math.max(1, end.diff(start, 'day') + 1) * GANTT_DAY_W - 4;
-            return (
-              <div key={item.id} className="d509-gantt-row">
-                <div className="d509-gantt-label">
-                  <span className="d509-gantt-dot" style={{ background: itemAccent(item) }} />
-                  <Typography.Text ellipsis style={{ fontSize: 12, flex: 1 }}>
-                    {item.title}
-                  </Typography.Text>
-                </div>
-                <div className="d509-gantt-track">
-                  <span className="d509-gantt-now" style={{ left: nowLeft }} />
-                  <Popover
-                    trigger="click"
-                    placement="top"
-                    content={<ItemPeek item={item} onDone={onDone} onDelete={onDelete} onEdit={onEdit} />}
-                  >
-                    <button
-                      type="button"
-                      className="d509-gantt-bar"
-                      style={{ left, width, background: itemAccent(item) }}
-                      aria-label={item.title}
-                    >
-                      {width > 70 ? item.title : ''}
-                    </button>
-                  </Popover>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Flex>
-  );
-}
 
 /* ------------------------------------------------------------------ 页面 */
 
@@ -653,8 +312,12 @@ function TaskFields() {
 }
 
 export default function Workbench() {
+  // "我的计划"等归属展示要用**姓名**，不是用户名
+  const { me } = useAuth();
+  const ownerName = me?.displayName || me?.name || me?.email || '';
   const { message } = App.useApp();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const [captureText, setCaptureText] = useState('');
   const [capture, setCapture] = useState<WorkbenchCapture | null>(null);
@@ -662,7 +325,6 @@ export default function Workbench() {
   const [planOpen, setPlanOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [taskProject, setTaskProject] = useState<WorkbenchProject | null>(null);
-  const [view, setView] = useState<'list' | 'calendar' | 'gantt'>('list');
   // 搜索词与类型筛选放在 URL 上：刷新不丢、可分享、面板跳转回来还是同一视图
   const [filters, setFilters] = useUrlState(FILTER_DEFAULTS);
   const search = filters.q;
@@ -677,7 +339,6 @@ export default function Workbench() {
   const [itemForm] = Form.useForm();
   const [captureForm] = Form.useForm();
 
-  const openEditor = (item?: WorkbenchItem, dueDate?: Dayjs) => setEditor({ item, dueDate });
 
   useEffect(() => {
     if (!capture) return;
@@ -713,20 +374,20 @@ export default function Workbench() {
     staleTime: 30_000,
   });
 
+  // 组员共享目录入口（v26.11）：学生在工作台最显眼的位置就能进自己的目录。
+  const sharedEntryQuery = useQuery({
+    queryKey: ['lab-shared', 'mine'],
+    queryFn: labSharedApi.mine,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const sharedEntry = sharedEntryQuery.data?.granted ? sharedEntryQuery.data : null;
+
   const itemsQuery = useQuery({
     queryKey: ['workbench-items', 'all'],
     queryFn: () => api.workbenchItems({ limit: 200 }),
     staleTime: 30_000,
   });
-
-  const assignmentsQuery = useQuery({
-    queryKey: ['workbench-assignments'],
-    queryFn: api.workbenchAssignments,
-    staleTime: 15_000,
-  });
-  const pendingAssignments = (assignmentsQuery.data?.incoming ?? []).filter(
-    (a) => a.status !== 'accepted',
-  ).length;
 
   // 输入框每敲一个字就写 URL 并发请求，节流到 300ms 后再打后端
   const debouncedSearch = useDebounced(search, 300);
@@ -960,25 +621,8 @@ export default function Workbench() {
   );
   const projects: WorkbenchProject[] = summary?.projects ?? [];
 
-  // 项目卡片直接复用条目列表里的任务，避免再按项目逐个请求。
-  const tasksByProject = useMemo(() => {
-    const map = new Map<string, WorkbenchItem[]>();
-    for (const item of allItems) {
-      if (item.kind !== 'task' || !item.project_id) continue;
-      const bucket = map.get(item.project_id);
-      if (bucket) bucket.push(item);
-      else map.set(item.project_id, [item]);
-    }
-    return map;
-  }, [allItems]);
 
-  const directions = summary?.plans?.directions ?? [];
-  const stages = summary?.plans?.stages ?? [];
 
-  const today = summary?.today;
-  const overdue = today?.overdue ?? [];
-  const dueToday = today?.dueToday ?? [];
-  const others = today?.others ?? [];
   const stats = summary?.stats;
 
   const searchItems = searchQuery.data?.items ?? [];
@@ -989,7 +633,6 @@ export default function Workbench() {
 
   /* ---------------------------------------------------------- 渲染 */
 
-  const planProgress = (p: WorkbenchPlan) => Math.max(0, Math.min(100, Number(p.progress ?? 0)));
 
   const submitCapture = () => {
     const text = captureText.trim();
@@ -1103,6 +746,39 @@ export default function Workbench() {
         </Flex>
       </Flex>
 
+      {/* --------------------------------------- 组员共享文件：显著入口（v26.11） */}
+      {sharedEntry ? (
+        <Alert
+          type="info"
+          showIcon
+          variant="filled"
+          icon={<FolderOpenOutlined />}
+          title={
+            <Space size={8} align="center" wrap>
+              <Typography.Text strong>组员共享文件</Typography.Text>
+              <Tag color="blue">{sharedEntry.folder ?? ''}</Tag>
+            </Space>
+          }
+          description="上传的材料按学号归位，导师可直接查看与批注；你只能在自己的目录里查看与上传。"
+          action={
+            <Space size={8} wrap>
+              <Button
+                type="primary"
+                icon={<CloudUploadOutlined />}
+                onClick={() =>
+                  navigate(
+                    `/files?source=users&dir=${encodeURIComponent(sharedEntry.path ?? '')}`,
+                  )
+                }
+              >
+                进入上传
+              </Button>
+              <Button onClick={() => navigate('/shared')}>看目录</Button>
+            </Space>
+          }
+        />
+      ) : null}
+
       {/* ------------------------------------------------ 错误态 */}
       {error ? (
         <Alert
@@ -1203,122 +879,7 @@ export default function Workbench() {
                   <Tag style={{ margin: 0 }}>{actionItems.length}</Tag>
                 </Flex>
               ),
-              children: (
-                <>
-                  <Flex justify="space-between" align="center" wrap gap={8} style={{ marginBottom: 12 }}>
-                    <Flex gap={8}>
-                      <Button
-                        size="small"
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        onClick={() => openEditor(undefined, dayjs())}
-                      >
-                        新建任务
-                      </Button>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        共 {actionItems.length} 项，逾期 {overdue.length} 项
-                      </Typography.Text>
-                    </Flex>
-                    <Segmented
-                      size="small"
-                      value={view}
-                      onChange={(v) => setView(v as 'list' | 'calendar' | 'gantt')}
-                      options={[
-                        {
-                          value: 'list',
-                          label: (
-                            <span>
-                              <UnorderedListOutlined /> 列表
-                            </span>
-                          ),
-                        },
-                        {
-                          value: 'calendar',
-                          label: (
-                            <span>
-                              <CalendarOutlined /> 日历
-                            </span>
-                          ),
-                        },
-                        {
-                          value: 'gantt',
-                          label: (
-                            <span>
-                              <BarChartOutlined /> 甘特
-                            </span>
-                          ),
-                        },
-                      ]}
-                    />
-                  </Flex>
-              {view === 'list' ? (
-                loading ? (
-                  <Skeleton active paragraph={{ rows: 4 }} />
-                ) : (
-                  <Flex vertical gap={14}>
-                    {[
-                      { key: 'overdue', title: '逾期事项', color: '#DC2626', data: overdue, danger: true },
-                      { key: 'dueToday', title: '今日到期', color: '#D97706', data: dueToday, danger: false },
-                      { key: 'others', title: '其他事项', color: '#2B5CE6', data: others, danger: false },
-                    ].map((group) => (
-                      <div key={group.key}>
-                        <Flex gap={8} align="center" justify="space-between">
-                          <Flex gap={8} align="center">
-                            <span
-                              style={{ width: 3, height: 14, borderRadius: 2, background: group.color, display: 'inline-block' }}
-                            />
-                            <Typography.Text strong style={{ fontSize: 13 }}>
-                              {group.title}
-                            </Typography.Text>
-                          </Flex>
-                          <Tag style={{ margin: 0 }}>{group.data.length}</Tag>
-                        </Flex>
-                        <Flex vertical gap={8} style={{ marginTop: 8 }}>
-                          {group.data.length === 0 ? (
-                            <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                              {group.key === 'overdue'
-                                ? '没有逾期事项，保持节奏。'
-                                : group.key === 'dueToday'
-                                  ? '今天没有到期事项。'
-                                  : '暂无其他事项。'}
-                            </Typography.Text>
-                          ) : (
-                            group.data.map((i) => (
-                              <ItemRow
-                                key={i.id}
-                                item={i}
-                                danger={group.danger}
-                                busy={updateMutation.isPending}
-                                onDone={(item) => updateMutation.mutate({ id: item.id, body: { status: 'done' } })}
-                                onDelete={(item) => deleteMutation.mutate(item)}
-                                onEdit={(item) => openEditor(item)}
-                              />
-                            ))
-                          )}
-                        </Flex>
-                      </div>
-                    ))}
-                  </Flex>
-                )
-              ) : itemsQuery.isLoading && actionItems.length === 0 ? (
-                <Skeleton active paragraph={{ rows: 6 }} />
-              ) : view === 'calendar' ? (
-                <TaskCalendar
-                  items={actionItems}
-                  onDone={(item) => updateMutation.mutate({ id: item.id, body: { status: 'done' } })}
-                  onDelete={(item) => deleteMutation.mutate(item)}
-                  onEdit={(item) => openEditor(item)}
-                />
-              ) : (
-                <TaskGantt
-                  items={actionItems}
-                  onDone={(item) => updateMutation.mutate({ id: item.id, body: { status: 'done' } })}
-                  onDelete={(item) => deleteMutation.mutate(item)}
-                  onEdit={(item) => openEditor(item)}
-                />
-              )}
-                </>
-              ),
+              children: <TasksPanel />,
             },
             {
               key: 'reading',
@@ -1327,7 +888,7 @@ export default function Workbench() {
                   <BookOutlined /> 每日文献
                 </Flex>
               ),
-              children: <WorkbenchDailyReading />,
+              children: <DailyReadingPanel />,
             },
             {
               key: 'records',
@@ -1336,11 +897,7 @@ export default function Workbench() {
                   <ExperimentOutlined /> 实验记录
                 </Flex>
               ),
-              children: (
-                <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}>
-                  <ElnPanel />
-                </Suspense>
-              ),
+              children: <RecordsPanel />,
             },
             {
               key: 'plans',
@@ -1349,133 +906,7 @@ export default function Workbench() {
                   <FlagOutlined /> 计划与方向
                 </Flex>
               ),
-              children: (
-                <>
-                  <Flex justify="flex-end" style={{ marginBottom: 12 }}>
-                    <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => setPlanOpen(true)}>
-                      新建计划
-                    </Button>
-                  </Flex>
-              {loading ? (
-                <Skeleton active paragraph={{ rows: 4 }} />
-              ) : (
-                <Flex vertical gap={16}>
-                  <div>
-                    <Typography.Text className="d509-section-title">长期方向</Typography.Text>
-                    <Flex vertical gap={8} style={{ marginTop: 8 }}>
-                      {directions.length === 0 ? (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有长期方向" />
-                      ) : (
-                        directions.map((p) => (
-                          <Flex
-                            key={p.id}
-                            gap={12}
-                            align="center"
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: 12,
-                              border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
-                            }}
-                          >
-                            <Flex vertical gap={4} style={{ flex: 1, minWidth: 0 }}>
-                              <Flex gap={8} align="center" wrap>
-                                <Typography.Text strong style={{ fontSize: 13.5 }}>
-                                  {p.title}
-                                </Typography.Text>
-                                <Tag color={p.status === 'done' ? 'green' : 'blue'} style={{ margin: 0, fontSize: 11 }}>
-                                  {statusCn(p.status)}
-                                </Tag>
-                                {p.horizon ? (
-                                  <Tag style={{ margin: 0, fontSize: 11 }}>周期 {p.horizon}</Tag>
-                                ) : null}
-                              </Flex>
-                              {p.outcome ? (
-                                <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                                  目标：{p.outcome}
-                                </Typography.Text>
-                              ) : null}
-                              {p.next_step ? (
-                                <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                                  下一步：{p.next_step}
-                                </Typography.Text>
-                              ) : null}
-                              {p.due_date ? (
-                                <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
-                                  截止 {dayjs(p.due_date).format('YYYY-MM-DD')}
-                                </Typography.Text>
-                              ) : null}
-                            </Flex>
-                            <Progress
-                              percent={planProgress(p)}
-                              size={['30%', 8]}
-                              strokeColor={['#2B5CE6', '#12A594']}
-                              style={{ minWidth: 120 }}
-                            />
-                          </Flex>
-                        ))
-                      )}
-                    </Flex>
-                  </div>
-
-                  <Divider style={{ margin: 0 }} />
-
-                  <div>
-                    <Typography.Text className="d509-section-title">阶段计划</Typography.Text>
-                    <Flex vertical gap={8} style={{ marginTop: 8 }}>
-                      {stages.length === 0 ? (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有阶段计划" />
-                      ) : (
-                        stages.map((p) => (
-                          <Flex
-                            key={p.id}
-                            gap={12}
-                            align="center"
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: 12,
-                              border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
-                            }}
-                          >
-                            <Flex vertical gap={4} style={{ flex: 1, minWidth: 0 }}>
-                              <Flex gap={8} align="center" wrap>
-                                <Typography.Text strong style={{ fontSize: 13.5 }}>
-                                  {p.title}
-                                </Typography.Text>
-                                <Tag color={p.status === 'done' ? 'green' : 'cyan'} style={{ margin: 0, fontSize: 11 }}>
-                                  {statusCn(p.status)}
-                                </Tag>
-                              </Flex>
-                              {p.outcome ? (
-                                <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                                  目标：{p.outcome}
-                                </Typography.Text>
-                              ) : null}
-                              {p.metrics ? (
-                                <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                                  指标：{p.metrics}
-                                </Typography.Text>
-                              ) : null}
-                              {p.next_step ? (
-                                <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                                  下一步：{p.next_step}
-                                </Typography.Text>
-                              ) : null}
-                            </Flex>
-                            <Progress
-                              percent={planProgress(p)}
-                              size={['30%', 8]}
-                              strokeColor="#12A594"
-                              style={{ minWidth: 120 }}
-                            />
-                          </Flex>
-                        ))
-                      )}
-                    </Flex>
-                  </div>
-                </Flex>
-              )}
-                </>
-              ),
+              children: <PlanPanel owner={ownerName} />,
             },
             {
               key: 'projects',
@@ -1485,131 +916,16 @@ export default function Workbench() {
                   <Tag style={{ margin: 0 }}>{projects.length}</Tag>
                 </Flex>
               ),
-              children: (
-                <>
-                  <Flex justify="flex-end" style={{ marginBottom: 12 }}>
-                    <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => setProjectOpen(true)}>
-                      新建项目
-                    </Button>
-                  </Flex>
-              {loading ? (
-                <Skeleton active paragraph={{ rows: 3 }} />
-              ) : projects.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无项目" />
-              ) : (
-                <Row gutter={[12, 12]}>
-                  {projects.slice(0, 8).map((p) => {
-                    const tasks = tasksByProject.get(p.id) ?? [];
-                    const done = tasks.filter((t) => t.status === 'done').length;
-                    const percent = tasks.length
-                      ? Math.round((done / tasks.length) * 100)
-                      : Math.max(0, Math.min(100, Number(p.progress ?? 0)));
-                    return (
-                      <Col xs={24} md={12} key={p.id}>
-                        <Flex
-                          vertical
-                          gap={4}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: 12,
-                            border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
-                            height: '100%',
-                          }}
-                        >
-                          <Flex gap={8} align="center" wrap>
-                            <Typography.Text strong style={{ fontSize: 13.5 }}>
-                              {p.name}
-                            </Typography.Text>
-                            <Tag color={HEALTH_COLOR[p.health || 'on_track']} style={{ margin: 0, fontSize: 11 }}>
-                              {healthCn(p.health)}
-                            </Tag>
-                          </Flex>
-                          {p.description ? (
-                            <Typography.Paragraph
-                              type="secondary"
-                              style={{ margin: 0, fontSize: 12.5 }}
-                              ellipsis={{ rows: 2 }}
-                            >
-                              {p.description}
-                            </Typography.Paragraph>
-                          ) : null}
-                          {p.next_step ? (
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              下一步：{p.next_step}
-                            </Typography.Text>
-                          ) : null}
-                          <Flex justify="space-between" align="center" gap={6}>
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              {tasks.length ? `任务 ${done}/${tasks.length}` : '尚未安排任务'}
-                            </Typography.Text>
-                            <Button
-                              size="small"
-                              type="link"
-                              icon={<PlusOutlined />}
-                              onClick={() => {
-                                setTaskProject(p);
-                                taskForm.resetFields();
-                              }}
-                            >
-                              安排任务
-                            </Button>
-                          </Flex>
-                          <Progress
-                            percent={percent}
-                            size={['100%', 6]}
-                            strokeColor={['#12A594', '#2B5CE6']}
-                          />
-                          {tasks.slice(0, 4).map((t) => (
-                            <Flex key={t.id} gap={6} align="center">
-                              <Checkbox
-                                checked={t.status === 'done'}
-                                onChange={(e) =>
-                                  updateMutation.mutate({
-                                    id: t.id,
-                                    body: { status: e.target.checked ? 'done' : 'active' },
-                                  })
-                                }
-                              />
-                              <Typography.Text
-                                delete={t.status === 'done'}
-                                type={t.status === 'done' ? 'secondary' : undefined}
-                                ellipsis
-                                style={{ fontSize: 12, flex: 1 }}
-                              >
-                                {t.title}
-                              </Typography.Text>
-                              {t.due_date ? (
-                                <Tag style={{ margin: 0, fontSize: 10 }}>{t.due_date}</Tag>
-                              ) : null}
-                            </Flex>
-                          ))}
-                          {tasks.length > 4 ? (
-                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                              还有 {tasks.length - 4} 项…
-                            </Typography.Text>
-                          ) : null}
-                        </Flex>
-                      </Col>
-                    );
-                  })}
-                </Row>
-              )}
-                </>
-              ),
+              children: <ProjectsPanel />,
             },
             {
-              key: 'assignments',
+              key: 'interns',
               label: (
                 <Flex gap={6} align="center">
-                  <TeamOutlined /> 指派
-                  {pendingAssignments ? (
-                    <Tag color="gold" style={{ margin: 0 }}>
-                      {pendingAssignments}
-                    </Tag>
-                  ) : null}
+                  <TeamOutlined /> 实习生绑定
                 </Flex>
               ),
-              children: <WorkbenchAssignments />,
+              children: <InternsPanel />,
             },
             {
               key: 'growth',
@@ -1619,61 +935,7 @@ export default function Workbench() {
                   <Tag style={{ margin: 0 }}>{growthItems.length + knowledgeItems.length}</Tag>
                 </Flex>
               ),
-              children: (
-                <>
-              {loading ? (
-                <Skeleton active paragraph={{ rows: 3 }} />
-              ) : (
-                <Tabs
-                  size="small"
-                  items={[
-                    {
-                      key: 'growth',
-                      label: `成长 ${growthItems.length}`,
-                      children:
-                        growthItems.length === 0 ? (
-                          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无成长记录" />
-                        ) : (
-                          <Flex vertical gap={8}>
-                            {growthItems.slice(0, 8).map((i) => (
-                              <ItemRow
-                                key={i.id}
-                                item={i}
-                                busy={updateMutation.isPending}
-                                onDone={(item) => updateMutation.mutate({ id: item.id, body: { status: 'done' } })}
-                                onDelete={(item) => deleteMutation.mutate(item)}
-                                onEdit={(item) => openEditor(item)}
-                              />
-                            ))}
-                          </Flex>
-                        ),
-                    },
-                    {
-                      key: 'knowledge',
-                      label: `知识 ${knowledgeItems.length}`,
-                      children:
-                        knowledgeItems.length === 0 ? (
-                          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无知识沉淀" />
-                        ) : (
-                          <Flex vertical gap={8}>
-                            {knowledgeItems.slice(0, 8).map((i) => (
-                              <ItemRow
-                                key={i.id}
-                                item={i}
-                                busy={updateMutation.isPending}
-                                onDone={(item) => updateMutation.mutate({ id: item.id, body: { status: 'done' } })}
-                                onDelete={(item) => deleteMutation.mutate(item)}
-                                onEdit={(item) => openEditor(item)}
-                              />
-                            ))}
-                          </Flex>
-                        ),
-                    },
-                  ]}
-                />
-              )}
-                </>
-              ),
+              children: <GrowthPanel />,
             },
             {
               key: 'brief',
@@ -1682,52 +944,7 @@ export default function Workbench() {
                   <FileTextOutlined /> 简报与趋势
                 </Flex>
               ),
-              children: (
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} lg={14}>
-                    <Flex vertical gap={8}>
-                      <Flex justify="space-between" align="center">
-                        <Typography.Text strong>最近简报</Typography.Text>
-                        {summary?.brief?.date ? (
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            {dayjs(summary.brief.date).format('YYYY-MM-DD')}
-                          </Typography.Text>
-                        ) : null}
-                      </Flex>
-                      {loading ? (
-                        <Skeleton active paragraph={{ rows: 4 }} />
-                      ) : summary?.brief?.content ? (
-                        <pre
-                          style={{
-                            margin: 0,
-                            padding: 14,
-                            borderRadius: 12,
-                            background: 'var(--ant-color-fill-quaternary, rgba(0,0,0,0.03))',
-                            border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
-                            fontSize: 12.5,
-                            lineHeight: 1.7,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                          }}
-                        >
-                          {summary.brief.content}
-                        </pre>
-                      ) : (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有简报" />
-                      )}
-                    </Flex>
-                  </Col>
-                  <Col xs={24} lg={10}>
-                    <ErrorBoundary>
-                      <Suspense fallback={<ChartFallback />}>
-                        <LazyMount height={240}>
-                          <TaskStatusDonut height={210} />
-                        </LazyMount>
-                      </Suspense>
-                    </ErrorBoundary>
-                  </Col>
-                </Row>
-              ),
+              children: <BriefPanel />,
             },
           ]}
         />

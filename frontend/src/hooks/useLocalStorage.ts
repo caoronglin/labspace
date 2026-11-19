@@ -33,7 +33,18 @@ export function useLocalStorage<T>(key: string, defaultValue: T) {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== key) return;
-      setValue(e.newValue === null ? defaultValue : (JSON.parse(e.newValue) as T));
+      if (e.newValue === null) {
+        setValue(defaultValue);
+        return;
+      }
+      try {
+        setValue(JSON.parse(e.newValue) as T);
+      } catch {
+        // 别的标签页写入的不是合法 JSON（例如手工改过 localStorage）。
+        // 这里必须吞掉：storage 事件处理器里抛异常会变成未捕获错误，
+        // 而这个 hook 的职责只是同步值，不是校验外部写入。
+        setValue(defaultValue);
+      }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);

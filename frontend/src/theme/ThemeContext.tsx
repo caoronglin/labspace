@@ -135,6 +135,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         theme={themeConfig}
         componentSize="middle"
         wave={{ disabled: false }}
+        // 所有对话框默认垂直居中：此前 stick 在 top:100px，高分屏上显得贴顶，
+        // 长表单配合 70vh 最大高度时下半屏空白过多。单个 Modal 可用 centered={false} 覆盖。
+        modal={{ centered: true }}
       >
         {children}
       </ConfigProvider>

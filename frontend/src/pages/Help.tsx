@@ -38,6 +38,7 @@ import { useAuth } from '../app/AuthContext';
 import { NAV_GROUPS, visibleNavItems } from '../app/navigation';
 import { RELEASES } from '../content/releases';
 import NetworkDiagnostics from '../components/NetworkDiagnostics';
+import { requestTour } from '../components/onboardingState';
 
 const { Text, Paragraph, Link } = Typography;
 
@@ -67,7 +68,7 @@ const QUICK_START = [
 const QUICK_LINKS = [
   { label: 'Agent 科研助手', hint: '对话、记忆与代码沙箱', icon: <RobotOutlined />, path: '/agent' },
   { label: '科研工具', hint: '绘图 · 流程图 · 基因组', icon: <ToolOutlined />, path: '/tools' },
-  { label: '文件管理', hint: '个人与公共文件', icon: <FolderOpenOutlined />, path: '/files' },
+  { label: '文件存储', hint: '个人与公共文件', icon: <FolderOpenOutlined />, path: '/files' },
   { label: '知识库', hint: '检索与沉淀结论', icon: <BookOutlined />, path: '/knowledge' },
 ];
 
@@ -190,6 +191,9 @@ export default function Help() {
         description="快速上手、服务地图、常见问题与更新日志"
         extra={
           <>
+            <Button icon={<CompassOutlined />} onClick={() => requestTour()}>
+              重新查看引导
+            </Button>
             <Button icon={<CloudServerOutlined />} onClick={() => navigate('/admin/status')}>
               服务状态
             </Button>

@@ -12,23 +12,29 @@ const EmbedPage = lazy(() => import('../pages/EmbedPage'));
 const SsoLogin = lazy(() => import('../pages/SsoLogin'));
 const SearchPage = lazy(() => import('../pages/SearchPage'));
 const Literature = lazy(() => import('../pages/Literature'));
+const PdfTools = lazy(() => import('../pages/PdfTools'));
+const WebSshConsole = lazy(() => import('../pages/WebSshConsole'));
+const DailyPapers = lazy(() => import('../pages/DailyPapers'));
 const Lab = lazy(() => import('../pages/Lab'));
 const Toolbox = lazy(() => import('../pages/Toolbox'));
 const Drawings = lazy(() => import('../pages/Drawings'));
 const Colors = lazy(() => import('../pages/Colors'));
-const BaserowPage = lazy(() => import('../pages/BaserowPage'));
 const Docparse = lazy(() => import('../pages/Docparse'));
 const Translate = lazy(() => import('../pages/Translate'));
 const Commands = lazy(() => import('../pages/Commands'));
 const Bioinfo = lazy(() => import('../pages/Bioinfo'));
-const Translation = lazy(() => import('../pages/Translation'));
 const Weather = lazy(() => import('../pages/Weather'));
 const Workbench = lazy(() => import('../pages/Workbench'));
 const LatexStudio = lazy(() => import('../pages/LatexStudio'));
 const Agent = lazy(() => import('../pages/Agent'));
+
 const Databases = lazy(() => import('../pages/Databases'));
 const Help = lazy(() => import('../pages/Help'));
 const Files = lazy(() => import('../pages/Files'));
+const SeedStore = lazy(() => import('../pages/SeedStore'));
+const SharedMembers = lazy(() => import('../pages/SharedMembers'));
+const ResearchFolders = lazy(() => import('../pages/ResearchFolders'));
+const MeetingReports = lazy(() => import('../pages/MeetingReports'));
 const Knowledge = lazy(() => import('../pages/Knowledge'));
 const Network = lazy(() => import('../pages/Network'));
 const Start = lazy(() => import('../pages/Start'));
@@ -100,26 +106,37 @@ export function AppRoutes() {
             <Route path="/favorites" element={<Navigate to="/start" replace />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/literature" element={<Literature />} />
+            <Route path="/pdf" element={<PdfTools />} />
+            <Route path="/ssh" element={<WebSshConsole />} />
+            <Route path="/papers" element={<DailyPapers />} />
             <Route path="/lab" element={<Lab />} />
             <Route path="/tools" element={<Toolbox />} />
             <Route path="/drawio" element={<ToolRedirect tool="drawio" />} />
             <Route path="/drawings" element={<Drawings />} />
             <Route path="/colors" element={<Colors />} />
             <Route path="/plot" element={<ToolRedirect tool="plot" />} />
-            <Route path="/baserow" element={<BaserowPage />} />
+            {/* 多维表格已并入 /lab（多维表格空间） */}
+            <Route path="/baserow" element={<Navigate to="/lab?tab=tables" replace />} />
             <Route path="/docparse" element={<Docparse />} />
             <Route path="/translate" element={<Translate />} />
             <Route path="/commands" element={<Commands />} />
             <Route path="/bioinfo" element={<Bioinfo />} />
-            <Route path="/translation" element={<Translation />} />
+            {/* 文本翻译已并入翻译中心（/translate 内含页签），旧路径重定向避免两个入口 */}
+            <Route path="/translation" element={<Navigate to="/translate" replace />} />
             <Route path="/weather" element={<Weather />} />
             <Route path="/workbench" element={<Workbench />} />
             <Route path="/latex" element={<LatexStudio />} />
             <Route path="/agent" element={<Agent />} />
+            {/* 能力中心已并入 /agent：旧深链重定向，避免外部链接失效 */}
+            <Route path="/agent/hub" element={<Navigate to="/agent?mode=hub" replace />} />
             <Route path="/databases" element={<Databases />} />
             <Route path="/genomes" element={<ToolRedirect tool="genomes" />} />
             <Route path="/help" element={<Help />} />
             <Route path="/files" element={<Files />} />
+            <Route path="/seeds" element={<SeedStore />} />
+            <Route path="/shared" element={<SharedMembers />} />
+            <Route path="/research" element={<ResearchFolders />} />
+            <Route path="/meetings" element={<MeetingReports />} />
             <Route path="/knowledge" element={<Knowledge />} />
             <Route path="/network" element={<Network />} />
             <Route path="/snapotter" element={<SnapOtter />} />

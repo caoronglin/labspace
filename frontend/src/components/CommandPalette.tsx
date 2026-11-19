@@ -13,9 +13,11 @@ import {
   SearchOutlined,
   ThunderboltOutlined,
   ToolOutlined,
+  CompassOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type CorpusItem } from '../services/api';
+import { requestTour } from './onboardingState';
 import { useAuth } from '../app/AuthContext';
 import { useNavCommands } from '../app/useNavCommands';
 import { nativeRouteOf } from '../utils/serviceRoute';
@@ -56,26 +58,42 @@ export default function CommandPalette({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isTeacher } = useAuth();
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<InputRef>(null);
 
-  const { commands: navCommands } = useNavCommands({ query: q, isAdmin });
+  const { commands: navCommands } = useNavCommands({ query: q, isAdmin, isTeacher });
 
   // 全局面板动作：不依赖路由，登录页/起始页也可直达
-  const panelCommands = useMemo<NavCommandLike[]>(() => [
-    {
-      id: 'panel:debug', label: '打开全局 Debug', hint: '运行时诊断 / 服务健康（⌘⇧D）',
-      icon: <BugOutlined />,
-      run: () => window.dispatchEvent(new CustomEvent('d509:debug')),
-    },
-    {
-      id: 'panel:preview', label: '预览本地文件', hint: '有界派生预览，不上传原始字节',
-      icon: <EyeOutlined />,
-      run: () => window.dispatchEvent(new CustomEvent('d509:preview')),
-    },
-  ].filter((c) => isAdmin && (!q.trim() || `${c.label}${c.hint}`.toLowerCase().includes(q.trim().toLowerCase()))), [isAdmin, q]);
+  // 引导对**所有用户**可见（普通用户更需要知道从哪开始），
+  // 诊断/预览是管理员工具，仍按 isAdmin 过滤。
+  const panelCommands = useMemo<NavCommandLike[]>(() => {
+    const all = [
+      {
+        id: 'panel:tour', label: '重新查看新手引导', hint: '一步步认识工作台的几个入口',
+        icon: <CompassOutlined />,
+        run: () => requestTour(),
+        adminOnly: false,
+      },
+      {
+        id: 'panel:debug', label: '打开全局 Debug', hint: '运行时诊断 / 服务健康（⌘⇧D）',
+        icon: <BugOutlined />,
+        run: () => window.dispatchEvent(new CustomEvent('d509:debug')),
+        adminOnly: true,
+      },
+      {
+        id: 'panel:preview', label: '预览本地文件', hint: '有界派生预览，不上传原始字节',
+        icon: <EyeOutlined />,
+        run: () => window.dispatchEvent(new CustomEvent('d509:preview')),
+        adminOnly: true,
+      },
+    ];
+    const needle = q.trim().toLowerCase();
+    return all
+      .filter((c) => (c.adminOnly ? isAdmin : true))
+      .filter((c) => !needle || `${c.label}${c.hint}`.toLowerCase().includes(needle));
+  }, [isAdmin, q]);
 
   const { data, isFetching } = useQuery({
     queryKey: ['corpus', q],

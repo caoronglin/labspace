@@ -19,11 +19,19 @@ export interface NavCommand {
   run: () => void;
 }
 
-export function useNavCommands({ query, isAdmin }: { query: string; isAdmin: boolean }) {
+export function useNavCommands({
+  query,
+  isAdmin,
+  isTeacher = false,
+}: {
+  query: string;
+  isAdmin: boolean;
+  isTeacher?: boolean;
+}) {
   const navigate = useNavigate();
   const { paths: recentPaths, touch } = useRecentPaths();
 
-  const items = useMemo(() => commandableNavItems(isAdmin), [isAdmin]);
+  const items = useMemo(() => commandableNavItems(isAdmin, isTeacher), [isAdmin, isTeacher]);
 
   const commands = useMemo<NavCommand[]>(() => {
     const recentRank = new Map(recentPaths.map((p, i) => [p, recentPaths.length - i]));

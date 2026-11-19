@@ -29,7 +29,7 @@ export type OfficeAdapter = {
 };
 
 /**
- * Office 组件注册表：文件管理只认扩展名，不关心具体是 Word/Excel/PPT。
+ * Office 组件注册表：文件存储只认扩展名，不关心具体是 Word/Excel/PPT。
  * 新增格式时在这里注册一个适配器即可，预览/编辑/放映入口自动出现。
  */
 const ADAPTERS: OfficeAdapter[] = [

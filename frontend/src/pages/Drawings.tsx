@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { DeleteOutlined, DownloadOutlined, EditOutlined, ExportOutlined, PartitionOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
+import { formatDateTime, formatSize } from '../utils/format';
 interface Drawing {
   id: string;
   name: string;
@@ -115,7 +116,7 @@ export default function Drawings() {
                   <Typography.Text strong>{d.name}</Typography.Text>
                   <div>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {new Date(d.updated_at).toLocaleString('zh-CN')} · {(d.size / 1024).toFixed(1)} KB
+                      {formatDateTime(d.updated_at)} · {formatSize(d.size)}
                     </Typography.Text>
                   </div>
                 </div>

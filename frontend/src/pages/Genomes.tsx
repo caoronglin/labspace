@@ -40,6 +40,7 @@ import PageShell from '../components/PageShell';
  *      浏览器直接访问 8095 会被拒绝，必须走同源代理
  */
 
+import { formatDateTime, formatSize } from '../utils/format';
 const FASTA_EXTS = new Set(['fa', 'fna', 'fasta', 'fas', 'ffn', 'frn', 'faa']);
 
 /** 整条染色体不适合在交互式面板里跑 ORF，截取前 20 kb 足够说明问题。 */
@@ -53,19 +54,6 @@ const COLUMNS = [
   { title: '更新时间', dataIndex: 'modified', key: 'modified', width: 180 },
   { title: '操作', key: 'ops', width: 280 },
 ];
-
-function formatSize(n: number) {
-  if (!n) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
-  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-function formatTime(v: string) {
-  if (!v) return '—';
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString('zh-CN');
-}
 
 function isFasta(name: string) {
   const ext = name.toLowerCase().split('.').pop() ?? '';
@@ -99,12 +87,12 @@ export default function Genomes({ embedded = false }: { embedded?: boolean } = {
   const navigate = useNavigate();
   const [urlParams] = useSearchParams();
   const [view, setView] = useState<'browse' | 'analyze' | 'tools'>('browse');
-  // 从文件管理直跳进来时携带的基因组文件名，用于顶部提示
+  // 从文件存储直跳进来时携带的基因组文件名，用于顶部提示
   const [linkedName, setLinkedName] = useState('');
   const handledLink = useRef('');
   // 工具结果「在 JBrowse 查看」的定位区间：设置后浏览器视图直接跳到该位置
   const [loc, setLoc] = useState('');
-  // 文件管理选中的 FASTA：交给 JBrowse 动态装配，而不是硬塞进 hg19 示例
+  // 文件存储选中的 FASTA：交给 JBrowse 动态装配，而不是硬塞进 hg19 示例
   const [jbrowseFile, setJbrowseFile] = useState<{ id: string; name: string } | null>(null);
   const [sequence, setSequence] = useState(SAMPLE);
   const [seqName, setSeqName] = useState('示例序列');
@@ -184,7 +172,7 @@ export default function Genomes({ embedded = false }: { embedded?: boolean } = {
     }
   };
 
-  // 文件管理行菜单 → /genomes?genome=<name>&gid=<id>&action=jbrowse|analyze
+  // 文件存储行菜单 → /genomes?genome=<name>&gid=<id>&action=jbrowse|analyze
   useEffect(() => {
     const name = urlParams.get('genome');
     if (!name) return;
@@ -411,11 +399,11 @@ export default function Genomes({ embedded = false }: { embedded?: boolean } = {
           </Tag>
           {linkedName ? (
             <Tag color="purple" variant="filled">
-              来自文件管理 · {linkedName}
+              来自文件存储 · {linkedName}
             </Tag>
           ) : null}
           <Button icon={<FolderOpenOutlined />} onClick={() => navigate('/files?source=genomes')}>
-            文件管理
+            文件存储
           </Button>
         </Space>
       }
@@ -525,7 +513,7 @@ export default function Genomes({ embedded = false }: { embedded?: boolean } = {
                     return { ...col, render: (_: unknown, r: FileEntry) => formatSize(r.size) };
                   }
                   if (col.key === 'modified') {
-                    return { ...col, render: (_: unknown, r: FileEntry) => formatTime(r.modified) };
+                    return { ...col, render: (_: unknown, r: FileEntry) => formatDateTime(r.modified) };
                   }
                   if (col.key === 'ops') {
                     return {
@@ -590,13 +578,13 @@ export default function Genomes({ embedded = false }: { embedded?: boolean } = {
                   <Space orientation="vertical" size={4}>
                     <Typography.Text>当前目录还没有你看得到的基因组文件。</Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      管理员可在「文件管理 → 公共基因组」上传 FASTA / GTF / BED，上传后此处立即出现。
+                      管理员可在「文件存储 → 公共基因组」上传 FASTA / GTF / BED，上传后此处立即出现。
                     </Typography.Text>
                   </Space>
                 }
               >
                 <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => navigate('/files?source=genomes')}>
-                  前往文件管理
+                  前往文件存储
                 </Button>
               </Empty>
             )}
@@ -611,7 +599,7 @@ export default function Genomes({ embedded = false }: { embedded?: boolean } = {
             type="info"
             showIcon
             title="默认示例与自有 FASTA"
-            description="未选择文件时展示 hg19 教学示例；从文件管理选中 FASTA 后，JBrowse 会用 IndexedFastaAdapter 动态装配该文件（按你的文件权限读取），无需预先配置参考基因组。"
+            description="未选择文件时展示 hg19 教学示例；从文件存储选中 FASTA 后，JBrowse 会用 IndexedFastaAdapter 动态装配该文件（按你的文件权限读取），无需预先配置参考基因组。"
           />
         </Flex>
       ) : view === 'tools' ? (

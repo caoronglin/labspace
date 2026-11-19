@@ -23,14 +23,16 @@ import {
   CopyOutlined,
   DeleteOutlined,
   ExperimentOutlined,
+  MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
   SaveOutlined,
   SafetyCertificateOutlined,
+  SearchOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Actions, Bubble, Prompts, Sender, ThoughtChain, Welcome } from '@ant-design/x';
+import { Actions, Bubble, Conversations, Prompts, Sender, ThoughtChain, Welcome } from '@ant-design/x';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -44,6 +46,7 @@ import KnowledgeAsk from '../components/KnowledgeAsk';
 import ElnPanel from './lab/ElnPanel';
 import MarkdownView from '../components/MarkdownView';
 import PageShell from '../components/PageShell';
+import AgentHub from './agent/hub/AgentHub';
 
 dayjs.extend(relativeTime);
 dayjs.locale('zh-cn');
@@ -59,6 +62,14 @@ type LocalMessage = {
   meta?: Record<string, unknown>;
   created_at?: string | null;
   streaming?: boolean;
+};
+
+type Citation = {
+  key: string;
+  source: string;
+  chunk: number | null;
+  score: number | null;
+  text: string;
 };
 
 type ToolCall = {
@@ -130,6 +141,111 @@ function extractError(payload: unknown): string {
 }
 
 /** 从 meta 中解析工具调用列表，字段缺失时不崩溃 */
+
+/**
+ * 从工具调用结果里抽 RAG 命中，渲染成「引用来源」。
+ *
+ * 为什么从工具结果抽而不是让模型自己写：
+ *   模型复述文件名不可靠（会漏、会简写、会张冠李戴）。检索结果里的
+ *   ``source`` / ``chunk_index`` 是后端给的事实，直接展示才是可核对的。
+ *   模型正文里仍然可以写「据 xxx.md」，但**引用块**以工具结果为准。
+ */
+function parseCitations(tools: ToolCall[]): Citation[] {
+  const out: Citation[] = [];
+  const seen = new Set<string>();
+  for (const t of tools) {
+    if (!/knowledge_search|knowledge_bases/.test(t.name)) continue;
+    if (!t.result) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(t.result);
+    } catch {
+      continue;
+    }
+    const root = asRecord(parsed);
+    if (!root) continue;
+    // 工具返回可能被包一层 {data: {...}}，也可能直接是 {results: [...]}
+    const inner = asRecord(root.data) ?? root;
+    const rows = inner.results;
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const r = asRecord(row);
+      if (!r) continue;
+      const source = pickText(r, ['source']) || '未知文件';
+      const chunk = typeof r.chunk_index === 'number' ? r.chunk_index : null;
+      const key = `${source}#${chunk ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const score = typeof r.score === 'number' ? r.score : null;
+      out.push({
+        key,
+        source,
+        chunk,
+        score,
+        text: pickText(r, ['text', 'excerpt', 'content']),
+      });
+    }
+  }
+  return out;
+}
+
+function CitationList({ citations }: { citations: Citation[] }) {
+  const [open, setOpen] = useState(false);
+  if (citations.length === 0) return null;
+  const shown = open ? citations : citations.slice(0, 3);
+  return (
+    <Flex vertical gap={6} style={{ marginBottom: 4, maxWidth: 620 }}>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <BookOutlined /> 引用来源 {citations.length} 处
+        {citations.length > 3 ? (
+          <Typography.Link style={{ fontSize: 12, marginInlineStart: 8 }} onClick={() => setOpen(!open)}>
+            {open ? '收起' : '展开全部'}
+          </Typography.Link>
+        ) : null}
+      </Typography.Text>
+      {shown.map((c, i) => (
+        <div
+          key={c.key}
+          style={{
+            padding: '6px 9px',
+            borderRadius: 6,
+            background: 'var(--ant-color-fill-quaternary)',
+            border: '1px solid var(--ant-color-border-secondary)',
+          }}
+        >
+          <Flex gap={6} align="center" wrap>
+            <Tag color="blue" style={{ marginInlineEnd: 0, fontSize: 11 }}>
+              [{i + 1}]
+            </Tag>
+            <Typography.Text style={{ fontSize: 12.5 }} ellipsis={{ tooltip: c.source }}>
+              {c.source}
+            </Typography.Text>
+            {c.chunk !== null ? (
+              <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
+                第 {c.chunk + 1} 段
+              </Typography.Text>
+            ) : null}
+            {c.score !== null ? (
+              <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
+                相关度 {c.score.toFixed(2)}
+              </Typography.Text>
+            ) : null}
+          </Flex>
+          {c.text ? (
+            <Typography.Paragraph
+              type="secondary"
+              ellipsis={{ rows: 2 }}
+              style={{ margin: '3px 0 0', fontSize: 12 }}
+            >
+              {c.text.replace(/\n+/g, ' ')}
+            </Typography.Paragraph>
+          ) : null}
+        </div>
+      ))}
+    </Flex>
+  );
+}
+
 function parseToolCalls(meta?: Record<string, unknown>): ToolCall[] {
   const out: ToolCall[] = [];
   const push = (raw: unknown, idx: number) => {
@@ -204,9 +320,9 @@ export default function Agent() {
   const screens = Grid.useBreakpoint();
   const narrow = !screens.lg;
 
-  const [mode, setMode] = useState<'chat' | 'kb' | 'lab'>(() => {
-    const wanted = searchParams.get('mode');
-    return wanted === 'kb' || wanted === 'lab' ? wanted : 'chat';
+  const [mode, setMode] = useState<'chat' | 'kb' | 'lab' | 'hub'>(() => {
+    const wanted = searchParams.get('mode') || searchParams.get('tab');
+    return wanted === 'kb' || wanted === 'lab' || wanted === 'hub' ? wanted : 'chat';
   });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -227,16 +343,21 @@ export default function Agent() {
 
   useEffect(() => {
     const raw = searchParams.get('mode');
-    const wanted: 'chat' | 'kb' | 'lab' = raw === 'kb' || raw === 'lab' ? raw : 'chat';
+    // 白名单必须和上面的初始值保持一致 —— 漏掉 'hub' 时，
+    // 挂载后这个 effect 会把 /agent?mode=hub 立刻覆盖成 'chat'，
+    // 于是「能力中心」深链永远打不开（页面停在对话页）。
+    const wanted: 'chat' | 'kb' | 'lab' | 'hub' =
+      raw === 'kb' || raw === 'lab' || raw === 'hub' ? raw : 'chat';
     setMode((cur) => (cur === wanted ? cur : wanted));
   }, [searchParams]);
 
-  const switchMode = (next: 'chat' | 'kb' | 'lab') => {
+  const switchMode = (next: 'chat' | 'kb' | 'lab' | 'hub') => {
     setMode(next);
     const params = new URLSearchParams(searchParams);
-    if (next === 'kb') params.set('mode', 'kb');
-    else if (next === 'lab') params.set('mode', 'lab');
-    else params.delete('mode');
+    // 能力中心与对话共用同一个页面：用 mode 参数切换，深链可直接到 hub
+    if (next === 'chat') params.delete('mode');
+    else params.set('mode', next);
+    params.delete('tab');
     setSearchParams(params, { replace: true });
   };
 
@@ -340,6 +461,14 @@ export default function Agent() {
   // 注意：新建会话后 invalidateQueries 触发的列表刷新可能尚未包含新会话，
   // 此时不能把刚选中的会话置空（否则输入框会被禁用）。
   const pendingIdsRef = useRef<Set<string>>(new Set());
+  // 首次进入时自动选中最近一次会话：否则输入框一直是禁用状态，
+  // 用户看到的是一个"不能输入"的助手页。
+  useEffect(() => {
+    if (activeId || !sessionsQuery.data) return;
+    const latest = sessions[0];
+    if (latest) setActiveId(latest.id);
+  }, [activeId, sessions, sessionsQuery.data]);
+
   useEffect(() => {
     if (!activeId || !sessionsQuery.data) return;
     if (pendingIdsRef.current.has(activeId)) {
@@ -745,15 +874,6 @@ export default function Agent() {
     });
   };
 
-  const sessionOptions = useMemo(
-    () =>
-      sessions.map((s) => ({
-        value: s.id,
-        label: `${s.title || '未命名会话'} · ${relTime(s.updated_at) || '刚刚'}`,
-      })),
-    [sessions],
-  );
-
   const suggestionItems = [
     ...skills.map((s) => ({
       key: `skill:${s.name}`,
@@ -766,37 +886,38 @@ export default function Agent() {
     { key: 'todo', label: '记录实验待办', description: '把下一步计划写入个人工作台' },
   ];
 
+  /** 会话搜索默认折叠：侧栏窄，搜索框常驻会把它挤没。 */
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [sessionKeyword, setSessionKeyword] = useState('');
+
+  /** 会话列表按「今天 / 更早」分组，用 X 的 Conversations 呈现。 */
+  const conversationItems = useMemo(() => {
+    const today = dayjs().format('YYYY-MM-DD');
+    const kw = sessionKeyword.trim().toLowerCase();
+    const visible = kw
+      ? sessions.filter((s) => `${s.title || ''} ${s.model || ''}`.toLowerCase().includes(kw))
+      : sessions;
+    return visible.map((s) => ({
+      key: s.id,
+      label: (
+        <Flex vertical gap={0} style={{ minWidth: 0 }}>
+          <Typography.Text strong ellipsis style={{ fontSize: 13, maxWidth: 220 }}>
+            {s.title || '未命名会话'}
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {relTime(s.updated_at) || '刚刚'} · {s.message_count ?? 0} 条
+          </Typography.Text>
+        </Flex>
+      ),
+      icon: <MessageOutlined />,
+      group: s.updated_at && s.updated_at.startsWith(today) ? '今天' : '更早',
+    }));
+  }, [sessions, sessionKeyword]);
+
   const renderToolbar = () => (
     <Card size="small" styles={{ body: { padding: '10px 14px' } }} data-testid="agent-toolbar">
       <Flex justify="space-between" align="center" wrap gap={10}>
         <Space wrap size={8}>
-          <Select
-            style={{ minWidth: narrow ? 200 : 280, maxWidth: 360 }}
-            value={activeId ?? undefined}
-            placeholder={sessions.length ? '选择会话' : '暂无会话'}
-            loading={sessionsQuery.isLoading}
-            options={sessionOptions}
-            onChange={(id) => {
-              setActiveId(String(id));
-              setStreamError('');
-              setStreamNotice('');
-            }}
-            popupMatchSelectWidth={360}
-            optionRender={(opt) => {
-              const s = sessions.find((x) => x.id === opt.value);
-              if (!s) return opt.label;
-              return (
-                <Flex vertical gap={2} style={{ minWidth: 0 }}>
-                  <Typography.Text strong ellipsis style={{ maxWidth: 300 }}>
-                    {s.title || '未命名会话'}
-                  </Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {modelLabel(s.model)} · {relTime(s.updated_at) || '刚刚'} · {s.message_count ?? 0} 条消息
-                  </Typography.Text>
-                </Flex>
-              );
-            }}
-          />
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -939,6 +1060,7 @@ export default function Agent() {
       avatar: isUser ? undefined : <RobotOutlined style={{ color: '#2B5CE6' }} />,
       footer: isAi ? (
         <Flex vertical gap={6} align="flex-start">
+          <CitationList citations={parseCitations(tools)} />
           {toolChain(tools)}
           <Actions
             items={[
@@ -970,12 +1092,81 @@ export default function Agent() {
     };
   });
 
+  /** 左侧会话栏：Ant Design X 的 Conversations（唯一框架），搜索默认折叠。 */
+  const renderConversations = () => (
+    <div
+      style={{
+        width: narrow ? '100%' : 268,
+        flex: narrow ? '0 0 auto' : '0 0 268px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        minHeight: 0,
+      }}
+    >
+      <Flex gap={6} align="center">
+        <Input
+          size="small"
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="搜索会话"
+          value={sessionKeyword}
+          onChange={(e) => setSessionKeyword(e.target.value)}
+          style={{ flex: 1 }}
+          aria-label="搜索会话"
+        />
+        <Tooltip title={sessionSearchOpen ? '收起搜索' : '搜索会话'}>
+          <Button
+            size="small"
+            type={sessionSearchOpen ? 'primary' : 'default'}
+            icon={<SearchOutlined />}
+            aria-label="搜索会话"
+            onClick={() => {
+              setSessionSearchOpen((v) => !v);
+              if (sessionSearchOpen) setSessionKeyword('');
+            }}
+          />
+        </Tooltip>
+      </Flex>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ant-color-border-secondary, #EEF0F4)', borderRadius: 10, padding: 4 }}>
+        <Conversations
+          items={conversationItems}
+          activeKey={activeId ?? undefined}
+          groupable={{ collapsible: true }}
+          onActiveChange={(key) => {
+            setActiveId(String(key));
+            setStreamError('');
+            setStreamNotice('');
+          }}
+          creation={{
+            icon: <PlusOutlined />,
+            label: '新建会话',
+            onClick: () => createMut.mutate(selectedModel),
+          }}
+          menu={(item) => ({
+            items: [
+              {
+                key: 'delete',
+                label: '删除会话',
+                danger: true,
+                onClick: () => confirmDeleteSession(String(item.key)),
+              },
+            ],
+          })}
+        />
+      </div>
+    </div>
+  );
+
   const renderChat = () => {
     const noSessions = !sessionsQuery.isLoading && sessions.length === 0;
 
     return (
+      <Flex gap={12} align="stretch" wrap={narrow} style={{ minHeight: narrow ? 480 : 'calc(100vh - 220px)' }}>
+      {narrow ? null : renderConversations()}
       <Card
         size="small"
+        style={{ flex: 1, minWidth: 0 }}
         styles={{ body: { padding: 16, display: 'flex', flexDirection: 'column', minHeight: narrow ? 480 : 'calc(100vh - 220px)' } }}
         title={
           <Space orientation="horizontal" size={8}>
@@ -987,16 +1178,19 @@ export default function Agent() {
           <Flex align="center" gap={8} wrap="wrap">
             <Select
               size="small"
-              style={{ minWidth: 180 }}
+              style={{ minWidth: 168 }}
               value={selectedModel || undefined}
               options={modelOptions}
               onChange={setSelectedModel}
               placeholder="选择模型"
               popupMatchSelectWidth={220}
+              aria-label="选择模型"
             />
-            <Tag color={status?.available ? 'green' : 'red'} variant="filled">
-              {status?.available ? '网关在线' : '网关不可用'}
-            </Tag>
+            <Tooltip title="助手后端（AgentScope）是否可达">
+              <Tag color={status?.available ? 'green' : 'red'} variant="filled">
+                {status?.available ? '助手在线' : '助手不可用'}
+              </Tag>
+            </Tooltip>
             <Tooltip title="代码沙箱：无网络、限额运行，执行后容器立即销毁">
               <Tag color={status?.sandbox ? 'blue' : 'default'} variant="filled" icon={<SafetyCertificateOutlined />}>
                 {status?.sandbox ? '沙箱就绪' : '沙箱离线'}
@@ -1017,7 +1211,7 @@ export default function Agent() {
             description={
               <Flex vertical gap={8}>
                 <Typography.Text>
-                  {status.reason || '当前无法连接到模型网关，请稍后重试。'}
+                  {status.reason || '当前无法连接到助手服务，请稍后重试。'}
                 </Typography.Text>
                 <Button
                   size="small"
@@ -1027,7 +1221,7 @@ export default function Agent() {
                     void modelsQuery.refetch();
                   }}
                 >
-                  检查网关状态
+                  检查助手状态
                 </Button>
               </Flex>
             }
@@ -1169,14 +1363,32 @@ export default function Agent() {
             }
             footer={
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Enter 发送，Shift + Enter 换行。回答由本地模型网关生成，仅供科研参考。
+                Enter 发送，Shift + Enter 换行。回答由平台模型生成，仅供科研参考。
               </Typography.Text>
             }
           />
         </div>
       </Card>
+      </Flex>
     );
   };
+
+  const modeSwitcher = (
+    <Segmented
+      value={mode}
+      onChange={(v) => switchMode(v as 'chat' | 'kb' | 'lab' | 'hub')}
+      options={[
+        { label: 'Agent 对话', value: 'chat' },
+        { label: '知识库问答', value: 'kb' },
+        { label: '实验记录', value: 'lab' },
+        { label: '能力中心', value: 'hub' },
+      ]}
+    />
+  );
+
+  if (mode === 'hub') {
+    return <AgentHub embedded extra={modeSwitcher} />;
+  }
 
   return (
     <PageShell
@@ -1186,11 +1398,12 @@ export default function Agent() {
         <Space orientation="horizontal" size={8} wrap>
           <Segmented
             value={mode}
-            onChange={(v) => switchMode(v as 'chat' | 'kb' | 'lab')}
+            onChange={(v) => switchMode(v as 'chat' | 'kb' | 'lab' | 'hub')}
             options={[
               { label: 'Agent 对话', value: 'chat' },
               { label: '知识库问答', value: 'kb' },
               { label: '实验记录', value: 'lab' },
+              { label: '能力中心', value: 'hub' },
             ]}
           />
           {mode === 'chat' && generating && (

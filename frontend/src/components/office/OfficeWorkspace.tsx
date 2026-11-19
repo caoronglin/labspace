@@ -13,7 +13,7 @@ type Props = {
   onSaved?: () => void;
 };
 
-/** 文件管理的 Office 工作区：编辑走结构化读写，放映只对演示文稿开放。 */
+/** 文件存储的 Office 工作区：编辑走结构化读写，放映只对演示文稿开放。 */
 export default function OfficeWorkspace({ entry, open, mode, onClose, onSaved }: Props) {
   const adapter = entry ? officeAdapterFor(entry.name) : null;
   const [data, setData] = useState<OfficeContent | null>(null);

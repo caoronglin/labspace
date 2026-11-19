@@ -6,7 +6,7 @@ const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '门户首页', url: hostUrl('/') },
   { name: '统一认证', url: hostUrl('/', 8090) },
   { name: '统一搜索', url: '/search' },
-  { name: '文件管理', url: '/files' },
+  { name: '文件存储', url: '/files' },
   { name: '公共基因组', url: '/genomes' },
   { name: '生信实训', url: '/bioinfo' },
   { name: '文件工坊', url: '/snapotter' },

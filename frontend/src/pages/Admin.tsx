@@ -28,14 +28,17 @@ import {
   CheckCircleOutlined,
   CloudServerOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
   ReloadOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
+  ScheduleOutlined,
   SettingOutlined,
   StopOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { errText } from '../utils/err';
 import { api, type AccountItem, type FileGrant } from '../services/api';
 import AccessPreview from '../components/acl/AccessPreview';
 import { GrantEditor, GrantList } from '../components/acl/GrantEditor';
@@ -45,9 +48,13 @@ import ProStat from '../components/admin/ProStat';
 import ProTableCard from '../components/admin/ProTableCard';
 import AgentAdmin from './admin/AgentAdmin';
 import GroupPermissions from './admin/GroupPermissions';
+import TasksAdmin from './admin/TasksAdmin';
+import SharedMembers from './SharedMembers';
+import { labSharedApi, type SharedMember } from '../services/labShared';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 /* 图表组件懒加载：@ant-design/plots 不进入管理页首屏 chunk */
+import { formatSize } from '../utils/format';
 const DiskUsagePanel = lazy(() => import('../components/charts/DiskUsagePanel'));
 const ServiceHealthDonut = lazy(() => import('../components/charts/ServiceHealthDonut'));
 
@@ -60,12 +67,8 @@ function ChartFallback() {
   );
 }
 
-function formatBytes(n: number) {
-  if (!n) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
-  return `${(n / 1024 ** i).toFixed(1)} ${units[i]}`;
-}
+// 大小格式化统一走 utils/format（见该文件顶部说明）
+const formatBytes = formatSize;
 
 function formatCasdoorTime(v?: string) {
   if (!v) return '-';
@@ -105,6 +108,9 @@ const EMAIL_RULE = {
 };
 
 /** 生成带大小写、数字与符号的初始口令（避开易混淆字符）。 */
+/** 与服务端 backend/app/accounts.py 的 INITIAL_PASSWORD 保持一致。 */
+const INITIAL_PASSWORD = 'ChangeMe#2026';
+
 function generatePassword(length = 16): string {
   const bytes = new Uint32Array(length);
   crypto.getRandomValues(bytes);
@@ -119,6 +125,17 @@ function generatePassword(length = 16): string {
 }
 
 /** 统一账号管理：Casdoor 是唯一身份源，本页直接读写并写入审计表。 */
+/** 表格行：账号本体 + 分组视图用的内部字段（不会出现在接口里）。 */
+type AccountRow = AccountItem & {
+  __group?: boolean;
+  /** 名册信息（学号/身份/在研状态/共享目录）。账号行按 account 关联名册。 */
+  __roster?: SharedMember;
+  /** 名册里还没有对应账号的人（待开通）。 */
+  __rosterOnly?: boolean;
+  __count?: number;
+  children?: AccountRow[];
+};
+
 function AccountsAdmin() {
   const { message } = App.useApp();
   const qc = useQueryClient();
@@ -144,6 +161,17 @@ function AccountsAdmin() {
     queryFn: () => api.accounts(q),
     staleTime: 15_000,
   });
+
+  // 组员名册：账号表按 account 关联它，把"学号 / 身份 / 在研状态 / 共享目录"
+  // 直接长在账号行上 —— 以前账号表和名册是两张并排的表，同一个人要看两处、
+  // 两处的"待开通/已开通"口径还对不上，这就是这个页面看起来乱的原因。
+  const roster = useQuery({
+    queryKey: ['lab-shared', 'members'],
+    queryFn: labSharedApi.members,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const rosterMembers = useMemo(() => roster.data?.members ?? [], [roster.data]);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['admin-accounts'] });
@@ -186,11 +214,17 @@ function AccountsAdmin() {
   });
 
   const create = useMutation({
-    mutationFn: (v: { name: string; displayName?: string; email?: string; groups: string[]; password: string }) =>
-      api.createAccount(v),
+    mutationFn: (v: { name: string; displayName?: string; email?: string; groups: string[] }) =>
+      api.createAccount({ ...v, password: INITIAL_PASSWORD }),
     onSuccess: (res, v) => {
       message.success(`账号 ${res.account.name} 已创建`);
-      setCreated({ name: res.account.name, password: v.password, groups: v.groups });
+      // 口令由服务端统一生成（不接受管理员自选），必须显示服务端回传的那个值，
+      // 否则管理员交付给用户的口令是无效的、用户登不进去。
+      setCreated({
+        name: res.account.name,
+        password: res.initialPassword ?? INITIAL_PASSWORD,
+        groups: v.groups,
+      });
       setCreating(false);
       createForm.resetFields();
       refresh();
@@ -275,6 +309,126 @@ function AccountsAdmin() {
     if (statusFilter === 'disabled') return accounts.filter((a) => a.isForbidden);
     return accounts.filter((a) => !a.isForbidden);
   }, [accounts, statusFilter]);
+
+  /**
+   * 按用户组分类。
+   *
+   * 一个账号通常属于多个组（博士生 + 生信学生 + …），逐个列进每组会让同一个人
+   * 出现三遍、人数也对不上。这里按**权限从高到低**取第一个命中的组作为归属，
+   * 保证"每人只出现一次、各组人数相加 = 总人数"。
+   *
+   * 实现上用 antd Table 原生的树形 children，而不是另起一套分组表格：
+   * 列定义只有一份，排序/筛选/编辑入口全部沿用原来的代码。
+   */
+  const [grouped, setGrouped] = useState(true);
+  const GROUP_ORDER = [
+    'lab-admin', 'lab-teacher', 'lab-postdoc', 'lab-phd', 'lab-master',
+    'lab-student', 'lab-undergrad', 'lab-intern',
+    'bioinfo-admin', 'bioinfo-instructor', 'bioinfo-ta', 'bioinfo-student',
+  ];
+  /** 账号 → 名册条目的索引（按门户账号键关联）。 */
+  const rosterByAccount = useMemo(() => {
+    const map = new Map<string, SharedMember>();
+    for (const m of rosterMembers) {
+      if (m.account) map.set(m.account, m);
+    }
+    return map;
+  }, [rosterMembers]);
+
+  /**
+   * 名册里有、但还没建账号的人。
+   *
+   * 这些人**不是**账号表的一行（没有账号就没有可编辑的账号），
+   * 但必须出现在同一个页面里 —— 否则"有几个人还没开通"这件事根本看不到，
+   * 而这恰恰是管理员最需要知道的一件事。
+   */
+  const rosterOnlyRows = useMemo<AccountRow[]>(
+    () =>
+      rosterMembers
+        .filter((m) => !m.account || !filteredAccounts.some((a) => a.name === m.account))
+        .map(
+          (m) =>
+            ({
+              name: m.account || m.code,
+              displayName: m.displayName || m.name,
+              email: '',
+              groups: [],
+              isAdmin: false,
+              isForbidden: false,
+              // 还没有账号，下面这些账号字段没有意义，补默认值以满足行类型
+              hasPassword: false,
+              createdAt: '',
+              updatedAt: '',
+              lastSigninAt: '',
+              fileGrants: [],
+              homeReady: false,
+              __rosterOnly: true,
+              __roster: m,
+            }) as AccountRow,
+        ),
+    [rosterMembers, filteredAccounts],
+  );
+
+  /** 账号行 + 名册信息（按账号键关联）。 */
+  const withRoster = useMemo<AccountRow[]>(
+    () =>
+      filteredAccounts.map(
+        (a) => ({ ...a, __roster: rosterByAccount.get(a.name) }) as AccountRow,
+      ),
+    [filteredAccounts, rosterByAccount],
+  );
+
+  const accountRows = useMemo(() => {
+    if (!grouped) return [...withRoster, ...rosterOnlyRows];
+    const buckets = new Map<string, AccountItem[]>();
+    for (const account of withRoster) {
+      const groups = account.groups ?? [];
+      const primary = GROUP_ORDER.find((g) => groups.includes(g)) ?? groups[0] ?? '未分组';
+      const list = buckets.get(primary) ?? [];
+      list.push(account);
+      buckets.set(primary, list);
+    }
+    const rank = (g: string) => {
+      const i = GROUP_ORDER.indexOf(g);
+      return i === -1 ? GROUP_ORDER.length : i;
+    };
+    const rows = [...buckets.entries()]
+      .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]))
+      .map<AccountRow>(([group, list]) => ({
+        name: `__group__${group}`,
+        displayName: group,
+        email: '',
+        groups: [group],
+        isAdmin: false,
+        isForbidden: false,
+        __group: true,
+        __count: list.length,
+        children: list as AccountRow[],
+        // 分组节点不是真实账号：其余字段仅用于满足行类型，
+        // 渲染时按 __group 分支处理，不会被当成账号展示。
+      }) as AccountRow);
+    // 未开通账号的组员排在最后 —— 他们是"待办"，不是"已有资产"
+    if (rosterOnlyRows.length) {
+      rows.push({
+        name: '__group__未开通账号',
+        displayName: '未开通账号',
+        email: '',
+        groups: [],
+        isAdmin: false,
+        isForbidden: false,
+        hasPassword: false,
+        createdAt: '',
+        updatedAt: '',
+        lastSigninAt: '',
+        fileGrants: [],
+        homeReady: false,
+        __group: true,
+        __count: rosterOnlyRows.length,
+        children: rosterOnlyRows,
+      } as AccountRow);
+    }
+    return rows;
+  }, [withRoster, rosterOnlyRows, grouped]);
 
   const counts = useMemo(
     () => ({
@@ -414,16 +568,30 @@ function AccountsAdmin() {
           </Space>
         </Flex>
       ) : null}
-      <Table<AccountItem>
+      <Flex align="center" gap={8} style={{ marginBottom: 8 }} wrap>
+        <Segmented
+          value={grouped ? 'grouped' : 'flat'}
+          onChange={(v) => setGrouped(v === 'grouped')}
+          options={[
+            { label: '按用户组分类', value: 'grouped' },
+            { label: '平铺', value: 'flat' },
+          ]}
+        />
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          一个账号只归入权限最高的那一组，各组人数相加等于总数
+        </Typography.Text>
+      </Flex>
+      <Table<AccountRow>
         size="small"
         rowKey="name"
         loading={isLoading}
         scroll={{ x: 1100 }}
-        dataSource={filteredAccounts}
+        dataSource={accountRows}
+        expandable={{ defaultExpandAllRows: grouped }}
         rowSelection={{
           selectedRowKeys: selected,
           onChange: (keys) => setSelected(keys.map(String)),
-          getCheckboxProps: (r) => ({ disabled: r.isAdmin }),
+          getCheckboxProps: (r) => ({ disabled: r.isAdmin || Boolean(r.__group) }),
         }}
         pagination={{
           pageSize: 20,
@@ -436,16 +604,79 @@ function AccountsAdmin() {
             title: '用户名',
             dataIndex: 'name',
             width: 170,
-            render: (v: string, r) => (
-              <Space size={6}>
-                <Typography.Text strong style={{ fontFamily: 'monospace' }}>
-                  {v}
-                </Typography.Text>
-                {r.isAdmin ? <Tag color="red" variant="filled">管理员</Tag> : null}
-              </Space>
-            ),
+            render: (v: string, r) =>
+              r.__group ? (
+                <Space size={8}>
+                  <Typography.Text strong>{r.displayName}</Typography.Text>
+                  <Tag>{r.__count} 人</Tag>
+                </Space>
+              ) : (
+                <Space size={6}>
+                  <Typography.Text strong style={{ fontFamily: 'monospace' }}>
+                    {v}
+                  </Typography.Text>
+                  {r.isAdmin ? <Tag color="red" variant="filled">管理员</Tag> : null}
+                </Space>
+              ),
           },
           { title: '姓名', dataIndex: 'displayName', width: 130, render: (v: string) => v || '-' },
+          // —— 名册信息：直接长在账号行上，不必再翻另一张表 ——
+          {
+            title: '学号',
+            dataIndex: '__roster',
+            width: 90,
+            render: (_: unknown, r: AccountRow) =>
+              r.__roster?.code ? (
+                <Typography.Text style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                  {r.__roster.code}
+                </Typography.Text>
+              ) : (
+                <Tag>未入名册</Tag>
+              ),
+          },
+          {
+            title: '身份',
+            dataIndex: '__roster',
+            width: 90,
+            render: (_: unknown, r: AccountRow) => r.__roster?.identity || '-',
+          },
+          {
+            title: '名册状态',
+            dataIndex: '__roster',
+            width: 100,
+            render: (_: unknown, r: AccountRow) =>
+              r.__roster ? (
+                <Tag color={r.__roster.status === '在研' ? 'green' : 'default'}>
+                  {r.__roster.status}
+                </Tag>
+              ) : (
+                '-'
+              ),
+          },
+          {
+            title: '共享目录',
+            dataIndex: '__roster',
+            width: 160,
+            render: (_: unknown, r: AccountRow) =>
+              r.__roster ? (
+                <Flex vertical gap={2}>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    {r.__roster.folder}
+                  </Typography.Text>
+                  {r.__roster.account ? (
+                    <Tag color="blue" variant="filled" style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                      已开通
+                    </Tag>
+                  ) : (
+                    <Tag color="orange" variant="filled" style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                      待开通
+                    </Tag>
+                  )}
+                </Flex>
+              ) : (
+                '-'
+              ),
+          },
           { title: '邮箱', dataIndex: 'email', ellipsis: true },
           {
             title: '角色组',
@@ -500,6 +731,23 @@ function AccountsAdmin() {
             width: 260,
             render: (_: unknown, r) => (
               <Space size={4} wrap>
+                {r.__rosterOnly ? (
+                  // 名册里有这个人但还没建账号：账号侧操作暂时无从谈起，
+                  // 唯一该做的是把账号建出来（名字已从名册带过来）。
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => {
+                      createForm.setFieldsValue({
+                        name: r.__roster?.account || r.__roster?.code || '',
+                        displayName: r.__roster?.displayName || r.__roster?.name || '',
+                      });
+                      setCreating(true);
+                    }}
+                  >
+                    开通账号
+                  </Button>
+                ) : null}
                 <Button size="small" type="link" onClick={() => openEdit(r)}>
                   编辑
                 </Button>
@@ -724,28 +972,15 @@ function AccountsAdmin() {
           >
             <Select mode="multiple" options={groupOptions} placeholder="选择角色组" />
           </Form.Item>
-          <Form.Item
-            name="password"
-            label="初始口令"
-            rules={[
-              { required: true, message: '请输入初始口令' },
-              { min: 10, message: '至少 10 个字符' },
-            ]}
-            extra={
-              <Space size={8} wrap style={{ marginTop: 6 }}>
-                <Typography.Text type="secondary">
-                  至少 10 个字符，创建完成后仅显示一次。
-                </Typography.Text>
-                <Button
-                  size="small"
-                  onClick={() => createForm.setFieldValue('password', generatePassword())}
-                >
-                  生成强口令
-                </Button>
-              </Space>
-            }
-          >
-            <Input.Password placeholder="至少 10 个字符" autoComplete="new-password" />
+          {/* 初始口令由服务端统一生成并强制首次改密：这里只做展示，
+              不再让管理员自选 —— 自选了也不会生效，交付给用户的口令就是错的。 */}
+          <Form.Item label="初始口令">
+            <Typography.Text code copyable>
+              {INITIAL_PASSWORD}
+            </Typography.Text>
+            <Typography.Text type="secondary" style={{ marginInlineStart: 8, fontSize: 12 }}>
+              首次登录强制改密；创建完成后会在结果窗里再次展示以便交付。
+            </Typography.Text>
           </Form.Item>
         </Form>
       </Modal>
@@ -1133,8 +1368,46 @@ function BackupAdmin() {
     queryFn: api.adminBackups,
     refetchInterval: 60_000,
   });
+  const { message, modal } = App.useApp();
+  const forget = useMutation({
+    mutationFn: (id: string) => api.adminBackupDelete(id),
+    onSuccess: (_r, id) => {
+      message.success(`已删除备份快照 ${id.slice(0, 8)}`);
+      void refetch();
+    },
+    onError: (err: Error) => message.error(err.message || '删除备份失败'),
+  });
+  // 异地归档（Git LFS）：本地 restic 在同一块盘上，盘坏了一起没，
+  // 所以另有一条推到 Git 分支的加密归档。这里只读状态，不接触口令与凭据。
+  const gitArchive = useQuery({
+    queryKey: ['admin-backup-git'],
+    queryFn: api.adminBackupGit,
+    refetchInterval: 120_000,
+    retry: false,
+  });
   const disk = data?.disk;
   const snapshots = data?.snapshots ?? [];
+
+  // 删除备份不可撤销，必须先让管理员看清快照时间再确认。
+  const confirmForget = (snap: { id: string; time: string }) => {
+    modal.confirm({
+      title: `删除备份快照 ${snap.id.slice(0, 8)}？`,
+      content: (
+        <Flex vertical gap={6}>
+          <Typography.Text>
+            该快照创建于 {formatCasdoorTime(snap.time)}，删除后<strong>无法恢复</strong>，也不会自动重新生成。
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            如果只是想控制占用，请优先调整保留策略（当前 {data?.keep_within ?? '3d'}），而不是手工删快照。
+          </Typography.Text>
+        </Flex>
+      ),
+      okText: '删除快照',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => forget.mutateAsync(snap.id),
+    });
+  };
   return (
     <Flex vertical gap={16}>
       <Row gutter={[12, 12]}>
@@ -1167,6 +1440,117 @@ function BackupAdmin() {
       </Row>
       <Card
         size="small"
+        title="异地归档（Git LFS）"
+        extra={
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={gitArchive.isFetching}
+            onClick={() => void gitArchive.refetch()}
+          >
+            刷新
+          </Button>
+        }
+      >
+        {gitArchive.data?.available === false ? (
+          <Alert
+            type="info"
+            showIcon
+            title={gitArchive.data.detail ?? '尚无异地归档记录'}
+            description="每日维护会自动生成加密归档并推送到 Git 分支；这里只读状态，不接触归档口令。"
+          />
+        ) : gitArchive.isError ? (
+          <Alert type="warning" showIcon title="读取异地归档状态失败" description={errText(gitArchive.error)} />
+        ) : (
+          <>
+            <Descriptions
+              size="small"
+              column={{ xs: 1, md: 2 }}
+              items={[
+                {
+                  key: 'outcome',
+                  label: '最近一次',
+                  children:
+                    gitArchive.data?.outcome === 'failed' ? (
+                      <Tag color="red">失败</Tag>
+                    ) : gitArchive.data?.pushed ? (
+                      <Tag color="green">已推送</Tag>
+                    ) : (
+                      <Tag color="gold">本地已生成，未推送</Tag>
+                    ),
+                },
+                {
+                  key: 'branch',
+                  label: '分支',
+                  children: <Typography.Text code>{gitArchive.data?.branch || '—'}</Typography.Text>,
+                },
+                {
+                  key: 'count',
+                  label: '保留份数',
+                  children: `${gitArchive.data?.archives?.length ?? 0} / ${gitArchive.data?.keep ?? 3}`,
+                },
+                {
+                  key: 'size',
+                  label: '合计大小',
+                  children: formatBytes(gitArchive.data?.totalBytes ?? 0),
+                },
+                {
+                  key: 'generated',
+                  label: '状态时间',
+                  children: gitArchive.data?.generatedAt ? formatCasdoorTime(gitArchive.data.generatedAt) : '—',
+                },
+                {
+                  key: 'remote',
+                  label: '远端',
+                  children: (
+                    <Typography.Text ellipsis style={{ maxWidth: 260 }}>
+                      {gitArchive.data?.remote || '—'}
+                    </Typography.Text>
+                  ),
+                },
+              ]}
+            />
+            {gitArchive.data?.detail ? (
+              <Alert
+                style={{ marginTop: 10 }}
+                type="warning"
+                showIcon
+                title={gitArchive.data.detail}
+              />
+            ) : null}
+            {(gitArchive.data?.archives ?? []).length ? (
+              <Table
+                style={{ marginTop: 12 }}
+                size="small"
+                rowKey="name"
+                dataSource={gitArchive.data?.archives ?? []}
+                pagination={false}
+                columns={[
+                  { title: '归档', dataIndex: 'name', key: 'name' },
+                  {
+                    title: '大小',
+                    dataIndex: 'size',
+                    key: 'size',
+                    width: 100,
+                    align: 'right',
+                    render: (v: number) => formatBytes(v),
+                  },
+                  {
+                    title: '时间',
+                    dataIndex: 'time',
+                    key: 'time',
+                    width: 180,
+                    render: (v: string) => formatCasdoorTime(v),
+                  },
+                ]}
+              />
+            ) : null}
+          </>
+        )}
+      </Card>
+
+      <Card
+        size="small"
         title="备份快照"
         extra={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refetch()}>刷新</Button>}
       >
@@ -1196,6 +1580,24 @@ function BackupAdmin() {
                 { title: '时间', dataIndex: 'time', render: (v: string) => formatCasdoorTime(v) },
                 { title: '主机', dataIndex: 'hostname' },
                 { title: '标签', dataIndex: 'tags', render: (v: string[]) => (v?.length ? v.map((t) => <Tag key={t}>{t}</Tag>) : '-') },
+                {
+                  title: '',
+                  key: 'actions',
+                  width: 92,
+                  align: 'right',
+                  render: (_: unknown, snap: { id: string; time: string }) => (
+                    <Button
+                      size="small"
+                      type="link"
+                      danger
+                      icon={<DeleteOutlined />}
+                      loading={forget.isPending && forget.variables === snap.id}
+                      onClick={() => confirmForget(snap)}
+                    >
+                      删除
+                    </Button>
+                  ),
+                },
               ]}
             />
           </>
@@ -1205,7 +1607,7 @@ function BackupAdmin() {
   );
 }
 
-const ADMIN_TABS = ['status', 'users', 'announcements', 'agent', 'backups', 'settings'] as const;
+const ADMIN_TABS = ['status', 'users', 'announcements', 'agent', 'tasks', 'backups', 'settings'] as const;
 
 export default function Admin() {
   const location = useLocation();
@@ -1360,6 +1762,8 @@ export default function Admin() {
             <Flex vertical gap={16}>
               <GroupPermissions />
               <AccountsAdmin />
+              {/* 组员名册并入账号管理：学号↔账号、身份、在研/出组都在这里维护 */}
+              <SharedMembers embedded />
               <Card size="small" title="角色映射（Casdoor 同步）">
                 <Descriptions
                   column={1}
@@ -1388,6 +1792,12 @@ export default function Admin() {
           label: 'Agent 模型与配额',
           icon: <RobotOutlined />,
           children: <AgentAdmin />,
+        },
+        {
+          key: 'tasks',
+          label: '后台任务',
+          icon: <ScheduleOutlined />,
+          children: <TasksAdmin />,
         },
         {
           key: 'backups',

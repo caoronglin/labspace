@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Button, Card, Empty, Flex, Input, Listy, Select, Spin, Tabs, Tag, Typography } from 'antd';
-import { BookOutlined, SearchOutlined } from '@ant-design/icons';
+import { BookOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import SaveKnowledgeModal from '../components/SaveKnowledgeModal';
 import LiteratureLibrary from './lab/LiteratureLibrary';
+import DailyPapers from './DailyPapers';
 
 const SOURCES = [
   { value: 'pubmed', label: 'PubMed' },
@@ -160,6 +161,16 @@ export default function Literature() {
             </span>
           ),
           children: <LiteratureLibrary />,
+        },
+        {
+          // 「每日论文」并入文献页：它本质就是文献抓取的一种，不再单开侧栏入口
+          key: 'daily',
+          label: (
+            <span>
+              <ThunderboltOutlined /> 每日论文
+            </span>
+          ),
+          children: <DailyPapers embedded />,
         },
       ]}
     />

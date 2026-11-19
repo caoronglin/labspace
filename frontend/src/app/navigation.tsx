@@ -29,8 +29,12 @@ import {
   GlobalOutlined,
   HomeOutlined,
   PartitionOutlined,
+  ProfileOutlined,
   QuestionCircleOutlined,
+  ReadOutlined,
   RobotOutlined,
+  ScheduleOutlined,
+  ShareAltOutlined,
   TableOutlined,
   ThunderboltOutlined,
   ToolOutlined,
@@ -40,6 +44,13 @@ import {
 
 export type NavGroupKey = 'work' | 'research' | 'learn' | 'tools' | 'admin';
 
+/** 二级入口：折叠态下侧栏只显示这些图标，点击展开子菜单。 */
+export interface NavSub {
+  key: string;
+  label: string;
+  icon: ReactNode;
+}
+
 export interface NavItem {
   /** 路由路径，同时作为唯一标识 */
   path: string;
@@ -47,12 +58,16 @@ export interface NavItem {
   /** 侧栏与命令面板共用的图标 */
   icon: ReactNode;
   group: NavGroupKey;
+  /** 二级入口：同一 group 内 sub 相同的条目归到一个子菜单 */
+  sub?: string;
   /** 命令面板里的补充说明 */
   hint?: string;
   /** 检索用的额外关键词（中文 + 英文，覆盖用户会打的各种叫法） */
   keywords?: string[];
   /** 仅管理员可见 */
   adminOnly?: boolean;
+  /** 仅教师/管理员可见（学生看不到；直接访问路径仍会被后端 ACL 拒绝） */
+  teacherOnly?: boolean;
   /** 不进命令面板（登录页之类的过场路由） */
   noCommand?: boolean;
   /** 面包屑里隐藏（比如重定向路径） */
@@ -69,12 +84,27 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { key: 'work', label: '工作台' },
-  { key: 'research', label: '科研工作' },
-  { key: 'learn', label: '学习资源' },
-  { key: 'tools', label: '实用工具' },
-  { key: 'admin', label: '系统管理', adminOnly: true },
+  { key: 'work', label: '工作' },
+  { key: 'research', label: '科研' },
+  { key: 'admin', label: '系统', adminOnly: true },
 ];
+
+/**
+ * 二级入口注册表。
+ *
+ * 为什么要二级：种子台账、课题资料、组会汇报、多维表格…… 科研类页面有十几个，
+ * 平铺在折叠态侧栏里就是 20+ 个没字的小图标，越用越找不到东西。
+ * 现在折叠态只留「工作台 / 助手 / 文件 / 文献」这几个高频入口，
+ * 其余按用途收进子菜单（悬浮即展开），入口一眼能数完。
+ */
+export const NAV_SUBS: Record<string, NavSub> = {
+  data: { key: 'data', label: '文件与数据', icon: <DatabaseOutlined /> },
+  writing: { key: 'writing', label: '分析与写作', icon: <FileTextOutlined /> },
+  // 学习资源 + 小工具合并：两者都是"偶尔用一次"的辅助入口，
+  // 拆成两个子菜单只会让侧栏更长得滚。
+  more: { key: 'more', label: '学习与小工具', icon: <ToolOutlined /> },
+  admin: { key: 'admin', label: '后台管理', icon: <CloudServerOutlined /> },
+};
 
 export const NAV_ITEMS: NavItem[] = [
   // ---------------------------------------------------------------- 工作台
@@ -91,24 +121,25 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/latex',
     label: 'LaTeX 写作',
     icon: <FileTextOutlined />,
-    group: 'work',
+    group: 'research',
+    sub: 'writing',
     hint: '选刊 · 撰写 · 编译 · 投稿',
     keywords: ['latex', 'tex', 'xelatex', 'paper', '论文', '写作', '投稿', '期刊', 'manuscript'],
   },
   {
     path: '/agent',
-    label: 'Agent 与知识库',
+    label: 'Agent 个人助手',
     icon: <RobotOutlined />,
     group: 'work',
-    hint: '对话 · 知识库 · 技能',
-    keywords: ['agent', 'ai', 'chat', '助手', '对话', '知识库', 'kb', 'rag'],
+    hint: '对话 · 知识库 · 能力中心',
+    keywords: ['agent', 'ai', 'chat', '助手', '对话', '知识库', 'kb', 'rag',
+      'agentscope', '能力中心', 'IM', '渠道', '定时', 'SOP', '工作区', 'MCP', '技能'],
   },
   {
     path: '/knowledge',
     label: '知识库',
     icon: <BookOutlined />,
     group: 'work',
-    hint: '已并入 Agent 与知识库',
     keywords: ['knowledge', 'kb', 'rag', '知识库'],
     hidden: true,
   },
@@ -116,17 +147,74 @@ export const NAV_ITEMS: NavItem[] = [
   // ---------------------------------------------------------------- 科研工作
   {
     path: '/files',
-    label: '文件共享',
+    label: '文件存储',
     icon: <FolderOpenOutlined />,
     group: 'research',
     hint: '个人/公共文件 · 在线预览',
     keywords: ['files', 'file', '文件', '网盘', '共享', '质粒', 'genome', '基因组'],
   },
   {
+    path: '/seeds',
+    label: '种子管理',
+    icon: <ExperimentOutlined />,
+    group: 'research',
+    sub: 'data',
+    hint: '种子入库 · 出库 · 存放 · 备份台账',
+    keywords: ['seed', 'seeds', '种子', '种质', '入库', '出库', '库存', '台账', 'seed store'],
+  },
+  {
+    path: '/shared',
+    label: '组员共享',
+    icon: <ShareAltOutlined />,
+    group: 'research',
+    hidden: true,
+    hint: '已并入账号管理',
+    keywords: ['shared', '组员', '共享文件', '共享', '组员共享', '学号', '目录'],
+  },
+  {
+    path: '/research',
+    label: '课题资料',
+    icon: <ProfileOutlined />,
+    group: 'research',
+    teacherOnly: true,
+    sub: 'data',
+    hint: '个人资料目录 · 进组时间-姓名',
+    keywords: ['research', '课题', '资料', '档案', '目录', '文件夹'],
+  },
+  {
+    path: '/meetings',
+    label: '组会汇报',
+    icon: <ScheduleOutlined />,
+    group: 'research',
+    teacherOnly: true,
+    sub: 'data',
+    hint: '按周归档 · 逐周授权',
+    keywords: ['meeting', 'meetings', '组会', '汇报', '周报', '周目录', 'presentation'],
+  },
+  {
+    path: '/lab',
+    label: '多维表格空间',
+    icon: <TableOutlined />,
+    group: 'research',
+    sub: 'data',
+    hint: '多维表格 · 数据收集 · 库存台账',
+    keywords: ['lab', 'table', 'sheet', '多维表格', '表格', '数据', '库存', 'inventory', 'baserow'],
+  },
+  {
+    path: '/databases',
+    label: '数据库速查',
+    icon: <DatabaseOutlined />,
+    group: 'research',
+    sub: 'data',
+    hint: '生物数据库目录',
+    keywords: ['databases', 'plant', '数据库', '植物库'],
+  },
+  {
     path: '/tools',
     label: '科研工具',
     icon: <ToolOutlined />,
     group: 'research',
+    sub: 'writing',
     hint: '流程图 · 绘图 · 基因组',
     keywords: ['tools', 'drawio', 'diagram', 'plot', 'genomes', '流程图', '绘图', '基因组', '科研工具'],
   },
@@ -135,7 +223,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: '流程图设计',
     icon: <PartitionOutlined />,
     group: 'research',
-    hint: '已并入科研工具',
     keywords: ['drawio', 'diagram', '流程图', '绘图', 'drawings', '图形', '草稿'],
     hidden: true,
   },
@@ -144,15 +231,15 @@ export const NAV_ITEMS: NavItem[] = [
     label: '我的图形',
     icon: <FileTextOutlined />,
     group: 'research',
+    sub: 'writing',
+    hint: '流程图草稿与历史',
     keywords: ['drawings', '图形', '草稿'],
-    hidden: true,
   },
   {
     path: '/plot',
     label: '绘图工作台',
     icon: <BarChartOutlined />,
     group: 'research',
-    hint: '已并入科研工具',
     keywords: ['plot', 'chart', '绘图', '画图', 'seaborn', 'antv', 'gsea', 'venn', 'circos', '火山图', '热图'],
     hidden: true,
   },
@@ -162,6 +249,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: <BgColorsOutlined />,
     group: 'research',
     hint: '科研配色 / 取色匹配',
+    hidden: true,
     keywords: ['colors', 'palette', '配色', '色板', '调色', 'ggsci', 'nature', 'science'],
   },
   {
@@ -169,15 +257,16 @@ export const NAV_ITEMS: NavItem[] = [
     label: '文档解析',
     icon: <FileSearchOutlined />,
     group: 'research',
+    sub: 'writing',
     hint: 'PDF → Markdown',
     keywords: ['docling', 'docparse', 'pdf', '解析'],
-    hidden: true,
   },
   {
     path: '/translate',
     label: '翻译中心',
     icon: <FilePdfOutlined />,
     group: 'research',
+    sub: 'writing',
     hint: '论文全文 · 段落文本',
     keywords: ['translate', 'pdf', '论文', '翻译', 'pdf2zh', 'text', '段落', '摘要'],
   },
@@ -195,29 +284,39 @@ export const NAV_ITEMS: NavItem[] = [
     label: '科研文献检索',
     icon: <BookOutlined />,
     group: 'research',
-    keywords: ['literature', 'pubmed', '文献', '检索'],
+    hint: '统一检索 · 每日论文 · 引用',
+    keywords: ['literature', 'pubmed', '文献', '检索', 'openalex', 'arxiv', 'crossref'],
   },
   {
-    path: '/lab',
-    label: '实验室中心',
-    icon: <ExperimentOutlined />,
+    path: '/ssh',
+    label: '内网主机台',
+    icon: <CloudServerOutlined />,
     group: 'research',
-    keywords: ['lab', 'eln', 'inventory', 'pipeline', 'booking', '实验', '库存', '流水线', '预约'],
+    hint: '浏览器连 HPC 与桌面',
+    keywords: ['ssh', '终端', 'HPC', '主机', '远程', 'webssh'],
   },
   {
-    path: '/databases',
-    label: '数据库速查',
-    icon: <DatabaseOutlined />,
+    path: '/pdf',
+    label: 'PDF 工具箱',
+    icon: <FilePdfOutlined />,
     group: 'research',
-    hint: '生物数据库目录',
-    keywords: ['databases', 'plant', '数据库', '植物库'],
+    hint: '合并 · 拆分 · 压缩 · 旋转 · 删页',
+    keywords: ['pdf', '合并', '拆分', '压缩', '水印', 'stirling', '论文'],
+  },
+  {
+    path: '/papers',
+    label: '每日论文',
+    icon: <ReadOutlined />,
+    group: 'research',
+    hint: '按天抓取 OpenAlex / arXiv 文献',
+    hidden: true,
+    keywords: ['daily', '论文', 'arxiv', 'openalex'],
   },
   {
     path: '/genomes',
     label: '公共基因组',
     icon: <ExperimentOutlined />,
     group: 'research',
-    hint: '已并入科研工具',
     keywords: ['genomes', 'genome', 'jbrowse', 'fasta', '基因组', '序列', 'orf', 'gc', 'rust-bio'],
     hidden: true,
   },
@@ -227,14 +326,16 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/commands',
     label: 'Linux 命令速查',
     icon: <ConsoleSqlOutlined />,
-    group: 'learn',
+    group: 'research',
+    sub: 'more',
     keywords: ['command', 'linux', 'shell', '命令'],
   },
   {
     path: '/bioinfo',
     label: '生信实验实训',
     icon: <CodeOutlined />,
-    group: 'learn',
+    group: 'research',
+    sub: 'more',
     hint: '课程与终端工作区',
     keywords: ['bioinfo', '生信', '实训', '课程', '终端', 'terminal'],
   },
@@ -243,6 +344,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '天气',
     icon: <CloudOutlined />,
     group: 'learn',
+    hidden: true,
     keywords: ['weather', '天气'],
   },
   {
@@ -258,25 +360,19 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/help',
     label: '帮助中心',
     icon: <QuestionCircleOutlined />,
-    group: 'learn',
+    group: 'research',
+    sub: 'more',
     hint: '上手 / FAQ / 诊断',
     keywords: ['help', 'faq', '帮助', '文档', '更新日志', 'release'],
   },
 
   // ---------------------------------------------------------------- 实用工具
   {
-    path: '/baserow',
-    label: '多维表格',
-    icon: <TableOutlined />,
-    group: 'tools',
-    hint: '在线多维表 / 数据收集',
-    keywords: ['baserow', 'table', 'sheet', '多维表格', '表格', '数据', '记录'],
-  },
-  {
     path: '/snapotter',
     label: '文件工坊',
     icon: <ThunderboltOutlined />,
-    group: 'tools',
+    group: 'research',
+    sub: 'more',
     hint: '文件与媒体处理',
     keywords: ['snapotter', 'media', '转换', '文件'],
   },
@@ -284,7 +380,8 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/search',
     label: '统一搜索',
     icon: <GlobalOutlined />,
-    group: 'tools',
+    group: 'research',
+    sub: 'more',
     keywords: ['search', '搜索'],
   },
   {
@@ -293,6 +390,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: <FolderOpenOutlined />,
     group: 'tools',
     hint: '浏览器主页',
+    hidden: true,
     keywords: ['start', 'home', '起始页'],
     noCommand: true,
   },
@@ -303,6 +401,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '服务状态',
     icon: <CloudServerOutlined />,
     group: 'admin',
+    sub: 'admin',
     adminOnly: true,
     keywords: ['admin', 'status', 'health', '状态'],
   },
@@ -311,6 +410,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '用户和权限',
     icon: <RobotOutlined />,
     group: 'admin',
+    sub: 'admin',
     adminOnly: true,
     keywords: ['admin', 'users', '用户', '权限'],
   },
@@ -319,6 +419,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '配置与日志',
     icon: <ToolOutlined />,
     group: 'admin',
+    sub: 'admin',
     adminOnly: true,
     keywords: ['admin', 'settings', 'logs', '配置', '日志'],
   },
@@ -327,6 +428,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '备份与恢复',
     icon: <DatabaseOutlined />,
     group: 'admin',
+    sub: 'admin',
     adminOnly: true,
     keywords: ['admin', 'backup', 'restic', '备份', '恢复'],
   },
@@ -365,13 +467,95 @@ export function navBreadcrumb(pathname: string): { label: string; path: string }
   return crumbs;
 }
 
-export function visibleNavItems(isAdmin: boolean): NavItem[] {
-  return NAV_ITEMS.filter((it) => !it.hidden && (!it.adminOnly || isAdmin));
+/**
+ * 侧栏/命令面板可见的条目。
+ *
+ * `teacherOnly` 的页面（课题资料、组会汇报）是**教师视角的管理页**：
+ * 学生看到的是自己那棵目录（在「组员共享」与个人空间里），
+ * 不需要也不该看到这两个"管理全部学生"的入口。
+ */
+export function visibleNavItems(isAdmin: boolean, isTeacher = false): NavItem[] {
+  return NAV_ITEMS.filter((it) => {
+    if (it.hidden) return false;
+    if (it.adminOnly && !isAdmin) return false;
+    // teacherOnly 只认教师用户组：管理员也不显示。
+    // 理由：「课题资料」是教师视角的学生目录管理，管理员职责是平台运维，
+    // 两者权限不应互相穿透；管理员若确实需要，由管理员另加 lab-teacher 组。
+    if (it.teacherOnly && !isTeacher) return false;
+    return true;
+  });
+}
+
+/**
+ * 侧栏结构：一级组 → （平铺页面 | 二级子菜单）。
+ *
+ * 折叠状态下 antd 只画一级项，所以**高频页面平铺、低频页面进子菜单**，
+ * 一眼能数完入口；子菜单在折叠态悬浮展开，展开态则是正常的嵌套列表。
+ */
+export interface SidebarLeaf {
+  /** 一级项 key（子菜单用 `sub:<subkey>`） */
+  key: string;
+  label: ReactNode;
+  icon?: ReactNode;
+}
+
+export interface SidebarBranch extends SidebarLeaf {
+  /** 有 children 就是子菜单，没有就是平铺页面 */
+  children?: SidebarLeaf[];
+}
+
+export interface SidebarGroup extends SidebarLeaf {
+  children: SidebarBranch[];
+}
+
+export function sidebarSections(isAdmin: boolean, isTeacher = false): SidebarGroup[] {
+  const entries = visibleNavItems(isAdmin, isTeacher);
+  const out: SidebarGroup[] = [];
+  for (const group of NAV_GROUPS) {
+    if (group.adminOnly && !isAdmin) continue;
+    const inGroup = entries.filter((it) => it.group === group.key);
+    if (!inGroup.length) continue;
+    // 子菜单按 NAV_SUBS 的声明顺序排（不按页面出现顺序），平铺项在前。
+    const subKeys = [...new Set(inGroup.map((it) => it.sub).filter((s): s is string => Boolean(s)))]
+      .sort((a, b) => {
+        const order = Object.keys(NAV_SUBS);
+        return order.indexOf(a) - order.indexOf(b);
+      });
+    const flat = inGroup.filter((it) => !it.sub);
+    const groupChildren: SidebarBranch[] = [
+      ...flat.map((it) => ({ key: it.path, label: it.label, icon: it.icon })),
+      ...subKeys.map((sk) => {
+        const meta = NAV_SUBS[sk];
+        const children = inGroup
+          .filter((it) => it.sub === sk)
+          .map((it) => ({ key: it.path, label: it.label, icon: it.icon }));
+        return {
+          key: `sub:${sk}`,
+          label: meta?.label ?? sk,
+          icon: meta?.icon,
+          children,
+        };
+      }),
+    ];
+    out.push({
+      key: group.key,
+      label: group.label,
+      children: groupChildren,
+    });
+  }
+  return out;
+}
+
+/** 侧栏子菜单 key → 其下的页面路径，用于「选中项自动展开所属子菜单」。 */
+export function subKeyOfPath(pathname: string): string | undefined {
+  const path = resolveNavPath(pathname);
+  const item = NAV_BY_PATH.get(path);
+  return item?.sub ? `sub:${item.sub}` : undefined;
 }
 
 /** 命令面板用的子集：管理员页面与过场路由都不进面板 */
-export function commandableNavItems(isAdmin: boolean): NavItem[] {
-  return visibleNavItems(isAdmin).filter((it) => !it.noCommand);
+export function commandableNavItems(isAdmin: boolean, isTeacher = false): NavItem[] {
+  return visibleNavItems(isAdmin, isTeacher).filter((it) => !it.noCommand);
 }
 
 /** 命令面板用的关键词命中打分（0 表示不命中） */
