@@ -17,8 +17,9 @@ STAGE_ROOT="${LAB_BACKUP_STAGE:-/srv/labbackup}"
 STATUS_FILE="${LAB_BACKUP_STATUS_FILE:-/srv/labdata/labgo/backup-status.json}"
 LOG_TAG="lab-backup"
 # 备份默认只保留 3 天；后台展示同一条保留策略。
+# 保留策略的对外展示值（写进状态文件给管理端看）；
+# 实际策略按 scope 分开设定，见下方 RETENTION。
 KEEP_WITHIN="${LAB_BACKUP_KEEP_WITHIN:-3d}"
-KEEP_DAILY="${LAB_BACKUP_KEEP_DAILY:-3}"
 SCOPE="${1:-${LAB_BACKUP_SCOPE:-full}}"
 
 umask 077
@@ -101,8 +102,17 @@ if [ ! -f "$REPO/config" ]; then
   restic init
 fi
 
-STAGE="$(mktemp -d "$STAGE_ROOT/stage.XXXXXX")"
-trap 'rm -rf "$STAGE"' EXIT
+# 暂存目录用**固定名字**，不能用 mktemp 随机名。
+#
+# 原因：restic 的 forget 策略是**按分组**生效的，分组键包含“备份路径列表”。
+# 每次备份都用随机目录名（stage.XXXXXX）的话，每个快照的路径列表都不同，
+# 于是每个快照自成一组，--keep-daily/--keep-weekly 全部失效——仓库只增不减。
+# 固定路径让同一 scope 的快照落进同一组，保留策略才真正起作用。
+STAGE="$STAGE_ROOT/stage"
+mkdir -p "$STAGE"
+# 只清内容，保留目录本身（路径要稳定）。
+find "$STAGE" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+trap 'find "$STAGE" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true' EXIT
 
 dump_pg() {
   local container="$1" user="$2" db="$3" out="$4"
@@ -144,6 +154,20 @@ if [ "$PG_FAIL" -ne 0 ]; then
 fi
 
 EXTRA_ARGS=(
+  # —— 安全：备份**绝不能**包含自己的解密口令与全套会话密钥。
+  #    restic 仓库是 AES-256 加密的，但如果解密口令文件跟被加密的数据在同一个
+  # 快照里，任何能读到仓库目录的主体（低权限账号、误挂载的共享目录、
+  # 按文档同步到外部存储的异地副本）都能取出口令、解密全部快照，
+  # 拿到所有用户的原始文件 + deploy/.env 里的会话签名密钥与服务令牌
+  # → 等于「备份一份数据」变成「备份即全站沦陷」。
+  #    口令只离线保存，密钥类文件一律排掉。
+  #    用**精确路径**而不是 '**/*.env' 这类通配：用户数据目录里可能有
+  #    名字带 .env/.key 的科研文件（真的存在），通配会把业务数据一起排掉。
+  #    实测备份目标下需要排除的密钥文件只有这几个：
+  --exclude='/etc/labspace/backup.key'        # restic 仓库解密口令
+  --exclude='/etc/labspace/backup-git.env'    # 异地归档口令
+  --exclude='/opt/labspace/deploy/.env'       # 会话签名密钥 / 服务令牌 / OIDC Secret
+  --exclude='*/deploy/.env'
   --exclude='node_modules'
   --exclude='.venv'
   --exclude='venv'
@@ -155,7 +179,26 @@ EXTRA_ARGS=(
   --exclude='.git'
   --exclude='*.log'
   --exclude='*.tmp'
+  # —— 减量：以下目录要么高频变动（备份价值低、还原时会被覆盖），
+  #    要么可以重新生成（依赖、构建产物）。把它们排掉，仓库只留真正的资产。
+  --exclude='*/node_modules'
+  --exclude='*/.venv'
+  --exclude='*/dist'
+  --exclude='*/__pycache__'
+  --exclude='/srv/lab/.trash'
+  --exclude='/srv/labdata/qdrant'
+  --exclude='/srv/labdata/labgo/trash'
+  --exclude='/tmp'
   --exclude='/srv/labdata/baserow/postgres'
+  # —— 减量（基因组）：公共参考序列的**派生索引**体积远大于原始数据
+  #    （三个物种光索引就 25 GB+），而且都能重新生成：
+  #    *.bt2   BWA 索引（bwa index 几秒重建）
+  #    *.nib2  JB﻿rowse 2bit 索引（faidx / jbrowse index 可重建）
+  #    *X15_*  上游发布的比对索引二进制（由同目录 FASTA 派生）
+  #    原始 FASTA / GTF / 注释全部保留，还原后可以直接用。
+  --exclude='*.bt2'
+  --exclude='*.nib2'
+  --exclude='*X15_*'
   --exclude-caches
   --one-file-system
 )
@@ -175,7 +218,16 @@ if [ "$SCOPE" = "core" ]; then
     /etc/systemd/system/lab-backup-core.timer
     /etc/nginx/sites-enabled/labspace.conf
   )
-  RETENTION=( --keep-within "$KEEP_WITHIN" --keep-daily "$KEEP_DAILY" )
+  # core 还要排掉公共参考基因组（47 GB，其中 25 GB 是可重建的索引）：
+  # 它是**静态公开数据**，不属于"真正会变的门户数据"，由 daily 那条线兜底。
+  EXTRA_ARGS+=( --exclude='/srv/lab/genomes' )
+  # core：高频增量。保留窗口短（只留最近两天的核心快照 + 每小时一份），
+  # 旧的核心快照交给 daily 那条线统一清理。
+  RETENTION=(
+    --keep-within "${LAB_BACKUP_CORE_KEEP_WITHIN:-2d}"
+    --keep-daily "${LAB_BACKUP_CORE_KEEP_DAILY:-3}"
+    --keep-hourly "${LAB_BACKUP_CORE_KEEP_HOURLY:-8}"
+  )
 else
   TAG=labspace-daily
   TARGETS=(
@@ -206,7 +258,15 @@ else
     /etc/systemd/system/lab-backup.timer
     /etc/nginx/sites-enabled/labspace.conf
   )
-  RETENTION=( --keep-within "$KEEP_WITHIN" --keep-daily "$KEEP_DAILY" )
+  # daily：分层保留 —— 每天一份、每周一份、每月一份。
+  # restic 本身是内容寻址去重的"增量备份"：相同块只存一次，
+  # 所以每天全量扫描也不会让仓库线性膨胀；分层保留决定"保留哪些时间点"。
+  RETENTION=(
+    --keep-within "${LAB_BACKUP_DAILY_KEEP_WITHIN:-3d}"
+    --keep-daily "${LAB_BACKUP_DAILY_KEEP_DAILY:-7}"
+    --keep-weekly "${LAB_BACKUP_KEEP_WEEKLY:-4}"
+    --keep-monthly "${LAB_BACKUP_KEEP_MONTHLY:-3}"
+  )
 fi
 
 restic backup "${EXTRA_ARGS[@]}" \
@@ -228,7 +288,11 @@ run_step() {
   "$@" || die "$desc 重试后仍失败"
 }
 
-run_step "保留策略清理" restic forget --tag "$TAG" "${RETENTION[@]}" --prune
+# --group-by '' 很关键：restic 默认按「主机 + 路径列表 + 标签」分组，
+# 只要路径列表变了一点（早期用随机暂存目录名时每次都变），
+# 每个快照就自成一组，--keep-daily/--keep-weekly 全部失效，仓库只增不减。
+# 置空分组后，保留策略对**本标签的全部快照**统一生效。
+run_step "保留策略清理" restic forget --group-by '' --tag "$TAG" "${RETENTION[@]}" --prune
 
 if [ "${LAB_BACKUP_CHECK:-1}" = "1" ]; then
   run_step "完整性抽检" restic check --read-data-subset="${LAB_BACKUP_CHECK_SUBSET:-2%}"

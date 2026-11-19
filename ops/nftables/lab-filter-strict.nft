@@ -1,0 +1,41 @@
+#!/usr/bin/nft -f
+# labfilter —— **strict 模式**：所有服务流量都必须经 Tailscale（WireGuard 加密）。
+#
+# 与 normal 的区别：局域网里连「对外入口」也不放行，
+# 只留 DNS（否则连域名都解析不了）。
+#
+# 适用：需要「上传/查看/下载一律加密」且全组都已装 Tailscale 的阶段。
+# 代价：局域网里的设备（含未装 Tailscale 的）**完全访问不了**平台，
+#       只能从 Tailscale 访问。用 ops/lab-firewall-mode.sh normal 切回。
+# 幂等加载：先声明（不存在就建）→ 再删 → 最后重建。
+# 不这样做的话，重复 `nft -f` 会把规则一条条叠加上去。
+table ip labfilter
+delete table ip labfilter
+table ip labfilter {
+    chain input {
+        type filter hook input priority -10; policy accept;
+
+        # —— 本机回环与 Docker 网桥：不受下面的局域网策略约束 ——
+        iifname "lo" accept
+        iifname "br-*" accept
+        iifname "veth*" accept
+
+        # DNS 必须留（否则解析不了域名）
+        ip saddr 192.0.2.0/24 udp dport 53 accept
+        ip saddr 192.0.2.0/24 tcp dport 53 accept
+
+        # 其余局域网流量一律拒 —— 全部流量被迫走 Tailscale（WireGuard）
+        ip saddr 192.0.2.0/24 counter drop
+    }
+}
+
+table ip6 labfilter
+delete table ip6 labfilter
+table ip6 labfilter {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        ip6 saddr fd62:317c:ce1e::/64 udp dport 53 accept
+        ip6 saddr fd62:317c:ce1e::/64 tcp dport 53 accept
+        ip6 saddr fd62:317c:ce1e::/64 counter drop
+    }
+}

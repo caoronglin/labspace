@@ -1,0 +1,6 @@
+{
+  "//": "本目录是一个独立服务的装配层：agentscope 只装在它自己的容器镜像里（见 Dockerfile 与 requirements.txt），仓库根环境的 Python 并没有它。因此这里关掉 reportMissingImports —— 只关这一类，文件内部的类型错误仍然检查。不要在仓库根加同样的配置，那会把真正的缺依赖问题一起藏掉。",
+  "include": ["."],
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false
+}

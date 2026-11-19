@@ -1,0 +1,20 @@
+# 锁定 AgentScope 2.0.11（与 docs.agentscope.io 的 2.0.11 章节一致）。
+#
+# extras 必须显式带上，否则 create_app 会在 import 期就缺 apscheduler：
+#   service      -> fastapi / uvicorn / apscheduler / ag-ui-protocol / aiortc
+#   storage-sql  -> sqlalchemy[asyncio] / alembic（AsyncSQLAlchemyStorage 依赖）
+#   vdb-qdrant  -> qdrant-client（QdrantStore 依赖）
+#   rag          -> pypdf / python-docx / python-pptx / openpyxl（自带 PDF/DOCX
+#                   解析器的依赖；pypdf 同时也是 agentscope 的基础依赖）
+#
+# openai 客户端不用额外声明：agentscope 2.0.11 本身就 Requires-Dist: openai，
+# 已在依赖树里（内网向量模型走 lab_embedding.py，不经过 openai SDK）。
+agentscope[service,storage-sql,vdb-qdrant,rag]==2.0.11
+
+# Postgres 异步驱动（storage-sql 不带驱动，只有 SQLAlchemy 本体）
+asyncpg>=0.30,<1
+
+# lab MCP server 调门户内部接口用的 HTTP 客户端。
+# agentscope 带的是 httpx2（另一个包名），门户客户端这里用标准的 httpx，
+# 显式声明而不是蹭 openai 等包的传递依赖。
+httpx>=0.28,<1

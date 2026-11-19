@@ -13,9 +13,13 @@ services:
     user: "1000:1000"
     env_file:
       - ./.env
+      # AgentScope 平台模型凭据（0600 root；由 docker 注入为环境变量）
+      - /etc/labspace/agent-model.env
     environment:
       TZ: Asia/Shanghai
       LABSPACE_DB_DSN: "postgresql://labspace:labspace-local-dev-pw@lab-postgres:5432/labspace"
+      # AgentScope 服务在同一个 compose 网络里，用服务名访问（容器到容器不走宿主机回环）
+      LABSPACE_AGENTSCOPE_BASE: "http://agentscope:8100"
     volumes:
       # 受控保存个人绘图：只挂载用户目录根，后端再做路径与内容校验
       - /srv/lab/users:/srv/lab/users
@@ -57,6 +61,81 @@ services:
   # ---------------------------------------------------------------- LaTeX 编译 sidecar
   # 与门户同一镜像（含 texlive），但只运行 latex_worker：不挂载任何门户数据卷、
   # 根文件系统只读、仅 tmpfs 可写，xelatex 加 -no-shell-escape。
+  # ---------------------------------------------------------------- AgentScope 服务
+  # 官方 Agent Service（共用内核）：独立镜像承载 agentscope 的重依赖，
+  # 与门户共享同一个 Postgres 实例（独立库 agentscope）与同一套身份（nginx 注入 X-User-ID）。
+  agentscope:
+    build: ./agentscope
+    image: lab/agentscope-service:2.0.11
+    container_name: lab-agentscope
+    restart: unless-stopped
+    init: true
+    depends_on:
+      # 知识库的向量库（compose 网络内可达，不发布宿主机端口）
+      - qdrant
+    environment:
+      TZ: Asia/Shanghai
+      AGENTSCOPE_DB_DSN: "postgresql+asyncpg://labspace:labspace-local-dev-pw@lab-postgres:5432/agentscope"
+      AGENTSCOPE_WORKSPACE_DIR: /srv/agentscope/workspaces
+      # 知识库（RAG）装配：
+      #   AGENTSCOPE_QDRANT_URL —— 用服务名走 compose 网络（容器间不走宿主机回环）
+      #   AGENTSCOPE_EMBED_*   —— 内网向量模型（bge-m3，1024 维，内网无需 key）
+      #   AGENTSCOPE_BLOB_DIR  —— 知识库文档原件的落盘目录
+      AGENTSCOPE_QDRANT_URL: "http://qdrant:6333"
+      AGENTSCOPE_EMBED_BASE: "http://192.0.2.17:8000/v1/embeddings"
+      AGENTSCOPE_EMBED_MODEL: "bge-m3"
+      AGENTSCOPE_EMBED_DIM: "1024"
+      AGENTSCOPE_BLOB_DIR: /srv/agentscope/blobs
+      # 长期记忆（AgentScope AgenticMemoryMiddleware）开关：1=开启（默认）。
+      # 置 0 可临时关掉记忆；app.py 里的默认值同样是 1。
+      AGENTSCOPE_MEMORY: "${AGENTSCOPE_MEMORY:-1}"
+      # lab MCP server 转发 lab_* 工具时调用门户内部接口所需：
+      #   LABSPACE_SERVICE_TOKEN —— 公共只读接口（服务目录/数据库/搜索）
+      #   LABSPACE_SESSION_SECRET —— 给已核验的用户签短期会话 JWT（工作台/绘图）
+      #   LABSPACE_PUBLIC_URL —— 服务目录里的地址要按门户入口给，不能给容器地址
+      # 值取自 deploy/.env（compose 变量插值），与门户后端同一份。
+      LABSPACE_SERVICE_TOKEN: "${LABSPACE_SERVICE_TOKEN}"
+      LABSPACE_SESSION_SECRET: "${LABSPACE_SESSION_SECRET}"
+      LABSPACE_PUBLIC_URL: "${LABSPACE_PUBLIC_URL}"
+    volumes:
+      - /srv/labdata/agentscope:/srv/agentscope/workspaces:rw
+      # 知识库文档原件（上传的 PDF/DOCX 等），与工作区分开挂载
+      - /srv/labdata/agentscope/blobs:/srv/agentscope/blobs:rw
+    ports:
+      # 只绑回环：外部只能经 nginx 的鉴权站点访问，杜绝伪造 X-User-ID
+      - "127.0.0.1:8103:8100"
+    networks:
+      - labspace
+      - lab-tools
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ---------------------------------------------------------------- Qdrant（知识库向量库）
+  # AgentScope 知识库（原生 RAG）的向量库：一个知识库一个集合。
+  # 只在 compose 网络内可达（不发布宿主机端口），数据落在挂载卷里。
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lab-qdrant
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Asia/Shanghai
+      QDRANT__SERVICE__API_KEY: ""
+    volumes:
+      - /srv/labdata/qdrant:/qdrant/storage
+    networks:
+      - labspace
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   latex-compile:
     build: ../backend
     image: lab/labspace-backend:1.0.0
@@ -106,10 +185,15 @@ services:
       ENABLE_LOGIN_FORM: "true"
       # Casdoor 通过同名环境变量覆盖 beego app.conf（官方方式）
       driverName: "postgres"
-      dataSourceName: "user=casdoor password=casdoor-local-dev-pw host=lab-postgres port=5432 dbname=casdoor sslmode=disable"
-      dbName: "casdoor"
+      # 口令走环境变量，不写进仓库：Casdoor 是**全部身份**的权威源，
+      # 谁能被授予 lab-admin / lab-superadmin / lab-teacher 由它决定。
+      # 口令泄露 = 可以直接给自己签发任意角色的账号，
+      # 绕过门户的两级管理员与教师隔离机制。
+      # 取值见 deploy/.env（0600，已 gitignore）与 deploy/.env.example。
+      dataSourceName: "user=${CASDOOR_DB_USER:-casdoor} password=${CASDOOR_DB_PASSWORD} host=${CASDOOR_DB_HOST:-lab-postgres} port=${CASDOOR_DB_PORT:-5432} dbname=${CASDOOR_DB_NAME:-casdoor} sslmode=disable"
+      dbName: "${CASDOOR_DB_NAME:-casdoor}"
       # 内置管理员初始口令（仅在首次启动、admin 口令未设置时生效）
-      initAdminPassword: "Cas-cc7da6dfa4e235f93fe2"
+      initAdminPassword: "${CASDOOR_ADMIN_PASSWORD}"
       runmode: "prod"
       defaultLanguage: "zh"
       forceLanguage: "zh"
@@ -283,7 +367,156 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ────────────────────────────────────────────────────────────────
+  # WebSSH —— 浏览器里的 SSH/SFTP 工作台（连内网 HPC 与桌面）
+  #
+  # 为什么要自建：内网的 HPC 与桌面没有公网入口，实验室成员在手机上
+  # 没法直接 SSH；WebSSH 把 SSH 会话搬进浏览器，手机上也能操作。
+  #
+  # 安全边界（三个都要成立，缺一个就等于把内网敞开）：
+  #   1. 容器只绑 127.0.0.1:8105，对外只开 nginx 的 8105，且每个请求
+  #      先过门户会话鉴权（auth_request）—— WebSSH 自己的账号体系
+  #      只用于它内部的连接与密钥存储，不替代门户鉴权。
+  #   2. SSH 目标白名单：只允许实验室的 HPC 与桌面（Tailscale 网段 +
+  #      指定的机器 IP），连不到别的网段 —— 这是防"拿它当跳板扫内网"。
+  #   3. 配额与限流：会话数、传输量、连接速率都有上限，防止一个人占满。
+  webssh:
+    image: ghcr.io/bifrost0x/webssh@sha256:ac2ee696dd43946b9d30a3ec5086fbf5213f395f9f5220110b82c2e91e692e5f
+    container_name: lab-webssh
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8115:5000"
+    environment:
+      - TZ=Asia/Shanghai
+      - DEPLOYMENT_PROFILE=homelab
+      - HOST=0.0.0.0
+      - PORT=5000
+      # 反代在前面（nginx），要读真实客户端 IP
+      - TRUSTED_PROXIES=1
+      # 内网没有 HTTPS，Cookie 不带 Secure；HTTPS 终止在 nginx 之后再改回来
+      - SESSION_COOKIE_SECURE=false
+      - CORS_ORIGINS=http://198.51.100.71:8105,http://192.0.2.10:8105
+      # —— 资源配额（进程内、原子、不会超发）——
+      # 全局 6 个 SSH 会话、单人 2 个：够一个人开几个标签，又不至于占满机器
+      - QUOTA_SSH_SESSION_GLOBAL=6
+      - QUOTA_SSH_SESSION_PER_USER=2
+      - QUOTA_QUICK_CONNECTION_GLOBAL=4
+      - QUOTA_QUICK_CONNECTION_PER_USER=2
+      # 传输/临时空间：单人 512MB、全局 1GB
+      - QUOTA_TRANSFER_GLOBAL=3
+      - QUOTA_TRANSFER_PER_USER=1
+      - QUOTA_TEMP_BYTES_GLOBAL=1073741824
+      - QUOTA_TEMP_BYTES_PER_USER=536870912
+      # 后台任务（转换、索引）：全局 4、单人 2
+      - QUOTA_BACKGROUND_JOB_GLOBAL=4
+      - QUOTA_BACKGROUND_JOB_PER_USER=2
+      # —— 限流 ——
+      - SSH_CONNECT_RATELIMIT=6 per minute
+      - RATELIMIT_LOGIN_LIMIT=10 per minute
+      - RATELIMIT_REAUTH=5 per minute
+      - RATELIMIT_DEFAULT=200 per hour
+      - RATELIMIT_ENABLED=True
+      # —— 目标白名单：只允许实验室的 HPC 与桌面 ——
+      # 100.77.182.76 = hpc20d509（HPC）
+      # 100.75.160.113 = rlcao-ubuntu（桌面）
+      # 100.81.178.13 = win-99hgg0bbe3f（Windows 桌面）
+      # 100.100.161.104 = wsd509（Windows 工作站）
+      - SSH_ALLOWED_TARGETS=100.77.182.76,100.75.160.113,100.81.178.13,100.100.161.104
+      # 允许的内网网段（HPC/桌面都在 Tailscale CGNAT 段与实验室 LAN）
+      - SSH_ALLOWED_INTERNAL_NETWORKS=100.64.0.0/10,192.0.2.0/24
+      - SSH_CONNECT_TIMEOUT=10
+      # 单文件下载上限 100MB、压缩包 512MB
+      - MAX_DOWNLOAD_SIZE=104857600
+      - MAX_ZIP_DOWNLOAD_SIZE=536870912
+      # 会话空闲超时
+      - SESSION_TIMEOUT=3600
+    volumes:
+      - webssh_data:/app/data
+    # —— 容器级资源限制 ——
+    pids_limit: 256
+    mem_limit: 768m
+    memswap_limit: 1536m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','5000')+'/ready',timeout=2).read(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ────────────────────────────────────────────────────────────────
+  # Stirling PDF —— 自托管 PDF 工具箱（合并/拆分/转换/OCR）
+  #
+  # 资源限制的重点不在内存而在 **CPU**：它每个任务会拉起
+  # LibreOffice / Python 子进程做转换，不限并发的话，一个批量转换
+  # 就能把整台机器的 CPU 和内存吃光（这是它最常见的坑）。
+  stirling:
+    image: docker.io/stirlingtools/stirling-pdf:latest
+    container_name: lab-stirling
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8116:8080"
+    environment:
+      - TZ=Asia/Shanghai
+      - SYSTEM_LOG_LEVEL=INFO
+      # ── 登录 ──
+      # 门户的 auth_request 已经把会话鉴权做完了（nginx 层），
+      # Stirling 自己那套登录在这里是**第二道重复的门**：开着它，
+      # 门户用户点进来还要再登一次，API 也会一律 401。
+      # 鉴权完全交给门户。
+      - SYSTEM_SECURITY_ENABLELOGIN=false
+      - SYSTEM_SECURITY_ENABLEANONYMOUSUPLOADS=true
+      # ── 资源限制 ──
+      # 进程执行器的并发上限：每个转换任务会拉起 LibreOffice / Tesseract /
+      # python 子进程，不限并发的话一次批量转换就能把整台机器吃光
+      # （这是 Stirling 最常见的坑：不是内存，是 CPU 与子进程数）。
+      - SYSTEM_PROCESSEXECUTOR_SESSIONLIMIT_LIBREOFFICESESSIONLIMIT=1
+      - SYSTEM_PROCESSEXECUTOR_SESSIONLIMIT_TESSERACTSESSIONLIMIT=1
+      - SYSTEM_PROCESSEXECUTOR_SESSIONLIMIT_QPDFSESSIONLIMIT=2
+      - SYSTEM_PROCESSEXECUTOR_SESSIONLIMIT_PYTHONOPENCVSESSIONLIMIT=4
+      - SYSTEM_PROCESSEXECUTOR_SESSIONLIMIT_PDFTOHTMLSESSIONLIMIT=1
+      # 单个任务超时（分钟）：默认 30 分钟太长，用户早就走了。
+      - SYSTEM_PROCESSEXECUTOR_TIMEOUTMINUTES_LIBREOFFICETIMEOUTMINUTES=10
+      - SYSTEM_PROCESSEXECUTOR_TIMEOUTMINUTES_TESSERACTTIMEOUTMINUTES=10
+      # 上传体积上限（单文件）
+      - SYSTEM_FILEUPLOADLIMIT=100MB
+      # ── 安全 ──
+      # 禁止「URL 转 PDF」：它按服务端发起请求，能被拿来打内网。
+      - SYSTEM_ENABLEURLTOPDF=false
+      - SYSTEM_HTML_URLSECURITY_BLOCKPRIVATENETWORKS=true
+      - SYSTEM_HTML_URLSECURITY_BLOCKLOCALHOST=true
+    volumes:
+      - stirling_data:/app/data
+      - stirling_data:/app/configs
+    pids_limit: 512
+    mem_limit: 1536m
+    memswap_limit: 3072m
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
+
+  # WebSSH：账号、加密密钥、主机信任、审计记录、备份（敏感，单独备份）
+  webssh_data:
+  # Stirling PDF：上传缓存、用户文件、审计
+  stirling_data:
   drawio-config:
 
 networks:

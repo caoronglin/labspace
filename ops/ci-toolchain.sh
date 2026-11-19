@@ -3,6 +3,10 @@
 # Debian 仓库里的 Go 只有 1.19，go.mod 要 1.23，所以直接取官方 tarball。
 set -euo pipefail
 GO_VERSION="${GO_VERSION:-1.23.11}"
+# 运行时下限：Node 26.13（原生跑 TypeScript）/ Python 3.15。
+# 低于下限时只告警不失败：CI 镜像升级节奏与业务改动解耦，但日志要留痕。
+NODE_MIN="${NODE_MIN:-26.13.0}"
+PYTHON_MIN="${PYTHON_MIN:-3.15}"
 
 . /etc/os-release 2>/dev/null || true
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
@@ -35,3 +39,18 @@ fi
 pnpm --version
 python3 --version
 node --version
+
+# 版本下限检查（只告警，不中断流水线）
+node -e '
+const [maj,min] = process.versions.node.split(".").map(Number);
+const [wmaj,wmin] = process.env.NODE_MIN.split(".").map(Number);
+if (maj < wmaj || (maj === wmaj && min < wmin)) {
+  console.warn(`WARN: Node ${process.versions.node} 低于约定 ${process.env.NODE_MIN}（原生 TS 支持需要 26+）`);
+}
+' 2>/dev/null || true
+python3 - <<'EOF' 2>/dev/null || true
+import os, sys
+want = tuple(int(x) for x in os.environ.get("PYTHON_MIN", "3.15").split("."))
+if sys.version_info[:2] < want:
+    print(f"WARN: Python {sys.version.split()[0]} 低于约定 {os.environ['PYTHON_MIN']}")
+EOF

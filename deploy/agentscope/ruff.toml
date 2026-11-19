@@ -1,0 +1,24 @@
+# AgentScope 适配层的 lint 配置。
+#
+# 为什么单独一份：
+#   这一层的 ``lab_identity`` / ``lab_portal`` / ``lab_embedding`` 是**同目录的
+#   本地模块**（不打包、不安装），必须显式声明为 first-party。
+#   不声明的话 ruff 默认把它们当第三方，isort 会要求它们和 ``httpx`` 挤在同一个
+#   块里；而 pi-lens 的默认配置把同目录模块当 first-party，要求空行分隔 ——
+#   两个工具会在同一个 import 块上得出相反结论，来回改空行永远有一边报错。
+#   在这里一次声明清楚，两边就都稳定了。
+
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "W292"]
+
+[lint.isort]
+known-first-party = [
+  "lab_embedding",
+  "lab_identity",
+  "lab_mcp_server",
+  "lab_memory",
+  "lab_portal",
+]
