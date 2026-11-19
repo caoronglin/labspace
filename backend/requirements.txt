@@ -1,16 +1,17 @@
 # 由 lab-pyproject-sync 自动生成，请勿手工编辑。
 # 真源: backend/pyproject.toml（宿主机 Python 依赖由 pnpm 管理，见 pnpm-workspace.yaml）
 # 容器镜像仍用 pip 安装本文件：容器内为 Python 3.11，pnpm 拉独立解释器需访问外网，当前不可用。
-fastapi==0.162.0
+fastapi==0.163.1
 uvicorn[standard]==0.54.0
 httpx==0.28.1
 PyJWT[crypto]==2.15.1
-psycopg2-binary==2.9.12
-python-multipart==0.0.33
+psycopg2-binary==2.9.13
+python-multipart==0.0.34
 python-docx==1.2.0
 openpyxl==3.1.5
 python-pptx==1.0.2
+bcrypt==5.0.0
 
 # dev 依赖（测试）
 pytest==9.2.0
-pytest-asyncio==1.4.1.post1
+pytest-asyncio==1.5.0

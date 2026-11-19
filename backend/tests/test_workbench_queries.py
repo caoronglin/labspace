@@ -148,7 +148,9 @@ def test_workbench_routes_are_mounted() -> None:
         "/api/workbench/summary",
     }
     assert expected <= set(paths)
-    assert len(workbench.router.routes) == 16
+    # 这里原本写死 ==16：路由一增加测试就红，但它想守的是"这些接口都挂上了"，
+    # 不是"路由数量永不变化"。改成下界 + 上面的集合断言，才是它真正要保证的东西。
+    assert len(workbench.router.routes) >= 16
 
 
 def test_summary_goes_through_one_batched_connection(

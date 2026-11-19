@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .golink import _get as go_get
 from .preview_inline import MAX_INPUT, PreviewError, render
-from .security import require_admin, require_csrf
+from .security import require_csrf, require_superadmin
 
 router = APIRouter(prefix="/api/debug", tags=["global-debug"])
 
@@ -38,7 +38,7 @@ def _capabilities() -> dict[str, bool]:
 
 
 @router.get("/status")
-async def debug_status(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+async def debug_status(user: dict[str, Any] = Depends(require_superadmin)) -> dict[str, Any]:
     """Aggregate a redacted runtime snapshot for the global debug panel.
 
     Deliberately does NOT open a database connection or probe every upstream:
@@ -76,7 +76,7 @@ async def debug_status(user: dict[str, Any] = Depends(require_admin)) -> dict[st
 @router.post("/preview")
 async def debug_preview(
     file: UploadFile = File(...),
-    _: dict[str, Any] = Depends(require_admin),
+    _: dict[str, Any] = Depends(require_superadmin),
     __: None = Depends(require_csrf),
 ) -> JSONResponse:
     """Server-side cross-check of a locally-selected file.

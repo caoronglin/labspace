@@ -3,24 +3,36 @@
 所有个人数据按 ``owner`` 隔离；实验室共享的库存台账、仪器与预约允许所有登录用户
 查看，写操作仍记录操作者，审批仅限 lab-admin / lab-teacher 或资源创建者。
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import hashlib
 import html
 import json
 import os
 import re
 import shutil
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from . import db, modelsvc, semantic
+from . import db, inventory_baserow, modelsvc, semantic
 from .security import has_role, require_csrf, require_user
 
 router = APIRouter(prefix="/api/labops", tags=["labops"])
@@ -228,9 +240,9 @@ async def eln_entries(
     if template:
         where.append("template_id=%s")
         params.append(template)
-    rows = await _q(
-        "SELECT id, owner, template_id, title, content, tags, status, links, entry_date, created_at, updated_at "
-        f"FROM labspace.labops_eln_entries WHERE {' AND '.join(where)} ORDER BY entry_date DESC, updated_at DESC LIMIT %s",
+    rows = await _q(  # noqa: S608 - 条件片段固定白名单
+        "SELECT id, owner, template_id, title, content, tags, status, links, entry_date, created_at, updated_at "  # noqa: S608 - 条件片段固定白名单
+        f"FROM labspace.labops_eln_entries WHERE {' AND '.join(where)} ORDER BY entry_date DESC, updated_at DESC LIMIT %s",  # noqa: S608 - 条件片段固定白名单
         (*params, limit),
     )
     return {"items": rows}
@@ -267,7 +279,7 @@ async def eln_entry_create(payload: dict, user: dict = Depends(require_user), _:
 async def eln_entry_update(entry_id: str, payload: dict, user: dict = Depends(require_user), _: None = Depends(require_csrf)) -> dict:
     await _eln_get(entry_id, user["sub"])
     fields, params = [], []
-    for key, cast in (("template_id", ""), ("title", ""), ("status", "")):
+    for key, _cast in (("template_id", ""), ("title", ""), ("status", "")):
         if key in payload:
             fields.append(f"{key}=%s")
             params.append(payload.get(key))
@@ -283,7 +295,7 @@ async def eln_entry_update(entry_id: str, payload: dict, user: dict = Depends(re
         params.append(payload.get("entry_date"))
     if fields:
         params += [entry_id, user["sub"]]
-        await _x(f"UPDATE labspace.labops_eln_entries SET {', '.join(fields)}, updated_at=now() "
+        await _x(f"UPDATE labspace.labops_eln_entries SET {', '.join(fields)}, updated_at=now() "  # noqa: S608 - 字段名固定白名单
                  "WHERE id=%s AND owner=%s", tuple(params))
     return await _eln_get(entry_id, user["sub"])
 
@@ -359,10 +371,10 @@ async def inventory_items(
         params += [like, like, like]
     if low:
         where.append("quantity <= low_threshold")
-    rows = await _q(
-        "SELECT id, owner, kind, name, code, location, quantity::float8 AS quantity, unit, "
+    rows = await _q(  # noqa: S608 - 条件片段固定白名单
+        "SELECT id, owner, kind, name, code, location, quantity::float8 AS quantity, unit, "  # noqa: S608 - 条件片段固定白名单
         "low_threshold::float8 AS low_threshold, metadata, notes, created_at, updated_at "
-        f"FROM labspace.labops_inventory_items WHERE {' AND '.join(where)} ORDER BY updated_at DESC LIMIT 500",
+        f"FROM labspace.labops_inventory_items WHERE {' AND '.join(where)} ORDER BY updated_at DESC LIMIT 500",  # noqa: S608 - 条件片段固定白名单
         tuple(params),
     )
     return {"items": rows}
@@ -420,7 +432,7 @@ async def inventory_update(item_id: str, payload: dict, user: dict = Depends(req
             params.append(float(payload.get(key) or 0))
     if fields:
         params.append(item_id)
-        await _x(f"UPDATE labspace.labops_inventory_items SET {', '.join(fields)}, updated_at=now() WHERE id=%s", tuple(params))
+        await _x(f"UPDATE labspace.labops_inventory_items SET {', '.join(fields)}, updated_at=now() WHERE id=%s", tuple(params))  # noqa: S608 - 字段名固定白名单
     return await _inv_get(item_id)
 
 
@@ -490,6 +502,12 @@ async def inventory_low(user: dict = Depends(require_user)) -> dict:
         "FROM labspace.labops_inventory_items WHERE quantity <= low_threshold ORDER BY quantity"
     )
     return {"items": rows, "count": len(rows)}
+
+
+@router.post("/inventory/publish", dependencies=[Depends(require_csrf)])
+async def inventory_publish(user: dict = Depends(require_user)) -> dict[str, Any]:
+    """把本地库存发布成多维表格工作区「实验室物资」（幂等，不改动本地数据）。"""
+    return await inventory_baserow.publish(user)
 
 
 # ---------------------------------------------------------------- 流水线
@@ -613,8 +631,15 @@ async def pipeline_create(
     workdir.mkdir(parents=True, exist_ok=True)
     saved: list[str] = []
 
-    # 共享演示数据：只允许复制已知路径，杜绝任意文件读取
-    chosen_inputs = json.loads(inputs or "[]")
+    # 共享演示数据：只允许复制已知路径，杜绝任意文件读取。
+    # inputs 来自作业记录，可能是脏 JSON（手工改过、旧版本写入）——
+    # 解析失败按"没有选中输入"处理，不要因此让整个作业 500。
+    try:
+        chosen_inputs = json.loads(inputs or "[]")
+    except (TypeError, ValueError):
+        chosen_inputs = []
+    if not isinstance(chosen_inputs, list):
+        chosen_inputs = []
     if demo:
         allowed = {f["path"] for d in _pipeline_demos() if d["name"] == demo for f in d["files"]}
         for idx, src in enumerate(chosen_inputs):
@@ -658,7 +683,7 @@ async def pipeline_create(
         params_obj = {}
     payload = {"id": job_id, "pipeline": pipeline, "name": name or catalog[pipeline]["name"],
                "reference": ref_path, "inputs": saved, "params": params_obj,
-               "created_at": datetime.now(timezone.utc).isoformat()}
+               "created_at": datetime.now(UTC).isoformat()}
     _write_json(PIPELINE_ROOT / job_id / "job.json", payload)
     _write_json(PIPELINE_ROOT / job_id / "status.json", {"status": "queued", "progress": 0, "message": "等待执行"})
     await _x(
@@ -679,7 +704,7 @@ async def pipeline_cancel(job_id: str, user: dict = Depends(require_user), _: No
         raise HTTPException(status_code=404, detail="任务不存在")
     if row["status"] in ("succeeded", "failed", "cancelled"):
         return {"ok": True}
-    _write_json(Path(row["workdir"]) / "cancel", {"at": datetime.now(timezone.utc).isoformat()})
+    _write_json(Path(row["workdir"]) / "cancel", {"at": datetime.now(UTC).isoformat()})
     await _x("UPDATE labspace.labops_pipeline_jobs SET status='cancelling', message='正在取消' WHERE id=%s", (job_id,))
     return {"ok": True}
 
@@ -712,21 +737,358 @@ async def _embed_literature(item_id: str, title: str, abstract: str, notes: str,
     if not vector:
         return
     literal = "[" + ",".join(f"{float(x):.5f}" for x in vector) + "]"
-    try:
+    with contextlib.suppress(Exception):  # 语义能力缺失不应影响保存
         await _x("UPDATE labspace.labops_literature SET embedding=%s::vector WHERE id=%s AND owner=%s", (literal, item_id, owner))
-    except Exception:  # noqa: BLE001 - 语义能力缺失不应影响保存
-        pass
+
+
+# ---------------------------------------------------------------- 文献库（多库 + 文件夹）
+
+LIBRARY_COLORS = ["#1677ff", "#52c41a", "#fa8c16", "#722ed1", "#eb2f96", "#13c2c2"]
+DEFAULT_LIBRARY_NAME = "默认文献库"
+ROOT_FOLDER = ""
+
+
+def _default_library_id(owner: str) -> str:
+    """默认库 id 由 owner 派生：同一用户永远得到同一个 id，幂等创建的前提。"""
+    return "lib-default-" + hashlib.sha256(owner.encode("utf-8")).hexdigest()[:12]
+
+
+async def _ensure_default_library(owner: str) -> str:
+    """幂等创建用户的默认文献库，返回其 id。"""
+    lid = _default_library_id(owner)
+    await _x(
+        "INSERT INTO labspace.literature_library (id, owner, name, description, color, is_default) "
+        "VALUES (%s,%s,%s,'',%s,true) ON CONFLICT (id) DO NOTHING",
+        (lid, owner, DEFAULT_LIBRARY_NAME, LIBRARY_COLORS[0]),
+    )
+    return lid
+
+
+def _library_scope(owner: str, library_id: str) -> tuple[str, list[Any]]:
+    """文献归属过滤条件。
+
+    默认库同时容纳历史数据（library_id=''），所以旧文献不需要回填迁移。
+    """
+    default_id = _default_library_id(owner)
+    if not library_id or library_id == default_id:
+        return "(library_id=%s OR library_id='')", [default_id]
+    return "library_id=%s", [library_id]
+
+
+async def _library_or_404(owner: str, library_id: str) -> dict[str, Any]:
+    row = await _q_one(
+        "SELECT id, name, is_default FROM labspace.literature_library WHERE id=%s AND owner=%s",
+        (library_id, owner),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="文献库不存在")
+    return row
+
+
+async def _folder_or_404(owner: str, folder_id: str) -> dict[str, Any]:
+    row = await _q_one(
+        "SELECT id, name, library_id, parent_id FROM labspace.literature_folder WHERE id=%s AND owner=%s",
+        (folder_id, owner),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="文件夹不存在")
+    return row
+
+
+async def _resolve_library(owner: str, library_id: str) -> str:
+    """校验目标文献库：空串表示默认库，返回入库用的真实库 id。"""
+    await _ensure_default_library(owner)
+    target = (library_id or "").strip() or _default_library_id(owner)
+    await _library_or_404(owner, target)
+    return target
+
+
+async def _resolve_folder(owner: str, library_id: str, folder_id: str) -> str:
+    """校验目标文件夹：必须属于同一 owner 且挂在目标文献库下。"""
+    target = (folder_id or "").strip()
+    if not target:
+        return ROOT_FOLDER
+    folder = await _folder_or_404(owner, target)
+    if folder["library_id"] != library_id:
+        raise HTTPException(status_code=422, detail="文件夹不属于目标文献库")
+    return target
+
+
+@router.get("/libraries")
+async def library_list(user: dict = Depends(require_user)) -> dict[str, Any]:
+    owner = user["sub"]
+    default_id = await _ensure_default_library(owner)
+    rows = await _q(
+        "SELECT l.id, l.name, l.description, l.color, l.is_default, l.created_at, l.updated_at, "
+        "(SELECT count(*) FROM labspace.labops_literature t WHERE t.owner=l.owner "
+        " AND (t.library_id=l.id OR (l.is_default AND t.library_id=''))) AS item_count, "
+        "(SELECT count(*) FROM labspace.literature_folder f WHERE f.owner=l.owner AND f.library_id=l.id) AS folder_count "
+        "FROM labspace.literature_library l WHERE l.owner=%s ORDER BY l.is_default DESC, l.created_at",
+        (owner,),
+    )
+    return {"items": rows, "defaultId": default_id}
+
+
+@router.post("/libraries")
+async def library_create(
+    payload: dict, user: dict = Depends(require_user), _: None = Depends(require_csrf)
+) -> dict[str, Any]:
+    owner = user["sub"]
+    await _ensure_default_library(owner)
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="请填写文献库名称")
+    color = str(payload.get("color") or "").strip()
+    if not color:
+        counted = await _q_one("SELECT count(*) AS n FROM labspace.literature_library WHERE owner=%s", (owner,))
+        color = LIBRARY_COLORS[int((counted or {}).get("n") or 0) % len(LIBRARY_COLORS)]
+    lid = _uid()
+    await _x(
+        "INSERT INTO labspace.literature_library (id, owner, name, description, color, is_default) "
+        "VALUES (%s,%s,%s,%s,%s,false)",
+        (lid, owner, name[:80], str(payload.get("description") or "")[:500], color[:32]),
+    )
+    return {"id": lid}
+
+
+@router.patch("/libraries/{library_id}")
+async def library_update(
+    library_id: str, payload: dict, user: dict = Depends(require_user), _: None = Depends(require_csrf)
+) -> dict[str, Any]:
+    owner = user["sub"]
+    await _library_or_404(owner, library_id)
+    fields, params = [], []
+    if "name" in payload:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="请填写文献库名称")
+        fields.append("name=%s")
+        params.append(name[:80])
+    if "description" in payload:
+        fields.append("description=%s")
+        params.append(str(payload.get("description") or "")[:500])
+    if "color" in payload:
+        fields.append("color=%s")
+        params.append(str(payload.get("color") or "")[:32])
+    if fields:
+        params += [library_id, owner]
+        await _x(
+            f"UPDATE labspace.literature_library SET {', '.join(fields)}, updated_at=now() WHERE id=%s AND owner=%s",  # noqa: S608 - 字段名固定白名单
+            tuple(params),
+        )
+    return await _q_one("SELECT * FROM labspace.literature_library WHERE id=%s AND owner=%s", (library_id, owner)) or {}
+
+
+@router.delete("/libraries/{library_id}")
+async def library_delete(
+    library_id: str, move_to: str = Query("", max_length=64),
+    user: dict = Depends(require_user), _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """删除文献库。
+
+    库里还有文献时必须显式指定 ``move_to``（目标文献库 id），否则 409——
+    不能静默丢掉用户的文献。
+    """
+    owner = user["sub"]
+    row = await _library_or_404(owner, library_id)
+    if row["is_default"]:
+        raise HTTPException(status_code=409, detail="默认文献库不可删除")
+    counted = await _q_one(
+        "SELECT count(*) AS n FROM labspace.labops_literature WHERE owner=%s AND library_id=%s",
+        (owner, library_id),
+    )
+    total = int((counted or {}).get("n") or 0)
+    if total:
+        target = (move_to or "").strip()
+        if not target:
+            raise HTTPException(status_code=409, detail="该文献库仍有文献，请先选择要移动到的文献库")
+        if target == library_id:
+            raise HTTPException(status_code=422, detail="目标文献库不能是它自己")
+        await _library_or_404(owner, target)
+        await _x(
+            "UPDATE labspace.labops_literature SET library_id=%s, folder_id='', updated_at=now() "
+            "WHERE owner=%s AND library_id=%s",
+            (target, owner, library_id),
+        )
+    await _x("DELETE FROM labspace.literature_folder WHERE owner=%s AND library_id=%s", (owner, library_id))
+    await _x("DELETE FROM labspace.literature_library WHERE id=%s AND owner=%s", (library_id, owner))
+    return {"ok": True, "moved": total}
+
+
+@router.get("/libraries/{library_id}/folders")
+async def folder_list(library_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    owner = user["sub"]
+    await _library_or_404(owner, library_id)
+    rows = await _q(
+        "SELECT f.id, f.name, f.library_id, f.parent_id, f.created_at, f.updated_at, "
+        "(SELECT count(*) FROM labspace.labops_literature t WHERE t.owner=f.owner AND t.folder_id=f.id) AS item_count "
+        "FROM labspace.literature_folder f WHERE f.owner=%s AND f.library_id=%s ORDER BY f.created_at",
+        (owner, library_id),
+    )
+    return {"items": rows}
+
+
+@router.post("/libraries/{library_id}/folders")
+async def folder_create(
+    library_id: str, payload: dict, user: dict = Depends(require_user), _: None = Depends(require_csrf)
+) -> dict[str, Any]:
+    owner = user["sub"]
+    await _library_or_404(owner, library_id)
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="请填写文件夹名称")
+    parent_id = str(payload.get("parent_id") or "").strip()
+    if parent_id:
+        parent = await _folder_or_404(owner, parent_id)
+        if parent["library_id"] != library_id:
+            raise HTTPException(status_code=422, detail="父文件夹不属于该文献库")
+    fid = _uid()
+    await _x(
+        "INSERT INTO labspace.literature_folder (id, owner, library_id, parent_id, name) VALUES (%s,%s,%s,%s,%s)",
+        (fid, owner, library_id, parent_id, name[:120]),
+    )
+    return {"id": fid}
+
+
+@router.patch("/folders/{folder_id}")
+async def folder_update(
+    folder_id: str, payload: dict, user: dict = Depends(require_user), _: None = Depends(require_csrf)
+) -> dict[str, Any]:
+    owner = user["sub"]
+    folder = await _folder_or_404(owner, folder_id)
+    fields, params = [], []
+    if "name" in payload:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="请填写文件夹名称")
+        fields.append("name=%s")
+        params.append(name[:120])
+    if "parent_id" in payload:
+        parent_id = str(payload.get("parent_id") or "").strip()
+        if parent_id:
+            if parent_id == folder_id:
+                raise HTTPException(status_code=422, detail="文件夹不能作为自己的父级")
+            parent = await _folder_or_404(owner, parent_id)
+            if parent["library_id"] != folder["library_id"]:
+                raise HTTPException(status_code=422, detail="父文件夹不属于同一文献库")
+            await _assert_not_descendant(owner, folder_id, parent_id)
+        fields.append("parent_id=%s")
+        params.append(parent_id)
+    if fields:
+        params += [folder_id, owner]
+        await _x(
+            f"UPDATE labspace.literature_folder SET {', '.join(fields)}, updated_at=now() WHERE id=%s AND owner=%s",  # noqa: S608 - 字段名固定白名单
+            tuple(params),
+        )
+    return await _q_one("SELECT * FROM labspace.literature_folder WHERE id=%s AND owner=%s", (folder_id, owner)) or {}
+
+
+async def _assert_not_descendant(owner: str, folder_id: str, parent_id: str) -> None:
+    """父级不能是自身后代，否则文件夹树会成环。"""
+    current = parent_id
+    for _ in range(64):
+        row = await _q_one(
+            "SELECT id, parent_id FROM labspace.literature_folder WHERE id=%s AND owner=%s",
+            (current, owner),
+        )
+        if not row:
+            return
+        if row["id"] == folder_id:
+            raise HTTPException(status_code=422, detail="不能把文件夹移动到它自己的子目录里")
+        current = str(row["parent_id"] or "")
+        if not current:
+            return
+    raise HTTPException(status_code=422, detail="文件夹层级过深")
+
+
+@router.delete("/folders/{folder_id}")
+async def folder_delete(
+    folder_id: str, move_to: str = Query("", max_length=64),
+    user: dict = Depends(require_user), _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """删除文件夹。
+
+    文件夹里还有文献或子文件夹时必须显式指定 ``move_to``：
+    ``root`` 表示移到库根目录（未分类），否则是目标文件夹 id。
+    """
+    owner = user["sub"]
+    folder = await _folder_or_404(owner, folder_id)
+    library_id = folder["library_id"]
+    items = await _q_one(
+        "SELECT count(*) AS n FROM labspace.labops_literature WHERE owner=%s AND folder_id=%s",
+        (owner, folder_id),
+    )
+    children = await _q_one(
+        "SELECT count(*) AS n FROM labspace.literature_folder WHERE owner=%s AND parent_id=%s",
+        (owner, folder_id),
+    )
+    item_count = int((items or {}).get("n") or 0)
+    child_count = int((children or {}).get("n") or 0)
+    if item_count or child_count:
+        target = (move_to or "").strip()
+        if not target:
+            raise HTTPException(status_code=409, detail="该文件夹非空，请先选择文献/子文件夹的去处")
+        if target == "root":
+            await _x(
+                "UPDATE labspace.labops_literature SET folder_id='', updated_at=now() WHERE owner=%s AND folder_id=%s",
+                (owner, folder_id),
+            )
+            await _x(
+                "UPDATE labspace.literature_folder SET parent_id='', updated_at=now() WHERE owner=%s AND parent_id=%s",
+                (owner, folder_id),
+            )
+        else:
+            if target == folder_id:
+                raise HTTPException(status_code=422, detail="目标文件夹不能是它自己")
+            dest = await _folder_or_404(owner, target)
+            if dest["library_id"] != library_id:
+                raise HTTPException(status_code=422, detail="目标文件夹不属于同一文献库")
+            await _assert_not_descendant(owner, folder_id, target)
+            await _x(
+                "UPDATE labspace.labops_literature SET folder_id=%s, updated_at=now() WHERE owner=%s AND folder_id=%s",
+                (target, owner, folder_id),
+            )
+            await _x(
+                "UPDATE labspace.literature_folder SET parent_id=%s, updated_at=now() WHERE owner=%s AND parent_id=%s",
+                (target, owner, folder_id),
+            )
+    await _x("DELETE FROM labspace.literature_folder WHERE id=%s AND owner=%s", (folder_id, owner))
+    return {"ok": True, "moved": item_count}
+
+
+@router.post("/literature/move")
+async def literature_move(
+    payload: dict, user: dict = Depends(require_user), _: None = Depends(require_csrf)
+) -> dict[str, Any]:
+    """批量移动文献到指定文献库 / 文件夹。"""
+    owner = user["sub"]
+    ids = [str(x) for x in (payload.get("ids") or []) if str(x)]
+    if not ids:
+        raise HTTPException(status_code=422, detail="请选择要移动的文献")
+    library_id = str(payload.get("libraryId") or payload.get("library_id") or "")
+    folder_id = str(payload.get("folderId") or payload.get("folder_id") or "")
+    target_library = await _resolve_library(owner, library_id)
+    target_folder = await _resolve_folder(owner, target_library, folder_id)
+    await _x(
+        "UPDATE labspace.labops_literature SET library_id=%s, folder_id=%s, updated_at=now() "
+        "WHERE owner=%s AND id = ANY(%s)",
+        (target_library, target_folder, owner, ids),
+    )
+    return {"ok": True, "moved": len(ids)}
 
 
 @router.get("/literature")
 async def literature_list(
     q: str = Query("", max_length=120),
     status: str = Query("", max_length=20),
+    library_id: str = Query("", max_length=64),
+    folder_id: str | None = Query(None, max_length=64),
     limit: int = Query(100, ge=1, le=300),
     user: dict = Depends(require_user),
 ) -> dict[str, Any]:
+    owner = user["sub"]
     where = ["owner=%s"]
-    params: list[Any] = [user["sub"]]
+    params: list[Any] = [owner]
     if q.strip():
         where.append("(title ILIKE %s OR abstract ILIKE %s OR notes ILIKE %s OR doi ILIKE %s)")
         like = f"%{q.strip()}%"
@@ -734,9 +1096,16 @@ async def literature_list(
     if status:
         where.append("status=%s")
         params.append(status)
-    rows = await _q(
-        "SELECT id, doi, title, authors, journal, pub_year, abstract, url, tags, notes, status, created_at, updated_at "
-        f"FROM labspace.labops_literature WHERE {' AND '.join(where)} ORDER BY updated_at DESC LIMIT %s",
+    scope, scope_params = _library_scope(owner, library_id)
+    where.append(scope)
+    params += scope_params
+    if folder_id is not None:
+        where.append("folder_id=%s")
+        params.append(folder_id)
+    rows = await _q(  # noqa: S608 - 条件片段固定白名单
+        "SELECT id, doi, title, authors, journal, pub_year, abstract, url, tags, notes, status, "  # noqa: S608 - 条件片段固定白名单
+        "library_id, folder_id, created_at, updated_at "
+        f"FROM labspace.labops_literature WHERE {' AND '.join(where)} ORDER BY updated_at DESC LIMIT %s",  # noqa: S608 - 条件片段固定白名单
         (*params, limit),
     )
     return {"items": rows}
@@ -802,6 +1171,97 @@ async def _crossref(doi: str) -> dict[str, Any]:
     }
 
 
+@router.post("/literature/import/batch")
+async def literature_import_batch(
+    payload: dict,
+    background: BackgroundTasks,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict:
+    """批量导入 DOI。
+
+    为什么单独开一个端点而不是让前端循环调单条：
+      * 用户从 Excel/EndNote 里一次粘 50 条 DOI 是常见操作，前端循环会打出
+        50 个并发请求、并且中途失败时只能看到一个笼统的报错；
+      * 这里**逐条独立处理**，任一条失败不影响其它条，最后返回逐条结果
+        （成功/重复/未找到/解析失败），用户可以精确知道哪几条没进来。
+
+    输入接受 `dois: string[]` 或 `text: string`（任意分隔：换行/逗号/空格/分号，
+    也容忍 ``https://doi.org/`` 前缀与尾部标点）。
+    """
+    raw: list[str] = []
+    if isinstance(payload.get("dois"), list):
+        raw = [str(x) for x in payload["dois"]]
+    elif payload.get("text"):
+        # 用非 DOI 字符切分：DOI 允许的字符集里没有 , ; 空白
+        raw = re.split(r"[\s,;，；、]+", str(payload["text"]))
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        doi = re.sub(r"^https?://(dx\.)?doi\.org/", "", item.strip(), flags=re.I)
+        doi = doi.strip().rstrip(".,;)）】").lower()
+        # DOI 必须以 10. 开头；不合规的直接跳过，不去打 Crossref
+        if not re.match(r"^10\.\d{4,9}/\S+$", doi):
+            continue
+        if doi in seen:
+            continue
+        seen.add(doi)
+        cleaned.append(doi)
+
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="没有识别到合法的 DOI（需形如 10.xxxx/yyyy）")
+    if len(cleaned) > 200:
+        raise HTTPException(status_code=422, detail=f"一次最多导入 200 条（收到 {len(cleaned)} 条）")
+
+    library = await _resolve_library(user["sub"], str(payload.get("library_id") or ""))
+    folder = await _resolve_folder(user["sub"], library, str(payload.get("folder_id") or ""))
+    tags = list(payload.get("tags") or [])
+
+    results: list[dict[str, Any]] = []
+    imported = 0
+    for doi in cleaned:
+        try:
+            meta = await _crossref(doi)
+        except HTTPException as exc:
+            results.append({"doi": doi, "status": "failed", "reason": str(exc.detail)})
+            continue
+        except Exception as exc:  # noqa: BLE001
+            results.append({"doi": doi, "status": "failed", "reason": f"{type(exc).__name__}"})
+            continue
+        if not meta.get("title"):
+            results.append({"doi": doi, "status": "not-found", "reason": "Crossref 没有该 DOI 的元数据"})
+            continue
+        existing = await _q_one(
+            "SELECT id FROM labspace.labops_literature WHERE owner=%s AND doi=%s",
+            (user["sub"], meta["doi"]),
+        )
+        if existing:
+            results.append({"doi": doi, "status": "duplicate", "id": existing["id"]})
+            continue
+        lid = _uid()
+        await _x(
+            "INSERT INTO labspace.labops_literature (id, owner, doi, title, authors, journal, pub_year, "
+            "abstract, url, tags, library_id, folder_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                lid, user["sub"], meta["doi"], meta["title"], meta["authors"], meta["journal"],
+                meta["pub_year"], meta["abstract"], meta["url"], tags, library, folder,
+            ),
+        )
+        background.add_task(_embed_literature, lid, meta["title"], meta["abstract"], "", user["sub"])
+        imported += 1
+        results.append({"doi": doi, "status": "imported", "id": lid, "title": meta["title"]})
+
+    return {
+        "ok": True,
+        "total": len(cleaned),
+        "imported": imported,
+        "duplicate": sum(1 for r in results if r["status"] == "duplicate"),
+        "failed": sum(1 for r in results if r["status"] in ("failed", "not-found")),
+        "results": results,
+    }
+
+
 @router.post("/literature/import")
 async def literature_import(
     payload: dict, background: BackgroundTasks, user: dict = Depends(require_user), _: None = Depends(require_csrf)
@@ -819,11 +1279,14 @@ async def literature_import(
     if existing:
         return {"id": existing["id"], "duplicate": True}
     lid = _uid()
+    target_library = await _resolve_library(user["sub"], str(payload.get("library_id") or ""))
+    target_folder = await _resolve_folder(user["sub"], target_library, str(payload.get("folder_id") or ""))
     await _x(
-        "INSERT INTO labspace.labops_literature (id, owner, doi, title, authors, journal, pub_year, abstract, url, tags) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        "INSERT INTO labspace.labops_literature (id, owner, doi, title, authors, journal, pub_year, abstract, url, tags, "
+        "library_id, folder_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
         (lid, user["sub"], meta["doi"], meta["title"], meta["authors"], meta["journal"],
-         meta["pub_year"], meta["abstract"], meta["url"], list(payload.get("tags") or [])),
+         meta["pub_year"], meta["abstract"], meta["url"], list(payload.get("tags") or []),
+         target_library, target_folder),
     )
     background.add_task(_embed_literature, lid, meta["title"], meta["abstract"], "", user["sub"])
     return {"id": lid, "duplicate": False}
@@ -845,9 +1308,16 @@ async def literature_update(
     if "tags" in payload:
         fields.append("tags=%s")
         params.append(list(payload.get("tags") or []))
+    if "library_id" in payload or "folder_id" in payload:
+        library_id = str(payload.get("library_id") if "library_id" in payload else row["library_id"] or "")
+        folder_id = str(payload.get("folder_id") if "folder_id" in payload else row["folder_id"] or "")
+        target_library = await _resolve_library(user["sub"], library_id)
+        target_folder = await _resolve_folder(user["sub"], target_library, folder_id)
+        fields += ["library_id=%s", "folder_id=%s"]
+        params += [target_library, target_folder]
     if fields:
         params += [item_id, user["sub"]]
-        await _x(f"UPDATE labspace.labops_literature SET {', '.join(fields)}, updated_at=now() WHERE id=%s AND owner=%s", tuple(params))
+        await _x(f"UPDATE labspace.labops_literature SET {', '.join(fields)}, updated_at=now() WHERE id=%s AND owner=%s", tuple(params))  # noqa: S608 - 字段名固定白名单
     # 笔记变更后重建向量
     background.add_task(_embed_literature, item_id, payload.get("title", row["title"]),
                         payload.get("abstract", row["abstract"]), payload.get("notes", row["notes"]), user["sub"])
@@ -965,10 +1435,10 @@ async def bookings(
     if end:
         where.append("b.start_at <= %s::timestamptz")
         params.append(end)
-    rows = await _q(
-        "SELECT b.*, r.name AS resource_name, r.location FROM labspace.labops_bookings b "
+    rows = await _q(  # noqa: S608 - 条件片段固定白名单
+        "SELECT b.*, r.name AS resource_name, r.location FROM labspace.labops_bookings b "  # noqa: S608 - 条件片段固定白名单
         "JOIN labspace.labops_resources r ON r.id=b.resource_id "
-        f"WHERE {' AND '.join(where)} ORDER BY b.start_at DESC LIMIT %s",
+        f"WHERE {' AND '.join(where)} ORDER BY b.start_at DESC LIMIT %s",  # noqa: S608 - 条件片段固定白名单
         (*params, limit),
     )
     return {"items": rows, "canApprove": _can_approve(user)}

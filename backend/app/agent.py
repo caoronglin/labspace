@@ -13,12 +13,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
+import logging
+import os
 import re
 import time
 import uuid
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -30,6 +34,11 @@ from .config import settings
 from .security import require_admin, require_csrf, require_user
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
+
+log = logging.getLogger("labspace.agent")
+
+# Agent 后端开关：默认已全线切到 AgentScope；设成 pi 可立刻回滚。
+AGENT_BACKEND = (os.getenv("LABSPACE_AGENT_BACKEND") or "agentscope").strip().lower()
 
 CONFIG_KEY = "agent"
 GW_TIMEOUT = 30
@@ -257,7 +266,8 @@ def _normalize_model_endpoints(items: Any, existing: Any) -> list[dict[str, Any]
         if api not in MODEL_APIS:
             api = "openai-completions"
         models: list[dict[str, Any]] = []
-        for m in raw.get("models") if isinstance(raw.get("models"), list) else []:
+        raw_models = raw.get("models")
+        for m in raw_models if isinstance(raw_models, list) else []:
             if not isinstance(m, dict):
                 continue
             mid = str(m.get("id") or "").strip()
@@ -372,7 +382,11 @@ _runtime_state: dict[str, Any] = {"version": "", "attempt": 0.0}
 _runtime_lock = asyncio.Lock()
 
 
-async def _sync_runtime(cfg: dict[str, Any] | None = None, force: bool = False) -> dict[str, Any]:
+async def _sync_runtime(
+    cfg: dict[str, Any] | None = None,
+    force: bool = False,
+    user_id: str = "",
+) -> dict[str, Any]:
     cfg = cfg or get_config()
     payload = _runtime_payload(cfg)
     version = _runtime_version(cfg)
@@ -380,56 +394,37 @@ async def _sync_runtime(cfg: dict[str, Any] | None = None, force: bool = False) 
     if not force and _runtime_state.get("version") == version:
         return {"applied": True, "version": version, "unchanged": True}
     async with _runtime_lock:
+        # AgentScope 的技能 / MCP 由「能力中心」直接管理（agentscope 自己的记录）；
+        # 门户这边只保存配置。这里校验助手服务可达，并把门户配置版本记下来，
+        # 让管理页能看出"配置已保存"而不是"已推送到某个已不存在的网关"。
+        #
+        # 助手服务的 /health **强制要求 X-User-ID**（缺这个头会直接 422），
+        # 所以这里必须带上调用者身份，否则管理页永远显示"助手服务返回 422"。
+        headers = {"X-User-ID": user_id} if user_id else {}
         try:
-            resp = await gw("PUT", "/admin/runtime", json=payload)
-        except HTTPException as exc:
-            return {"applied": False, "version": version, "error": str(exc.detail)}
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(f"{settings.agentscope_base}/health", headers=headers)
+        except httpx.HTTPError as exc:
+            return {"applied": False, "version": version, "error": f"助手服务不可达：{type(exc).__name__}"}
         if resp.status_code != 200:
+            detail = resp.text[:120].replace("\n", " ")
             return {
                 "applied": False,
                 "version": version,
-                "error": resp.text[:300] or f"网关返回 {resp.status_code}",
+                "error": f"助手服务返回 {resp.status_code}（{detail}）",
             }
     _runtime_state["version"] = version
-    _model_cache["at"] = 0.0
-    return {"applied": True, "version": version}
-
-
-def _headers() -> dict[str, str]:
-    headers = {"Content-Type": "application/json"}
-    if settings.agent_token:
-        headers["X-Agent-Token"] = settings.agent_token
-    return headers
-
-
-async def gw(method: str, path: str, **kwargs: Any) -> httpx.Response:
-    url = f"{settings.agent_gateway.rstrip('/')}{path}"
-    try:
-        async with httpx.AsyncClient(timeout=GW_TIMEOUT) as client:
-            return await client.request(method, url, headers=_headers(), **kwargs)
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=503, detail=f"Agent 网关不可用：{type(exc).__name__}") from exc
-
-
-_model_cache: dict[str, Any] = {"at": 0.0, "models": []}
-
-
-async def gateway_models() -> list[dict[str, Any]]:
-    if time.time() - _model_cache["at"] < 60 and _model_cache["models"]:
-        return _model_cache["models"]
-    resp = await gw("GET", "/models")
-    if resp.status_code != 200:
-        return _model_cache["models"]
-    data = resp.json()
-    models = data.get("models") or []
-    _model_cache.update({"at": time.time(), "models": models})
-    return models
+    return {"applied": True, "version": version, "target": "agentscope"}
 
 
 def _public_models() -> list[dict[str, Any]]:
+    """管理员配置的白名单模型 + 平台默认模型。
+
+    数据只来自门户配置与 AgentScope 侧的平台凭据，不再问已下线的 pi 网关。
+    """
     cfg = get_config()
     allowed = {m.get("id"): m for m in (cfg.get("models") or []) if m.get("id")}
-    gw_meta = {m.get("id"): m for m in (_model_cache.get("models") or []) if m.get("id")}
+    gw_meta: dict[str, Any] = {}
     out: list[dict[str, Any]] = []
     for mid, m in allowed.items():
         g = gw_meta.get(mid) or {}
@@ -446,7 +441,7 @@ def _public_models() -> list[dict[str, Any]]:
         # 白名单为权威；同时带出网关新增的模型（含管理员刚添加的端点），默认未启用，
         # 便于在管理页直接勾选，而不必手工输入模型标识。
         seen = {m["id"] for m in out}
-        for m in _model_cache.get("models") or []:
+        for m in []:
             mid = m.get("id")
             if not mid or mid in seen:
                 continue
@@ -461,7 +456,7 @@ def _public_models() -> list[dict[str, Any]]:
             )
     if not out:
         # 白名单为空（初始状态 / 刚重置）→ 回退到网关实际提供的模型列表，默认全部可用。
-        for m in _model_cache.get("models") or []:
+        for m in []:
             if not m.get("id"):
                 continue
             out.append(
@@ -521,11 +516,26 @@ def _usage(user_id: str) -> dict[str, Any]:
         "WHERE user_id=%s AND status <> 'closed' AND created_at > now() - interval '24 hours'",
         (user_id,),
     )
+    def _count(rows: list[dict[str, Any]], key: str = "n") -> int:
+        """聚合结果转整数：数据库给了数字列，但驱动也可能给字符串/NULL。"""
+        if not rows:
+            return 0
+        try:
+            return int(rows[0].get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    tokens_today = 0
+    if tokens:
+        try:
+            tokens_today = int(tokens[0].get("tin") or 0) + int(tokens[0].get("tout") or 0)
+        except (TypeError, ValueError):
+            tokens_today = 0
     return {
-        "messagesHour": int(hour[0]["n"]) if hour else 0,
-        "messagesDay": int(day[0]["n"]) if day else 0,
-        "tokensToday": int(tokens[0]["tin"] or 0) + int(tokens[0]["tout"] or 0) if tokens else 0,
-        "sessionsActive": int(sessions[0]["n"]) if sessions else 0,
+        "messagesHour": _count(hour),
+        "messagesDay": _count(day),
+        "tokensToday": tokens_today,
+        "sessionsActive": _count(sessions),
     }
 
 
@@ -547,6 +557,60 @@ def _check_quota(user_id: str, include_sessions: bool = False) -> None:
 # ------------------------------------------------------------------ 会话工具
 
 
+def _iso(value: Any) -> str | None:
+    """把数据库里的时间字段安全地转成 ISO 字符串。
+
+    psycopg2 在 timestamptz 上返回 datetime，但取值为 NULL、或将来换成
+    文本列时这里都不能炸——统一走一个收窄点，而不是每个序列化处各写一遍。
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return str(isoformat())
+    return str(value)
+
+
+def _platform_model() -> dict[str, Any]:
+    """把门户里的模型配置翻译成 AgentScope credential + model 需要的形状。
+
+    管理员在「管理端 → Agent」里配的 provider（base_url / api_key / model）是
+    唯一真源；这里只做字段改名，不维护第二份配置。
+    """
+    try:
+        cfg = get_config()
+    except Exception:  # noqa: BLE001 - 配置读取失败时退回环境默认
+        cfg = {}
+    providers = cfg.get("providers") or {}
+    default_model = str(cfg.get("default_model") or settings.agent_default_model or "")
+    provider_key = default_model.split("/", 1)[0] if "/" in default_model else ""
+    model_name = default_model.split("/", 1)[1] if "/" in default_model else default_model
+    provider = providers.get(provider_key) or {}
+    # 管理员没配 provider 时回落到环境里的平台凭据（/etc/labspace/agent-model.env）。
+    return {
+        "base_url": str(provider.get("base_url") or settings.agent_model_base or "").rstrip("/"),
+        "api_key": str(provider.get("api_key") or settings.agent_model_key or ""),
+        "model": model_name or default_model or settings.agent_model_name,
+    }
+
+
+def _use_agentscope() -> bool:
+    """是否使用 AgentScope 后端。
+
+    pi 网关已于 2026-11-10 整体下线（源码、systemd 单元、配置一并移除），
+    因此这里不再提供 pi 分支：把开关设成 pi 会显式 410，而不是静默走到一条
+    已经不存在的服务上。
+    """
+    if AGENT_BACKEND == "pi":
+        raise HTTPException(
+            status_code=410,
+            detail="pi 网关已下线，助手统一由 AgentScope 提供；请移除 LABSPACE_AGENT_BACKEND=pi。",
+        )
+    return True
+
+
 def _session_out(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -556,8 +620,8 @@ def _session_out(row: dict[str, Any]) -> dict[str, Any]:
         "message_count": int(row.get("message_count") or 0),
         "tokens_in": int(row.get("tokens_in") or 0),
         "tokens_out": int(row.get("tokens_out") or 0),
-        "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
-        "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        "created_at": _iso(row.get("created_at")),
+        "updated_at": _iso(row.get("updated_at")),
     }
 
 
@@ -568,7 +632,7 @@ def _message_out(row: dict[str, Any]) -> dict[str, Any]:
         "role": row.get("role"),
         "content": row.get("content") or "",
         "meta": meta if isinstance(meta, dict) else {},
-        "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+        "created_at": _iso(row.get("created_at")),
     }
 
 
@@ -629,29 +693,6 @@ def _system_prompt(user_id: str, cfg: dict[str, Any]) -> str:
     return base + _memory_digest(user_id)
 
 
-async def _ensure_gateway_session(session_id: str, row: dict[str, Any], request: Request) -> None:
-    """网关重启后内存会话会丢失，按库中记录重建，避免历史会话无法继续对话。"""
-    cfg = get_config()
-    lab_portal = next(
-        (p for p in (cfg.get("plugins") or []) if isinstance(p, dict) and p.get("id") == "lab-portal"),
-        None,
-    )
-    resp = await gw(
-        "POST",
-        "/sessions",
-        json={
-            "sessionId": session_id,
-            "userId": row["user_id"],
-            "model": row.get("model") or cfg.get("default_model") or settings.agent_default_model,
-            "userToken": getattr(request.state, "session_token", "") or "",
-            "systemPrompt": _system_prompt(row["user_id"], cfg),
-            "noTools": bool(lab_portal and not lab_portal.get("enabled", True)),
-        },
-    )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"恢复 Agent 会话失败：{resp.text[:200]}")
-
-
 def _insert_message(session_id: str, user_id: str, role: str, content: str, meta: dict[str, Any] | None = None) -> str:
     mid = uuid.uuid4().hex
     db.execute(
@@ -688,6 +729,92 @@ def _sandbox_online() -> bool:
         return False
 
 
+async def _ensure_agentscope_session(session_id: str, user: dict[str, Any]) -> str:
+    """确保助手侧存在这个会话；不存在就**迁移**一个出来。
+
+    切换前用 pi 建的会话只存在于门户库，助手侧（AgentScope）没有对应记录，
+    直接发消息会 404。这里在助手侧按同样的标题/模型建一个会话，并把门户库里
+    的会话与消息指针改到新 id —— 用户的历史不丢，只是"接着上一次继续"。
+    """
+    from . import agentscope_adapter as adapter
+    from . import agentscope_bridge as bridge
+
+    agent_id, model, cred = await bridge.resolved_agent(user["sub"], _platform_model())
+    title = ""
+    rows = db.query(
+        "SELECT title, model FROM labspace.agent_sessions WHERE id=%s AND user_id=%s",
+        (session_id, user["sub"]),
+    )
+    if rows:
+        title = str(rows[0].get("title") or "")
+
+    exists = False
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{settings.agentscope_base}/sessions/{session_id}/status",
+                params={"agent_id": agent_id},
+                headers={"X-User-ID": user["sub"]},
+            )
+        exists = resp.status_code == 200
+    except httpx.HTTPError:
+        exists = False
+    if exists:
+        return session_id
+
+    created = await adapter.create_session(
+        agent_id,
+        user["sub"],
+        title or "迁移的会话",
+        {
+            "type": "openai_credential",
+            "credential_id": cred,
+            "model": model,
+            "model_class": "openai_chat",
+            "parameters": {},
+        },
+    )
+    new_id = str(created.get("session_id") or created.get("id") or "")
+    if not new_id:
+        raise HTTPException(status_code=502, detail="助手服务未返回会话 ID")
+    # 门户库里改指针：会话行与消息行都要跟着走
+    db.execute("UPDATE labspace.agent_messages SET session_id=%s WHERE session_id=%s", (new_id, session_id))
+    db.execute("UPDATE labspace.agent_sessions SET id=%s WHERE id=%s AND user_id=%s", (new_id, session_id, user["sub"]))
+    return new_id
+
+
+async def _agentscope_delete_session(session_id: str, user_sub: str) -> None:
+    """删除助手侧的会话（AgentScope 的 DELETE /sessions/{id}）。"""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.delete(
+            f"{settings.agentscope_base}/sessions/{session_id}",
+            headers={"X-User-ID": user_sub},
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        raise RuntimeError(f"助手服务返回 {resp.status_code}")
+
+
+async def _agentscope_interrupt(session_id: str, user_sub: str) -> None:
+    """中断当前回复（AgentScope 的 POST /sessions/{id}/interrupt）。"""
+    agent_id = await _agentscope_agent_id(user_sub)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"{settings.agentscope_base}/sessions/{session_id}/interrupt",
+            params={"agent_id": agent_id},
+            headers={"X-User-ID": user_sub},
+        )
+    if resp.status_code >= 400 and resp.status_code != 404:
+        raise RuntimeError(f"助手服务返回 {resp.status_code}")
+
+
+async def _agentscope_agent_id(user_sub: str) -> str:
+    """取当前用户的助手 id（AgentScope 的 GET /agent/）。"""
+    from . import agentscope_bridge as bridge
+
+    agent_id, _model, _cred = await bridge.resolved_agent(user_sub, _platform_model())
+    return agent_id
+
+
 # ------------------------------------------------------------------ 路由
 
 
@@ -696,13 +823,17 @@ async def agent_status(user: dict[str, Any] = Depends(require_user)) -> dict[str
     cfg = get_config()
     available = False
     reason = ""
+    # 助手后端就是 AgentScope（pi 网关已下线）：直接问它自己的 /health
     try:
-        resp = await gw("GET", "/health")
-        available = resp.status_code == 200 and bool(resp.json().get("ok"))
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"{settings.agentscope_base}/health", headers={"X-User-ID": user["sub"]}
+            )
+        available = resp.status_code == 200
         if not available:
-            reason = "网关返回异常"
-    except HTTPException as exc:
-        reason = str(exc.detail)
+            reason = f"助手服务返回 {resp.status_code}"
+    except httpx.HTTPError as exc:
+        reason = f"助手服务不可达：{type(exc).__name__}"
     skills = [
         {"name": s.get("name") or "", "description": s.get("description") or ""}
         for s in cfg.get("skills") or []
@@ -711,7 +842,7 @@ async def agent_status(user: dict[str, Any] = Depends(require_user)) -> dict[str
     return {
         "available": available,
         "reason": reason,
-        "gateway": settings.agent_gateway,
+        "backend": "agentscope",
         "model": cfg.get("default_model"),
         "models": _public_models(),
         "quotas": cfg["quotas"],
@@ -725,12 +856,45 @@ async def agent_status(user: dict[str, Any] = Depends(require_user)) -> dict[str
 
 @router.get("/models")
 async def agent_models(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
-    await gateway_models()
-    return {"models": _public_models()}
+    """可用模型列表。
+
+    pi 网关已下线，不能再去问它要模型清单（那会 503，Agent 页一直报红）。
+    AgentScope 侧直接用**平台模型配置**：管理员白名单优先，缺省用
+    /etc/labspace/agent-model.env 里的那一个。
+    """
+    platform = _platform_model()
+    model_name = platform.get("model") or settings.agent_default_model
+    cfg = get_config()
+    allowed = {m.get("id"): m for m in (cfg.get("models") or []) if m.get("id")}
+    models: list[dict[str, Any]] = []
+    for mid, m in allowed.items():
+        models.append(
+            {
+                "id": mid,
+                "provider": m.get("provider") or "",
+                "label": m.get("label") or mid,
+                "context": m.get("context"),
+                "enabled": bool(m.get("enabled", True)),
+            }
+        )
+    if model_name and not any(m["id"] == model_name for m in models):
+        models.insert(
+            0,
+            {
+                "id": model_name,
+                "provider": "platform",
+                "label": model_name,
+                "context": None,
+                "enabled": True,
+            },
+        )
+    return {"models": models}
 
 
 @router.get("/sessions")
 async def list_sessions(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    # 门户库是权威：会话详情、配额、消息都按 labspace.agent_sessions 走。
+    # （之前这里直接返回 AgentScope 的列表，两边对不上 → 点进会话就是 404。）
     rows = db.query(
         "SELECT * FROM labspace.agent_sessions WHERE user_id=%s ORDER BY updated_at DESC LIMIT 50",
         (user["sub"],),
@@ -747,38 +911,43 @@ async def create_session(
     _: None = Depends(require_csrf),
 ) -> dict[str, Any]:
     _check_quota(user["sub"], include_sessions=True)
-    cfg = get_config()
-    chosen = model or cfg.get("default_model") or settings.agent_default_model
-    # 白名单为空 = 「自动放行网关提供的模型」；管理员显式配置过才做限制。
-    if (cfg.get("models") or []) and chosen not in _allowed_model_ids():
-        raise HTTPException(status_code=400, detail="所选模型未在管理员白名单中")
-    sid = uuid.uuid4().hex
-    user_token = getattr(request.state, "session_token", "") or ""
-    lab_portal = next(
-        (p for p in (cfg.get("plugins") or []) if isinstance(p, dict) and p.get("id") == "lab-portal"),
-        None,
-    )
-    resp = await gw(
-        "POST",
-        "/sessions",
-        json={
-            "sessionId": sid,
-            "userId": user["sub"],
-            "model": chosen,
-            "userToken": user_token,
-            "systemPrompt": _system_prompt(user["sub"], cfg),
-            "noTools": bool(lab_portal and not lab_portal.get("enabled", True)),
-        },
-    )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"启动 Agent 失败：{resp.text[:200]}")
-    db.execute(
-        "INSERT INTO labspace.agent_sessions(id, user_id, title, model, status, message_count, tokens_in, tokens_out, created_at, updated_at) "
-        "VALUES (%s, %s, %s, %s, 'idle', 0, 0, 0, now(), now())",
-        (sid, user["sub"], title or "新会话", chosen),
-    )
-    rows = db.query("SELECT * FROM labspace.agent_sessions WHERE id=%s", (sid,))
-    return {"session": _session_out(rows[0])}
+    if _use_agentscope():
+        from . import agentscope_adapter as adapter
+        from . import agentscope_bridge as bridge
+
+        platform = _platform_model()
+        try:
+            agent_id, chosen_model, credential_id = await bridge.resolved_agent(user["sub"], platform)
+            created = await adapter.create_session(
+                agent_id,
+                user["sub"],
+                title or "",
+                {
+                    "type": "openai_credential",
+                    "credential_id": credential_id,
+                    "model": chosen_model,
+                    "model_class": "openai_chat",
+                    "parameters": {},
+                },
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        sid = str(created.get("session_id") or created.get("id") or "")
+        if not sid:
+            raise HTTPException(status_code=502, detail="助手服务未返回会话 ID")
+        # 本地也留一行：权限校验、额度统计、会话列表回退都依赖它。
+        db.execute(
+            "INSERT INTO labspace.agent_sessions(id, user_id, title, model, status, message_count, tokens_in, tokens_out, created_at, updated_at) "
+            "VALUES (%s, %s, %s, %s, 'idle', 0, 0, 0, now(), now())",
+            (sid, user["sub"], title or "新会话", chosen_model),
+        )
+        rows = db.query("SELECT * FROM labspace.agent_sessions WHERE id=%s", (sid,))
+        session = _session_out(rows[0]) if rows else {"id": sid, "title": title or "新会话", "model": chosen_model}
+        return {"session": session}
+
+    # 助手后端只有 AgentScope 一套实现（pi 网关已下线）：
+    # 走到这里说明上游分支没接住，直接给明确错误而不是回退到已下线的网关。
+    raise HTTPException(status_code=501, detail="助手后端未初始化，请检查 AgentScope 服务")
 
 
 @router.get("/sessions/{session_id}")
@@ -798,10 +967,9 @@ async def delete_session(
     _: None = Depends(require_csrf),
 ) -> dict[str, Any]:
     _own_session(session_id, user["sub"])
-    try:
-        await gw("DELETE", f"/sessions/{session_id}")
-    except HTTPException:
-        pass
+    # 助手侧删除失败不应阻止本地清理：会话记录留着才是真问题。
+    with contextlib.suppress(Exception):
+        await _agentscope_delete_session(session_id, user["sub"])
     db.execute("DELETE FROM labspace.agent_messages WHERE session_id=%s", (session_id,))
     db.execute("DELETE FROM labspace.agent_sessions WHERE id=%s", (session_id,))
     return {"ok": True}
@@ -809,6 +977,25 @@ async def delete_session(
 
 @router.get("/sessions/{session_id}/messages")
 async def list_messages(session_id: str, user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    if _use_agentscope():
+        from . import agentscope_adapter as as_adapter
+        from . import agentscope_bridge as bridge
+
+        agent_id, _model, _cred = await bridge.resolved_agent(user["sub"], _platform_model())
+        session_id = await _ensure_agentscope_session(session_id, user)
+        async with httpx.AsyncClient(timeout=as_adapter.TIMEOUT) as client:
+            resp = await client.get(
+                f"{settings.agentscope_base}/sessions/{session_id}/messages",
+                params={"agent_id": agent_id},
+                headers=as_adapter.build_headers(user["sub"]),
+            )
+        if resp.status_code == 404:
+            raise HTTPException(status_code=404, detail="会话不存在或不属于当前用户")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"读取消息失败（{resp.status_code}）")
+        payload = resp.json()
+        items = payload if isinstance(payload, list) else payload.get("messages") or []
+        return {"messages": [bridge.map_message(m) for m in items if isinstance(m, dict)]}
     _own_session(session_id, user["sub"])
     rows = db.query(
         "SELECT * FROM labspace.agent_messages WHERE session_id=%s ORDER BY created_at ASC LIMIT 200",
@@ -826,11 +1013,30 @@ async def send_message(
     user: dict[str, Any] = Depends(require_user),
     _: None = Depends(require_csrf),
 ) -> dict[str, Any]:
-    row = _own_session(session_id, user["sub"])
     text = (content or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="消息内容不能为空")
     _check_quota(user["sub"])
+    if _use_agentscope():
+        from . import agentscope_adapter as adapter
+        from . import agentscope_bridge as bridge
+
+        agent_id, _model, _cred = await bridge.resolved_agent(user["sub"], _platform_model())
+        session_id = await _ensure_agentscope_session(session_id, user)
+        try:
+            await adapter.chat(session_id, agent_id, user["sub"], text)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # 本地留痕：历史回放与额度统计都以它为准。
+        # 用统一的 _insert_message —— 它带 user_id（NOT NULL 列），此前这段
+        # 自己拼 SQL 漏了 user_id，助手一发消息就 500。
+        _insert_message(session_id, user["sub"], "user", text)
+        db.execute(
+            "UPDATE labspace.agent_sessions SET message_count = message_count + 1, updated_at = now() WHERE id=%s",
+            (session_id,),
+        )
+        return {"ok": True}
+    _own_session(session_id, user["sub"])
     mid: str | None = None
     if regenerate:
         # 重新生成：清掉最后一轮回答，避免会话里出现两条连续的助手消息
@@ -849,10 +1055,6 @@ async def send_message(
     else:
         mid = _insert_message(session_id, user["sub"], "user", text)
         _bump_session(session_id)
-    await _ensure_gateway_session(session_id, row, request)
-    resp = await gw("POST", f"/sessions/{session_id}/messages", json={"text": text})
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Agent 网关拒绝请求：{resp.text[:200]}")
     db.execute("UPDATE labspace.agent_sessions SET status='running', updated_at=now() WHERE id=%s", (session_id,))
     return {
         "accepted": True,
@@ -868,10 +1070,9 @@ async def abort_session(
     _: None = Depends(require_csrf),
 ) -> dict[str, Any]:
     _own_session(session_id, user["sub"])
-    try:
-        await gw("POST", f"/sessions/{session_id}/abort")
-    except HTTPException:
-        pass
+    # 中断失败同样不该挡住本地状态复位：会话必须能回到 idle。
+    with contextlib.suppress(Exception):
+        await _agentscope_interrupt(session_id, user["sub"])
     db.execute("UPDATE labspace.agent_sessions SET status='idle', updated_at=now() WHERE id=%s", (session_id,))
     return {"ok": True}
 
@@ -880,127 +1081,45 @@ async def abort_session(
 async def stream_session(
     request: Request, session_id: str, user: dict[str, Any] = Depends(require_user)
 ) -> StreamingResponse:
-    row = _own_session(session_id, user["sub"])
-    await _ensure_gateway_session(session_id, row, request)
-    url = f"{settings.agent_gateway.rstrip('/')}/sessions/{session_id}/stream"
+    if _use_agentscope():
+        from . import agentscope_adapter as adapter
+        from . import agentscope_bridge as bridge
 
-    # 并发流保护：同一用户同时最多开 MAX_CONCURRENT_STREAMS 条 SSE 流。
-    # 否则可以开大量长连接（每条最长 STREAM_TIMEOUT）耗尽网关与后端资源。
-    _acquire_stream_slot(user["sub"])
+        agent_id, _model, _cred = await bridge.resolved_agent(user["sub"], _platform_model())
+        session_id = await _ensure_agentscope_session(session_id, user)
+        # 并发流保护沿用同一套槽位：两套后端共用一个上限，切不切换都不放开限制。
+        await _acquire_stream_slot(user["sub"])
 
-    async def gen() -> AsyncIterator[str]:
-        assistant_buf: list[str] = []
-        usage = {"input": 0, "output": 0}
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(STREAM_TIMEOUT, connect=10)) as client:
-                async with client.stream("GET", url, headers=_headers()) as resp:
-                    if resp.status_code != 200:
-                        yield 'event: error\ndata: {"message":"网关未返回流式响应"}\n\n'
-                        return
-                    event_name = ""
-                    finished = False
-                    got_assistant = False
-                    assistant_mid: str | None = None
-                    usage_bumped = False
-                    buf = ""
-                    async for raw in resp.aiter_text():
-                        if finished:
-                            break
-                        # SSE 文本可能被分片切断，必须跨 chunk 保留半行
-                        buf += raw
-                        lines = buf.split("\n")
-                        buf = lines.pop() or ""
-                        for line in lines:
-                            line = line.rstrip("\r")
-                            if not line:
-                                continue
-                            if line.startswith("event:"):
-                                event_name = line[6:].strip()
-                                continue
-                            if not line.startswith("data:"):
-                                continue
-                            payload = line[5:].strip()
-                            if event_name != "delta" and event_name != "tool" and event_name != "assistant_message":
-                                if event_name in ("ready", "settled", "exit", "log", "thinking", "error"):
-                                    if event_name == "error":
-                                        yield f'event: error\ndata: {payload}\n\n'
-                                    elif event_name == "settled" and got_assistant:
-                                        yield 'event: done\ndata: {"message_id":"","usage":{}}\n\n'
-                                # 只有拿到助手正式回复后才认为本轮结束；
-                                # pi 启动阶段也会发一次 settled，提前断流会丢掉本轮增量
-                                if event_name in ("settled", "exit") and got_assistant:
-                                    finished = True
-                                    break
-                                continue
-                            try:
-                                data = json.loads(payload)
-                            except json.JSONDecodeError:
-                                continue
-                            if event_name == "delta":
-                                text = data.get("text") or ""
-                                assistant_buf.append(text)
-                                yield f'event: delta\ndata: {json.dumps({"text": text}, ensure_ascii=False)}\n\n'
-                            elif event_name == "tool":
-                                yield (
-                                    "event: tool\ndata: "
-                                    + json.dumps(
-                                        {
-                                            "name": data.get("name") or "",
-                                            "phase": data.get("phase") or "",
-                                            "summary": data.get("name") or "",
-                                            "isError": bool(data.get("isError")),
-                                        },
-                                        ensure_ascii=False,
-                                    )
-                                    + "\n\n"
-                                )
-                            elif event_name == "assistant_message":
-                                usage = {
-                                    "input": int(data.get("usage", {}).get("input") or 0),
-                                    "output": int(data.get("usage", {}).get("output") or 0),
-                                }
-                                content = data.get("content") or ""
-                                # 部分模型在工具链场景只发 thinking + toolCall、不发正文块，
-                                # 此时用本轮已收到的增量文本兜底，避免落库空消息。
-                                if not content.strip() and assistant_buf:
-                                    content = "".join(assistant_buf).strip()
-                                if not content.strip():
-                                    # 纯工具调用轮次：模型还没给正文。
-                                    # 这时既不落库也不发 done，否则会话记录会出现空助手消息，
-                                    # 且前端会提前结束本轮、丢掉网关自动补问后的真实答复。
-                                    continue
-                                got_assistant = True
-                                if assistant_mid is None:
-                                    assistant_mid = _insert_message(
-                                        session_id, user["sub"], "assistant", content, {"usage": usage}
-                                    )
-                                else:
-                                    _update_message(assistant_mid, content, {"usage": usage})
-                                if not usage_bumped:
-                                    _bump_session(session_id, usage["input"], usage["output"])
-                                    usage_bumped = True
-                                yield (
-                                    "event: done\ndata: "
-                                    + json.dumps(
-                                        {"message_id": assistant_mid, "usage": usage}, ensure_ascii=False
-                                    )
-                                    + "\n\n"
-                                )
-                if not got_assistant:
-                    # 网关流已结束但本轮没有正文（例如模型只报了 error）：
-                    # 补一个空 id 的 done，让前端正常收尾，不留下悬挂的加载状态。
-                    yield 'event: done\ndata: {"message_id":"","usage":{}}\n\n'
-        except httpx.HTTPError as exc:
-            yield f'event: error\ndata: {json.dumps({"message": f"流式中断：{type(exc).__name__}"}, ensure_ascii=False)}\n\n'
-        finally:
-            db.execute("UPDATE labspace.agent_sessions SET status='idle', updated_at=now() WHERE id=%s", (session_id,))
-            _release_stream_slot(user["sub"])
+        async def gen_agentscope() -> AsyncIterator[str]:
+            try:
+                async for frame in adapter.stream(session_id, agent_id, user["sub"]):
+                    # done 里带真实 token 用量：这里落库，额度统计才不是空的
+                    if frame.startswith("event: done"):
+                        try:
+                            payload = json.loads(frame.split("\n")[1][6:])
+                            usage = payload.get("usage") or {}
+                            _bump_session(
+                                session_id,
+                                tokens_in=int(usage.get("input_tokens") or 0),
+                                tokens_out=int(usage.get("output_tokens") or 0),
+                            )
+                            db.execute(
+                                "UPDATE labspace.agent_sessions SET updated_at = now() WHERE id=%s",
+                                (session_id,),
+                            )
+                        except Exception as exc:  # noqa: BLE001 - 记账失败不应中断输出
+                            log.warning("agent usage accounting failed: %s", exc)
+                    yield frame
+            finally:
+                await _release_stream_slot(user["sub"])
 
-    return StreamingResponse(
-        gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
-    )
+        return StreamingResponse(
+            gen_agentscope(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+        )
+    # 助手后端只有 AgentScope 一套实现：没有 AgentScope 分支就没有第二种流。
+    raise HTTPException(status_code=501, detail="助手后端未初始化，请检查 AgentScope 服务")
 
 
 @router.get("/quota")
@@ -1029,21 +1148,21 @@ async def list_memories(
     limit: int = Query(default=50, ge=1, le=200),
     user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
-    clauses = ["user_id=%s"]
-    params: list[Any] = [user["sub"]]
-    if kind in MEMORY_KINDS:
-        clauses.append("kind=%s")
-        params.append(kind)
+    # SQL 保持完全静态：可选条件用「参数为空则短路」表达，不拼 where 子句。
+    # 拼接式写法即使当前安全，也挡不住后人插入未转义片段。
     needle = q.strip()
-    if needle:
-        clauses.append("(title ILIKE %s OR content ILIKE %s)")
-        params.extend([f"%{needle}%", f"%{needle}%"])
-    params.append(limit)
+    kind_key = kind if kind in MEMORY_KINDS else ""
+    like = f"%{needle}%" if needle else "%"
     rows = db.query(
-        "SELECT * FROM labspace.agent_memories WHERE "
-        + " AND ".join(clauses)
-        + " ORDER BY pinned DESC, updated_at DESC LIMIT %s",
-        tuple(params),
+        """
+        SELECT * FROM labspace.agent_memories
+         WHERE user_id = %s
+           AND (%s = '' OR kind = %s)
+           AND (%s = '' OR title ILIKE %s OR content ILIKE %s)
+         ORDER BY pinned DESC, updated_at DESC
+         LIMIT %s
+        """,
+        (user["sub"], kind_key, kind_key, needle, like, like, limit),
     )
     total = db.query("SELECT count(*) AS n FROM labspace.agent_memories WHERE user_id=%s", (user["sub"],))
     return {"memories": [_memory_out(r) for r in rows], "total": int(total[0]["n"]) if total else 0}
@@ -1135,28 +1254,35 @@ async def delete_memory(
 async def admin_config(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     cfg = get_config()
     if not cfg.get("models"):
-        # 首次读取时用网关模型列表初始化，便于管理员直接勾选
-        gw_models = await gateway_models()
-        cfg["models"] = [
-            {
-                "id": m["id"],
-                "provider": m.get("provider", ""),
-                "label": m.get("label") or m["id"],
-                "context": m.get("context"),
-                "enabled": True,
-            }
-            for m in gw_models
-        ]
-        save_config(cfg)
+        # 首次读取时用**平台模型**初始化，便于管理员直接勾选。
+        # （此前这里问的是已下线的 pi 网关，于是管理页永远是空的。）
+        platform = _platform_model()
+        model_name = platform.get("model") or settings.agent_default_model
+        if model_name:
+            cfg["models"] = [
+                {
+                    "id": model_name,
+                    "provider": "platform",
+                    "label": model_name,
+                    "context": None,
+                    "enabled": True,
+                }
+            ]
+            save_config(cfg)
 
-    # 管理员打开页面时校对一次网关运行配置；限频避免网关故障时每次加载都长时间等待。
+    # 管理员打开页面时校对一次助手服务运行配置；限频避免服务故障时每次加载都长时间等待。
+    last_attempt = 0.0
+    try:
+        last_attempt = float(_runtime_state.get("attempt") or 0)
+    except (TypeError, ValueError):
+        last_attempt = 0.0
     runtime_result: dict[str, Any] = {
         "applied": _runtime_state.get("version") == _runtime_version(cfg),
         "version": _runtime_state.get("version") or "",
     }
-    if not runtime_result["applied"] and time.time() - float(_runtime_state.get("attempt") or 0) > 30:
+    if not runtime_result["applied"] and time.time() - last_attempt > 30:
         _runtime_state["attempt"] = time.time()
-        runtime_result = await _sync_runtime(cfg)
+        runtime_result = await _sync_runtime(cfg, user_id=str(user.get("sub") or ""))
 
     out = _sanitize_config(cfg)
     out["runtime_applied"] = bool(runtime_result.get("applied"))
@@ -1180,10 +1306,9 @@ async def update_admin_config(
         quotas = dict(cfg["quotas"])
         for key in DEFAULT_QUOTAS:
             if key in payload["quotas"]:
-                try:
+                # 非法配额值直接忽略：保留原值比存进一个 NaN/字符串更安全。
+                with contextlib.suppress(TypeError, ValueError):
                     quotas[key] = int(payload["quotas"][key])
-                except (TypeError, ValueError):
-                    pass
         cfg["quotas"] = quotas
     if isinstance(payload.get("plugins"), list):
         cfg["plugins"] = payload["plugins"]
@@ -1200,7 +1325,7 @@ async def update_admin_config(
     save_config(cfg)
 
     # 保存后立即推送到网关；网关不可用时配置仍然保留，页面会提示未生效。
-    runtime_result = await _sync_runtime(cfg, force=True)
+    runtime_result = await _sync_runtime(cfg, force=True, user_id=str(user.get("sub") or ""))
     out = _sanitize_config(cfg)
     out["runtime_applied"] = bool(runtime_result.get("applied"))
     if runtime_result.get("error"):
@@ -1210,13 +1335,19 @@ async def update_admin_config(
 
 @router.get("/admin/skills")
 async def admin_skills(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
-    """扫描网关宿主机上的技能目录，供管理员挑选启用。"""
+    """技能列表：来自 AgentScope 自己的技能记录（GET /skill）。
+
+    技能目录、启用/安装都在「能力中心」里操作，门户这里只做只读展示。
+    """
     try:
-        resp = await gw("GET", "/admin/skills")
-    except HTTPException as exc:
-        raise HTTPException(status_code=503, detail=str(exc.detail)) from exc
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"技能扫描失败：{resp.text[:200]}")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{settings.agentscope_base}/skill", headers={"X-User-ID": user["sub"]}
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"助手服务不可达：{type(exc).__name__}") from exc
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"技能读取失败（{resp.status_code}）")
     return resp.json()
 
 
@@ -1250,3 +1381,91 @@ async def admin_usage(user: dict[str, Any] = Depends(require_admin)) -> dict[str
             "sessions": sum(sess_map.values()),
         },
     }
+
+
+# ---------------------------------------------------------------- AgentScope
+# 与上面 pi 网关的接口**并存**：路径前缀相同但挂在 /agentscope 下，
+# 灰度期两套都能用，切换只是前端选择哪一组 URL 的事。
+
+
+@router.get("/agentscope/agents")
+async def agentscope_agents(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    """当前用户在 AgentScope 里的助手列表（按 X-User-ID 隔离）。"""
+    from . import agentscope_adapter as as_adapter
+
+    try:
+        return await as_adapter.list_agents(user["sub"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/agentscope/sessions")
+async def agentscope_sessions(
+    agent_id: str = Query(...),
+    user: dict[str, Any] = Depends(require_user),
+) -> dict[str, Any]:
+    from . import agentscope_adapter as as_adapter
+
+    try:
+        return await as_adapter.list_sessions(agent_id, user["sub"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/agentscope/sessions")
+async def agentscope_create_session(
+    payload: dict[str, Any],
+    user: dict[str, Any] = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    from . import agentscope_adapter as as_adapter
+
+    agent_id = str(payload.get("agentId") or "").strip()
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="缺少 agentId")
+    try:
+        return await as_adapter.create_session(agent_id, user["sub"], str(payload.get("name") or ""))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/agentscope/sessions/{session_id}/messages")
+async def agentscope_send(
+    session_id: str,
+    payload: dict[str, Any],
+    user: dict[str, Any] = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """投递一条消息。真正的增量从下面的 stream 推送。"""
+    from . import agentscope_adapter as as_adapter
+
+    agent_id = str(payload.get("agentId") or "").strip()
+    text = str(payload.get("text") or "").strip()
+    if not agent_id or not text:
+        raise HTTPException(status_code=400, detail="缺少 agentId 或消息内容")
+    if len(text) > 8000:
+        raise HTTPException(status_code=413, detail="单条消息过长（上限 8000 字符）")
+    try:
+        return await as_adapter.chat(session_id, agent_id, user["sub"], text)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/agentscope/sessions/{session_id}/stream")
+async def agentscope_stream(
+    session_id: str,
+    agent_id: str = Query(...),
+    user: dict[str, Any] = Depends(require_user),
+) -> StreamingResponse:
+    """把 AgentScope 的事件翻译成前端认的 ready/delta/tool/done/error。"""
+    from . import agentscope_adapter as as_adapter
+
+    async def gen() -> AsyncIterator[str]:
+        async for frame in as_adapter.stream(session_id, agent_id, user["sub"]):
+            yield frame
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )

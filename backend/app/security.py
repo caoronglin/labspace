@@ -207,6 +207,32 @@ async def require_admin(
     return user
 
 
+async def require_superadmin(
+    request: Request,
+    labspace_session: str | None = Cookie(default=None, alias="labspace_session"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict[str, Any]:
+    """依赖注入：需具备 **系统管理员**（lab-superadmin）角色。
+
+    与平台管理员（lab-admin）的分工：
+      * 平台管理员：账号、用户组、公告、Agent 配置、备份、共享目录等**业务**管理；
+      * 系统管理员：在业务之上，额外能执行**平台级**操作——重启/触发运维任务、
+        看调试诊断、改全局配置与密钥。
+    这类能力不该和"改谁是什么角色"放在同一个账号里：后者一旦被滥用，
+    会直接改掉整个实验室的权限结构。
+    """
+    token = labspace_session or _bearer_token(authorization)
+    user = read_session(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录或会话已过期")
+    _require_live(user)
+    if not has_role(user, settings.superadmin_roles):
+        raise HTTPException(status_code=403, detail="需要系统管理员权限（lab-superadmin）")
+    request.state.user = user
+    request.state.session_token = token
+    return user
+
+
 async def require_csrf(
     request: Request,
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),

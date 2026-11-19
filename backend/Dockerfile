@@ -1,7 +1,7 @@
 # =====================================================================
 #  LabSpace 门户后端镜像
 #
-#  基础镜像：官方 python:3.11-slim
+#  基础镜像：官方 python:3.15-slim
 #  历史原因：早期为避开 Docker Hub 拉取速度问题，复用了 open-webui 的 slim 镜像
 #  作为 Python 基础镜像 —— 该镜像内含 179 个包（langsmith / httpx2 / openai /
 #  boto3 / azure-* / black / alembic / grpcio …），其中绝大多数与门户无关，
@@ -9,10 +9,10 @@
 #  现改为官方 slim 镜像 + 全量锁定依赖（29 个包），镜像体积与依赖面同时收敛。
 #
 #  依赖真源：backend/pyproject.toml（直接依赖，宿主机由 pnpm 管理）
-#  传递依赖锁：backend/requirements-lock.txt（由 python:3.11-slim 一次性容器
+#  传递依赖锁：backend/requirements-lock.txt（由 python:3.15-slim 一次性容器
 #              `pip install -r requirements-runtime.txt && pip freeze` 生成）
 # =====================================================================
-FROM python:3.11-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -32,7 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libreoffice-writer libreoffice-calc libreoffice-impress \
       fonts-noto-cjk fonts-liberation \
       texlive-xetex texlive-latex-recommended texlive-lang-chinese texlive-fonts-recommended \
+      tesseract-ocr tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/*
+
+# 种子标签 OCR 用 Tesseract 而不是 RapidOCR / PaddleOCR：
+#   本机 Python 是 3.15，onnxruntime 与 paddlepaddle 都还没有 cp315 轮子，
+#   RapidOCR 系列装不上。Tesseract 是系统二进制，不绑定 Python ABI，
+#   chi_sim 语言包对印刷体标签够用。识别结果只用于**预填表单**，
+#   一律由人确认后才入库，不自动提交。
 
 COPY app /srv/app/app
 

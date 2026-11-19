@@ -136,6 +136,37 @@ async def deprovision_user(name: str) -> tuple[bool, Any]:
     return True, data if isinstance(data, dict) else {}
 
 
+async def backup_forget(snapshot: str) -> tuple[bool, str]:
+    """删除一个 restic 快照（管理员显式操作）。
+
+    restic 仓库与口令只在宿主机 root 环境里，因此这里把请求转给宿主机 ops 服务
+    （lab-oidc-sync.service，同机、令牌鉴权），由它执行 ops/backup-forget.sh。
+    后端与 Go 核心都不接触仓库路径与密码，也不具备 root 权限。
+    """
+    token = (settings.service_token or "").strip()
+    if not token:
+        return False, "内部服务令牌未配置"
+    base = (settings.oidc_sync_url or "").rstrip("/")
+    if not base:
+        return False, "宿主机运维服务地址未配置（LABSPACE_OIDC_SYNC_URL）"
+    try:
+        async with httpx.AsyncClient(timeout=920.0) as client:
+            resp = await client.post(
+                f"{base}/ops/backup/forget",
+                json={"snapshot": snapshot},
+                headers={"X-Ops-Token": token},
+            )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"宿主机运维服务不可达（{exc.__class__.__name__}）"
+    if resp.status_code != 200:
+        try:
+            detail = str(resp.json().get("error") or "")
+        except Exception:  # noqa: BLE001
+            detail = ""
+        return False, detail or f"运维服务返回 {resp.status_code}"
+    return True, ""
+
+
 async def file_access() -> dict[str, Any] | None:
     """项目共享目录清单及各账号的授权情况。"""
     ok, data = await _admin_request("GET", "/v1/admin/file-access")

@@ -2,24 +2,27 @@
 name = "labspace-backend"
 version = "1.0.0"
 description = "D509 工作台后端（FastAPI + PostgreSQL + Casdoor OIDC）"
-requires-python = ">=3.11"
+requires-python = ">=3.15"
 dependencies = [
-  "fastapi==0.162.0",
+  "fastapi==0.163.1",
   "uvicorn[standard]==0.54.0",
   "httpx==0.28.1",
   "PyJWT[crypto]==2.15.1",
-  "psycopg2-binary==2.9.12",
-  "python-multipart==0.0.33",
+  "psycopg2-binary==2.9.13",
+  "python-multipart==0.0.34",
   "python-docx==1.2.0",
   "openpyxl==3.1.5",
   "python-pptx==1.0.2",
+  # 标准库 crypt 自 Python 3.13 移除，口令哈希改用 bcrypt（$2b$ 与既有数据兼容）
+  "bcrypt==5.0.0",
 ]
 
 [dependency-groups]
 dev = [
   "pytest==9.2.0",
-  "pytest-asyncio==1.4.1.post1",
+  "pytest-asyncio==1.5.0",
 ]
 
 [tool.pnpm.python]
 groups = ["dev"]
+

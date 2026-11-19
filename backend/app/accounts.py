@@ -32,12 +32,14 @@ from typing import Any
 import psycopg2
 import psycopg2.extras
 from psycopg2 import pool as pgpool
+from psycopg2 import sql
 
+from . import account_security
 from . import baserow as baserow_mod
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
-    import crypt
+    import bcrypt
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -89,12 +91,21 @@ def _get_pool() -> pgpool.ThreadedConnectionPool:
     return _pool
 
 
-def _query(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+# 说明：门户库与 Casdoor 库是两个库，因此这里各有一套执行器。
+# 两者都只接受**常量 SQL + 占位符参数**；表名/列名这类标识符不能参数化，
+# 一律用 psycopg2.sql.Identifier 组合（见下方 set_group_grants / purge_user）。
+def _query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
+    """在 Casdoor 库执行一条参数化查询，返回字典列表。
+
+    SAFETY: 本函数是模块级统一入口，``statement`` 只来自本文件内的**字面量**
+    查询（带 ``%s`` 占位符）或 ``psycopg2.sql.Composed``；所有外部输入一律
+    走 ``params``。不要把用户可控的字符串拼进 ``statement``。
+    """
     pool = _get_pool()
     conn = pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params)
+            cur.execute(statement, params)
             rows = cur.fetchall()
             conn.commit()
             return [dict(r) for r in rows]
@@ -102,12 +113,17 @@ def _query(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
         pool.putconn(conn)
 
 
-def _execute(sql: str, params: tuple = ()) -> int:
+def _execute(statement: Any, params: tuple = ()) -> int:
+    """在 Casdoor 库执行一条参数化写语句，返回影响行数。
+
+    SAFETY: 同 :func:`_query` —— ``statement`` 只来自本文件内的字面量或
+    ``psycopg2.sql.Composed``，值一律走 ``params``。
+    """
     pool = _get_pool()
     conn = pool.getconn()
     try:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            cur.execute(statement, params)
             n = cur.rowcount
         conn.commit()
         return n
@@ -118,14 +134,70 @@ def _execute(sql: str, params: tuple = ()) -> int:
         pool.putconn(conn)
 
 
-def _hash_password(password: str) -> str:
+# 新建账号的初始口令：故意是弱口令，登录后强制修改（见 account_security 表）。
+# 它不是密钥，而是公开的策略值（登录页也会提示），因此允许硬编码；
+# 部署方可用环境变量覆盖成单位内约定的初始口令。
+INITIAL_PASSWORD = os.getenv("LABSPACE_INITIAL_PASSWORD", "ChangeMe#2026")  # noqa: S105
+
+
+def _hash_password(password: str, *, allow_weak: bool = False) -> str:
+    """生成 bcrypt 哈希。
+
+    ``allow_weak`` 保留给"确知口令来源"的场景（如从旧系统迁移）。
+    新建账号用的初始口令是 10 位的 ``ChangeMe#2026``，本身就满足强度下限，
+    因此建号路径**不再**需要这个开关。
+    """
     if not password:
         raise HTTPException(status_code=400, detail="口令不能为空")
-    if len(password) < 10:
+    if len(password) < 10 and not allow_weak:
         raise HTTPException(status_code=400, detail="口令至少 10 个字符")
-    if len(password.encode("utf-8")) > 72:
+    raw = password.encode("utf-8")
+    if len(raw) > 72:
         raise HTTPException(status_code=400, detail="口令超过 72 字节（bcrypt 上限）")
-    return crypt.crypt(password, crypt.mksalt(crypt.METHOD_BLOWFISH, rounds=1024))
+    # 用 bcrypt 而不是标准库 crypt：crypt 自 Python 3.13 起被移除（PEP 594），
+    # 而镜像以后必然要升 3.13，届时 crypt 会让"新建账号"整个功能直接崩。
+    # bcrypt 产出的 $2b$ 哈希与既有数据同格式，已存口令仍可继续校验。
+    return bcrypt.hashpw(raw, bcrypt.gensalt(rounds=12)).decode("ascii")
+
+
+def verify_password(name: str, password: str) -> bool:
+    """校验账号口令（bcrypt）。读不到账号或哈希异常一律 False。"""
+    rows = _query(
+        'SELECT password, password_type FROM public."user" WHERE owner = %s AND name = %s',
+        (OWNER, name.lower()),
+    )
+    if not rows:
+        return False
+    stored = str(rows[0].get("password") or "")
+    kind = str(rows[0].get("password_type") or "bcrypt")
+    if not stored:
+        return False
+    if kind != "bcrypt":
+        # 历史明文账号（极少）：按明文比较后由调用方负责迁移，避免直接报错。
+        return secrets.compare_digest(stored, password)
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+def set_user_password(name: str, password: str) -> None:
+    """直接改写 Casdoor 用户口令（bcrypt），并清掉必须改密标记。
+
+    调用方负责先校验旧口令与新口令强度；这里只做落库，避免校验逻辑出现两份。
+    """
+    pwd = _hash_password(password)
+    _execute(
+        """
+        UPDATE public."user"
+           SET password = %s, password_salt = %s, password_type = 'bcrypt',
+               updated_time = %s
+         WHERE owner = %s AND name = %s
+        """,
+        (pwd, secrets.token_hex(11), _now(), OWNER, name.lower()),
+    )
+    # 标记表在门户库（见 app/account_security.py），不能用这里的 Casdoor 连接池。
+    account_security.clear_must_change(name)
 
 
 def _now() -> str:
@@ -133,7 +205,7 @@ def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def _actor(admin: dict[str, Any]) -> str:
+def _audit_actor(admin: dict[str, Any]) -> str:
     return str(admin.get("name") or admin.get("email") or admin.get("sub") or "admin")
 
 
@@ -511,7 +583,10 @@ async def create_account(
         if dup:
             raise HTTPException(status_code=409, detail="邮箱已被其他账号使用")
     groups = _validate_groups(body.groups)
-    pwd = _hash_password(body.password)
+    # 新建账号一律发初始口令，并要求首次登录后修改；管理员不再自选初始口令。
+    # 新账号一律发**初始口令**（10 位，满足强度下限），并打"必须改密"标记。
+    # 管理员不再自选初始口令：自选就意味着有人会图省事发 123456。
+    pwd = _hash_password(INITIAL_PASSWORD)
     now = _now()
     _execute(
         """
@@ -536,15 +611,17 @@ async def create_account(
             json.dumps(groups, ensure_ascii=False),
         ),
     )
+    # 初始口令是弱口令，必须标记为"待修改"，否则等于发了一个永久的弱口令。
+    account_security.mark_must_change(name)
     ok, detail = await provision_user(_file_key({"name": name, "email": email}))
     if not ok:
         # 补偿删除，避免出现能登录但没有任何个人文件空间的半成品账号。
         _execute('DELETE FROM public."user" WHERE owner = %s AND name = %s', (OWNER, name))
-        _audit(_actor(admin), "create-failed", name, {"reason": detail})
+        _audit(_audit_actor(admin), "create-failed", name, {"reason": detail})
         raise HTTPException(
             status_code=502, detail=f"个人文件空间初始化失败，账号未创建：{_go_detail_zh(detail)}"
         )
-    _audit(_actor(admin), "create", name, {"groups": groups})
+    _audit(_audit_actor(admin), "create", name, {"groups": groups})
     account = _account(_get_user(name))
     account["projects"] = []
     account["fileGrants"] = [
@@ -553,7 +630,10 @@ async def create_account(
         {"source": "plasmids", "path": "", "access": "read"},
     ]
     account["homeReady"] = True
-    return {"ok": True, "account": account}
+    # 明确回传**实际使用**的初始口令：口令由服务端统一生成（不接受管理员自选），
+    # 不回传的话前端只能显示管理员在表单里填的那个值 —— 那个值是无效的，
+    # 用户拿着它登不进去（这是"新建账号后用户登录失败"的常见根因）。
+    return {"ok": True, "account": account, "initialPassword": INITIAL_PASSWORD}
 
 
 @router.patch("/{name}")
@@ -638,14 +718,18 @@ async def update_account(
         # Casdoor 的会话/令牌行按旧登录名存放；改名后清掉，旧名令牌不再可用。
         for table, column in _CASDOOR_USER_TABLES:
             try:
+                # 表名/列名来自本文件顶部的常量元组，不是用户输入；但仍用
+                # Identifier 交给驱动做标识符转义，避免以后有人把常量改成动态值。
                 _execute(
-                    f'DELETE FROM public."{table}" WHERE owner = %s AND {column} = %s',
+                    sql.SQL("DELETE FROM public.{tbl} WHERE owner = %s AND {col} = %s").format(
+                        tbl=sql.Identifier(table), col=sql.Identifier(column)
+                    ),
                     (OWNER, name),
                 )
             except Exception as exc:  # noqa: BLE001 - 令牌清理失败不应回滚改名
                 log.warning("casdoor token cleanup after rename failed (%s): %s", table, exc)
     _audit(
-        _actor(admin),
+        _audit_actor(admin),
         "rename" if new_name != name else "update",
         new_name,
         {
@@ -676,7 +760,7 @@ async def provision_account(
     ok, detail = await provision_user(_file_key(current))
     if not ok:
         raise HTTPException(status_code=502, detail=f"文件空间初始化失败：{_go_detail_zh(detail)}")
-    _audit(_actor(admin), "provision", name, {})
+    _audit(_audit_actor(admin), "provision", name, {})
     return {"ok": True}
 
 
@@ -697,7 +781,7 @@ async def update_file_access(
         ok, detail = await set_file_grants(_file_key(current), grants)
         if not ok:
             raise HTTPException(status_code=502, detail=f"文件权限更新失败：{_go_detail_zh(detail)}")
-        _audit(_actor(admin), "file-access", name, {"grants": grants})
+        _audit(_audit_actor(admin), "file-access", name, {"grants": grants})
         projects = [g["path"] for g in grants if g["source"] == "projects" and g["access"] == "write"]
         return {"ok": True, "grants": grants, "projects": projects}
     if body.projects is None:
@@ -707,7 +791,7 @@ async def update_file_access(
     ok, detail = await set_project_access(_file_key(current), body.projects)
     if not ok:
         raise HTTPException(status_code=502, detail=f"文件权限更新失败：{_go_detail_zh(detail)}")
-    _audit(_actor(admin), "file-access", name, {"projects": body.projects})
+    _audit(_audit_actor(admin), "file-access", name, {"projects": body.projects})
     return {"ok": True, "projects": body.projects}
 
 
@@ -772,7 +856,7 @@ async def create_group(
             _execute('DELETE FROM public."group" WHERE owner = %s AND name = %s', (OWNER, name))
             raise HTTPException(status_code=502, detail=f"用户组权限写入失败：{_go_detail_zh(detail)}")
         grants = normalized
-    _audit(_actor(admin), "group-create", name, {"displayName": body.displayName, "grants": grants})
+    _audit(_audit_actor(admin), "group-create", name, {"displayName": body.displayName, "grants": grants})
     return {
         "ok": True,
         "name": name,
@@ -821,7 +905,7 @@ async def patch_group(
             for member in _group_member_names(new_name):
                 row = _get_user(member)
                 db.revoke_sessions(str(row.get("id") or ""), "groups-changed")
-        _audit(_actor(admin), "group-rename", name, {"newName": new_name, "members": moved})
+        _audit(_audit_actor(admin), "group-rename", name, {"newName": new_name, "members": moved})
         name = new_name
     display = body.displayName.strip() if body.displayName is not None else None
     enabled = body.enabled
@@ -835,15 +919,20 @@ async def patch_group(
             sets.append("is_enabled = %s")
             params.append(enabled)
         params.extend([OWNER, name])
+        # sets 里每一项都是本文件写死的 "列名 = %s"（白名单），值走占位符；
+        # 用 sql.SQL 组合标识符，避免将来有人把列名改成动态值。
+        assignments = [sql.SQL(part) for part in sets]
         _execute(
-            f'UPDATE public."group" SET {", ".join(sets)} WHERE owner = %s AND name = %s',
+            sql.SQL('UPDATE public."group" SET {} WHERE owner = %s AND name = %s').format(
+                sql.SQL(", ").join(assignments)
+            ),
             tuple(params),
         )
         if enabled is False:
             for member in _group_member_names(name):
                 row = _get_user(member)
                 db.revoke_sessions(str(row.get("id") or ""), "groups-changed")
-        _audit(_actor(admin), "group-update", name, {"displayName": display, "enabled": enabled})
+        _audit(_audit_actor(admin), "group-update", name, {"displayName": display, "enabled": enabled})
     return {"ok": True, "name": name}
 
 
@@ -918,7 +1007,7 @@ async def update_file_group(
     grants, detail = await set_group_grants(name, [g.model_dump() for g in body.grants])
     if grants is None:
         raise HTTPException(status_code=502, detail=f"用户组权限更新失败：{_go_detail_zh(detail)}")
-    _audit(_actor(admin), "group-access", name, {"grants": grants})
+    _audit(_audit_actor(admin), "group-access", name, {"grants": grants})
     return {"ok": True, "name": name, "grants": grants}
 
 
@@ -951,7 +1040,7 @@ async def remove_file_group(
         for member in members:
             row = _get_user(member)
             db.revoke_sessions(str(row.get("id") or ""), "groups-changed")
-    _audit(_actor(admin), "group-delete", name, {"members": members, "force": force})
+    _audit(_audit_actor(admin), "group-delete", name, {"members": members, "force": force})
     return {"ok": True, "name": name, "removedMembers": removed_members}
 
 
@@ -997,8 +1086,8 @@ async def reset_password(
         """,
         (pwd, secrets.token_hex(11), _now(), OWNER, name),
     )
-    _audit(_actor(admin), "reset-password", name, {})
-    if _actor(admin) != name:
+    _audit(_audit_actor(admin), "reset-password", name, {})
+    if _audit_actor(admin) != name:
         # 改密后旧令牌仍然有效直到过期，必须吊销；管理员给自己改密则保持在线。
         db.revoke_sessions(str(current.get("id") or ""), "password-reset")
     return {"ok": True}
@@ -1021,13 +1110,18 @@ _LABSPACE_USER_TABLES = (
 
 # Casdoor 侧按用户名引用账号的表。public.record（Casdoor 自己的审计）保留，
 # 它是这次删除的凭据之一。
+#: 账号删除/改名时要一并清理的 Casdoor 附属表：(表名, 关联列名)。
+#
+# 列名写**裸名**（"user" 而不是 '"user"'）：这些值会交给 sql.Identifier 转义，
+# 自带双引号会让它把引号当普通字符再转义一次，生成 """user"""，
+# 于是 PostgreSQL 报 `column ""user"" does not exist`，账号删不掉。
 _CASDOOR_USER_TABLES = (
     ("session", "name"),
-    ("token", '"user"'),
-    ("resource", '"user"'),
+    ("token", "user"),
+    ("resource", "user"),
     ("third_party_link", "user_name"),
     ("password_history", "name"),
-    ("verification_record", '"user"'),
+    ("verification_record", "user"),
 )
 
 
@@ -1053,7 +1147,7 @@ async def delete_account(
         raise HTTPException(status_code=404, detail="账号已删除")
     if body.confirm.strip() != name:
         raise HTTPException(status_code=400, detail="请输入准确的账号标识以确认删除")
-    actor = _actor(admin)
+    actor = _audit_actor(admin)
     if actor == name:
         raise HTTPException(status_code=400, detail="不能删除当前登录账号")
     groups = _groups_of(current.get("groups"))
@@ -1084,8 +1178,18 @@ async def delete_account(
 
     purged: dict[str, int] = {}
     for table, column in _LABSPACE_USER_TABLES:
+        # SAFETY: table/column 只来自常量元组 _LABSPACE_USER_TABLES（编译期固定），
+        # 这里再断言一次，保证将来有人把它改成动态值时立刻在这里失败，
+        # 而不是悄悄变成一个可注入的 DELETE。
+        if (table, column) not in _LABSPACE_USER_TABLES:
+            raise AssertionError("非法的用户表清理目标")
         purged[table] = len(
-            db.query(f"DELETE FROM labspace.{table} WHERE {column} = %s RETURNING 1", (subject,))
+            db.query(
+                sql.SQL("DELETE FROM labspace.{tbl} WHERE {col} = %s RETURNING 1").format(
+                    tbl=sql.Identifier(table), col=sql.Identifier(column)
+                ),
+                (subject,),
+            )
         )
     # 公告是全站内容，删掉会连带影响其他用户；只隐去作者并把原名留在审计里。
     announcements = 0
@@ -1099,7 +1203,10 @@ async def delete_account(
     purged["announcements"] = announcements
     for table, column in _CASDOOR_USER_TABLES:
         purged[f"casdoor.{table}"] = _execute(
-            f'DELETE FROM public."{table}" WHERE owner = %s AND {column} = %s', (OWNER, name)
+            sql.SQL('DELETE FROM public.{tbl} WHERE owner = %s AND {col} = %s').format(
+                tbl=sql.Identifier(table), col=sql.Identifier(column)
+            ),
+            (OWNER, name),
         )
     purged["casdoor.user"] = _execute(
         'DELETE FROM public."user" WHERE owner = %s AND name = %s', (OWNER, name)

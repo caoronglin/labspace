@@ -263,6 +263,13 @@ CREATE TABLE IF NOT EXISTS labspace.agent_memories (
     updated_at     timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS agent_memories_user_idx ON labspace.agent_memories (user_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS labspace.account_security (
+    name        text PRIMARY KEY,
+    must_change boolean NOT NULL DEFAULT false,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS account_security_must_idx ON labspace.account_security (must_change) WHERE must_change;
+
 CREATE TABLE IF NOT EXISTS labspace.agent_config (
     key        text PRIMARY KEY,
     value      jsonb NOT NULL,
@@ -444,6 +451,174 @@ CREATE TABLE IF NOT EXISTS labspace.latex_events (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS latex_events_doc_idx ON labspace.latex_events (doc_id, created_at DESC);
+
+-- 上下审稿：批注（挂行号）、回复与状态流转（open / accepted / rejected）
+CREATE TABLE IF NOT EXISTS labspace.latex_reviews (
+    id         text PRIMARY KEY,
+    doc_id     text NOT NULL,
+    owner      text NOT NULL,
+    author     text NOT NULL DEFAULT '',
+    line_from  integer NOT NULL DEFAULT 1,
+    line_to    integer NOT NULL DEFAULT 1,
+    quote      text NOT NULL DEFAULT '',
+    comment    text NOT NULL DEFAULT '',
+    status     text NOT NULL DEFAULT 'open',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS latex_reviews_doc_idx ON labspace.latex_reviews (doc_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS labspace.latex_review_replies (
+    id         text PRIMARY KEY,
+    review_id  text NOT NULL,
+    owner      text NOT NULL,
+    author     text NOT NULL DEFAULT '',
+    content    text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS latex_review_replies_review_idx
+    ON labspace.latex_review_replies (review_id, created_at);
+
+-- 版本快照：保存 / 编译时把源码存一份，供「版本对比」做行级 diff
+CREATE TABLE IF NOT EXISTS labspace.latex_versions (
+    id         bigserial PRIMARY KEY,
+    event_id   bigint NOT NULL,
+    doc_id     text NOT NULL,
+    owner      text NOT NULL,
+    content    text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS latex_versions_event_idx ON labspace.latex_versions (event_id);
+CREATE INDEX IF NOT EXISTS latex_versions_doc_idx ON labspace.latex_versions (doc_id, created_at DESC);
+
+-- ---------------------------------------------------------------- 每日论文
+-- 「每日论文」按 (天, 人, 主题) 聚合文献源结果：一行一篇，source 记录真实来源
+-- （openalex / semanticscholar / crossref / arxiv）；拿不到的字段一律留空，不填占位符。
+CREATE TABLE IF NOT EXISTS labspace.daily_papers (
+    day        date NOT NULL,
+    owner      text NOT NULL,
+    topic      text NOT NULL,
+    doi        text NOT NULL DEFAULT '',
+    title      text NOT NULL,
+    authors    text NOT NULL DEFAULT '',
+    venue      text NOT NULL DEFAULT '',
+    year       int,
+    abstract   text NOT NULL DEFAULT '',
+    url        text NOT NULL DEFAULT '',
+    pdf_url    text NOT NULL DEFAULT '',
+    citations  int,
+    source     text NOT NULL DEFAULT '',
+    score      real,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (day, owner, topic, doi, title)
+);
+CREATE INDEX IF NOT EXISTS daily_papers_owner_day_idx
+    ON labspace.daily_papers (owner, day DESC, topic);
+
+-- 「每日论文」自主订阅：每人每个主题一条，开启后由每日维护自动抓取。
+-- 只存"订阅意图"（主题/数量/是否启用），论文本身仍在 daily_papers 里按日落库，
+-- 这样订阅改了不用回填历史数据。
+CREATE TABLE IF NOT EXISTS labspace.daily_paper_subs (
+    owner      text NOT NULL,
+    topic      text NOT NULL,
+    limit_n    int NOT NULL DEFAULT 10,
+    enabled    boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    last_run   timestamptz,
+    last_count int NOT NULL DEFAULT 0,
+    last_error text NOT NULL DEFAULT '',
+    PRIMARY KEY (owner, topic)
+);
+
+-- ---------------------------------------------------------------- 文献库（多库 + 文件夹）
+-- 文献库：每个用户至少有一个 is_default 的默认库，文献按 library_id 归属。
+CREATE TABLE IF NOT EXISTS labspace.literature_library (
+    id          text PRIMARY KEY,
+    owner       text NOT NULL,
+    name        text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    color       text NOT NULL DEFAULT '',
+    is_default  boolean NOT NULL DEFAULT false,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS literature_library_owner_idx
+    ON labspace.literature_library (owner, created_at);
+
+-- 文件夹：挂在某个文献库下，parent_id='' 表示库根目录。
+CREATE TABLE IF NOT EXISTS labspace.literature_folder (
+    id         text PRIMARY KEY,
+    owner      text NOT NULL,
+    library_id text NOT NULL DEFAULT '',
+    parent_id  text NOT NULL DEFAULT '',
+    name       text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS literature_folder_owner_idx
+    ON labspace.literature_folder (owner, library_id);
+
+-- 历史文献没有库/文件夹概念，用空串表示"默认库 / 未分类"，无需回填迁移。
+ALTER TABLE labspace.labops_literature ADD COLUMN IF NOT EXISTS library_id text NOT NULL DEFAULT '';
+ALTER TABLE labspace.labops_literature ADD COLUMN IF NOT EXISTS folder_id text NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS labops_literature_library_idx
+    ON labspace.labops_literature (owner, library_id, folder_id);
+
+-- ---------------------------------------------------------------- LaTeX 编译素材
+-- 编译素材（.cls / .sty / 图片等）：编译时随源码一起进沙箱。
+-- 只存二进制与元信息，不进版本快照（版本快照只存源码）。
+CREATE TABLE IF NOT EXISTS labspace.latex_assets (
+    id           text PRIMARY KEY,
+    doc_id       text NOT NULL,
+    owner        text NOT NULL,
+    name         text NOT NULL,
+    bytes        integer NOT NULL DEFAULT 0,
+    content_type text NOT NULL DEFAULT 'application/octet-stream',
+    data         bytea NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS latex_assets_doc_idx
+    ON labspace.latex_assets (doc_id, created_at);
+
+-- ---------------------------------------------------------------- 组会汇报
+-- 组会周目录（ISO 周，如 2026-W48）的授权名单。
+-- 名单决定"谁能看见 / 管理某周目录"，文件核心的 ACL 决定"放行谁的读写"，
+-- 两处都要写；这里存的是门户侧的名单。
+CREATE TABLE IF NOT EXISTS labspace.meeting_week_grants (
+    year_week  text NOT NULL,
+    user_id    text NOT NULL,
+    granted_by text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (year_week, user_id)
+);
+CREATE INDEX IF NOT EXISTS meeting_week_grants_user_idx ON labspace.meeting_week_grants (user_id);
+
+-- 周目录的压缩状态（压缩由文件核心执行，这里只记录结果供界面展示）。
+CREATE TABLE IF NOT EXISTS labspace.meeting_week_state (
+    year_week     text PRIMARY KEY,
+    compressed    boolean NOT NULL DEFAULT false,
+    compressed_at timestamptz,
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------- 导师-组员共享
+-- 组员名册（v26.11）：每位组员固定 01_组会汇报 / 02_论文 / 03_其他 三个目录，
+-- 目录与授权由文件核心落地，这里只存名册（学号、姓名、门户账号）。
+CREATE TABLE IF NOT EXISTS labspace.lab_roster (
+    id         bigserial PRIMARY KEY,
+    advisor    text NOT NULL,
+    code       text NOT NULL,
+    name       text NOT NULL,
+    status     text NOT NULL DEFAULT '在研',
+    account    text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (advisor, code, name)
+);
+CREATE INDEX IF NOT EXISTS lab_roster_advisor_idx ON labspace.lab_roster (advisor);
+
+-- identity（身份：博士后/博士生/硕士生/本科生/实习生/科研助理）是后加的需求。
+-- CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，所以这里显式 ALTER（幂等）。
+ALTER TABLE labspace.lab_roster ADD COLUMN IF NOT EXISTS identity text NOT NULL DEFAULT '硕士生';
 """
 
 
@@ -456,6 +631,10 @@ def get_pool() -> pgpool.ThreadedConnectionPool:
                 conn = _pool.getconn()
                 try:
                     with conn.cursor() as cur:
+                        # SAFETY: SCHEMA 是本模块顶部的**编译期常量**（CREATE TABLE /
+                        # CREATE INDEX 等固定 DDL 拼接），不接受任何运行期输入，
+                        # 因此这里不存在参数化的可能，也不存在注入面。
+                        # 需要变动的表结构改动直接改常量，不要改成拼接变量。
                         cur.execute(SCHEMA)
                     conn.commit()
                 finally:
@@ -463,12 +642,17 @@ def get_pool() -> pgpool.ThreadedConnectionPool:
     return _pool
 
 
-def query(sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+def query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
+    """执行一条查询。
+
+    ``statement`` 允许传 ``psycopg2.sql.Composed``：表名/列名这类标识符不能
+    用占位符传，必须由驱动做转义后拼接。普通 SQL 仍然照常写字符串。
+    """
     pool = get_pool()
     conn = pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params)
+            cur.execute(statement, params)
             rows = cur.fetchall()
             conn.commit()
             return [dict(r) for r in rows]

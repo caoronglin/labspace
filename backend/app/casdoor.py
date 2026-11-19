@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import secrets
 import time
 from typing import Any
@@ -18,7 +19,14 @@ _state_store: dict[str, dict[str, Any]] = {}
 STATE_TTL = 600
 
 
-def new_state(redirect_uri: str = "", issuer: str = "") -> str:
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+def new_state(redirect_uri: str = "", issuer: str = "", back: str = "") -> str:
     """创建 state，并绑定本次流程使用的 redirect_uri 与 Casdoor issuer。
 
     回调时直接复用这里的 redirect_uri / issuer，保证与授权请求完全一致
@@ -26,7 +34,13 @@ def new_state(redirect_uri: str = "", issuer: str = "") -> str:
     """
     state = secrets.token_urlsafe(24)
     nonce = secrets.token_urlsafe(16)
-    _state_store[state] = {"nonce": nonce, "ts": time.time(), "redirect_uri": redirect_uri, "issuer": issuer}
+    _state_store[state] = {
+        "nonce": nonce,
+        "ts": time.time(),
+        "redirect_uri": redirect_uri,
+        "issuer": issuer,
+        "back": back,
+    }
     # 清理过期 state
     now = time.time()
     for k in [k for k, v in _state_store.items() if now - v["ts"] > STATE_TTL]:
@@ -35,7 +49,7 @@ def new_state(redirect_uri: str = "", issuer: str = "") -> str:
 
 
 def pop_state(state: str) -> dict[str, Any] | None:
-    """取出并作废 state，返回 {nonce, redirect_uri, issuer}。"""
+    """取出并作废 state，返回 {nonce, redirect_uri, issuer, back}。"""
     entry = _state_store.pop(state, None)
     if not entry or time.time() - entry["ts"] > STATE_TTL:
         return None
@@ -53,7 +67,12 @@ def _discovery(issuer: str = "") -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"OIDC Discovery 失败: {type(exc).__name__}") from exc
 
 
-def authorization_url(state: str, redirect_uri: str | None = None, issuer: str = "") -> str:
+def authorization_url(
+    state: str,
+    redirect_uri: str | None = None,
+    issuer: str = "",
+    prompt_consent: bool | None = None,
+) -> str:
     base = (issuer or settings.issuer).rstrip("/")
     disc = _discovery(base)
     params = {
@@ -63,8 +82,14 @@ def authorization_url(state: str, redirect_uri: str | None = None, issuer: str =
         "scope": settings.scopes,
         "state": state,
         "nonce": _state_store[state]["nonce"],
-        "prompt": "consent",
     }
+    # Casdoor 的 prompt=consent 会**每次**都弹同意页：已登录用户回到门户也会被
+    # 拦一次，同意页一旦失败又跳回 /login，形成"登录 → 同意 → 失败 → 再登录"的
+    # 反复跳转。默认不再强制，内部网用单点登录即可。
+    if prompt_consent is None:
+        prompt_consent = _bool_env("LABSPACE_OIDC_PROMPT_CONSENT", False)
+    if prompt_consent:
+        params["prompt"] = "consent"
     endpoint = disc.get("authorization_endpoint") or f"{base}/login/oauth/authorize"
     from urllib.parse import urlencode
 

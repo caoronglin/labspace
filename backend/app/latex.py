@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import re
 import shutil
 import uuid
@@ -16,13 +17,15 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import db
 from .config import settings
+from .docx2latex import convert_docx
 from .security import require_csrf, require_user
+from .uploads import read_upload_capped
 
 router = APIRouter(prefix="/api/latex", tags=["latex"])
 
@@ -42,12 +45,30 @@ STATUSES = (
 )
 STATUS_KEYS = tuple(k for k, _ in STATUSES)
 
+# 批注状态：待处理 / 已接受 / 已拒绝
+REVIEW_STATUSES = ("open", "accepted", "rejected")
+REVIEW_STATUS_KEYS = frozenset(REVIEW_STATUSES)
+MAX_REVIEWS = 500
+MAX_REPLIES = 500
+MAX_VERSIONS = 100
+
+# 版本快照保留策略：每个 (doc_id, owner) 只留最近 30 份源码快照，
+# 超出部分在写入新版本时立刻删最旧的（见 prune_versions）。
+VERSION_KEEP = 30
+
+# 编译素材（.cls / .sty / 图片等）：编译时随源码一起进沙箱，不进版本快照。
+ASSET_EXTENSIONS = ("cls", "sty", "bib", "bst", "png", "jpg", "jpeg", "pdf", "eps", "svg")
+MAX_ASSET_BYTES = 2 * 1024 * 1024  # 单个素材 2 MB
+MAX_ASSETS_PER_DOC = 20  # 每份文稿 20 个素材
+MAX_ASSETS_TOTAL_BYTES = 20 * 1024 * 1024  # 每份文稿素材合计 20 MB
+
 TEMPLATES: list[dict[str, Any]] = [
     {
         "id": "article-cn",
         "name": "中文期刊论文",
         "description": "ctexart 单栏排版，含摘要、关键词、章节与图表示例，适合投稿中文期刊。",
         "kind": "article",
+        "tags": ["中文", "期刊"],
         "content": r"""\documentclass[UTF8,11pt,fontset=fandol]{ctexart}
 \usepackage[margin=2.54cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -98,10 +119,11 @@ TEMPLATES: list[dict[str, Any]] = [
 """,
     },
     {
-        "id": "manuscript-en",
-        "name": "英文 Manuscript",
-        "description": "标准 article 类，含 Abstract / Introduction / Results 与图表占位，适合英文期刊初稿。",
+        "id": "article-en",
+        "name": "英文 Article",
+        "description": "标准 article 单栏，含 Abstract / Introduction / Results 与图表示例，适合英文期刊初稿。",
         "kind": "article",
+        "tags": ["英文", "期刊"],
         "content": r"""\documentclass[11pt]{article}
 \usepackage[margin=2.54cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -148,10 +170,242 @@ Data and code will be deposited in a public repository upon acceptance.
 """,
     },
     {
+        "id": "article-two-column",
+        "name": "英文双栏 Article",
+        "description": "article 双栏排版，含摘要、公式、表格与图，适合会议与部分英文期刊的最终稿。",
+        "kind": "article",
+        "tags": ["英文", "期刊", "双栏"],
+        "content": r"""\documentclass[11pt,twocolumn]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+\title{Two-Column Manuscript}
+\author{Author One \and Author Two\\ D509 Laboratory}
+\date{\today}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Two-column manuscripts are the norm for conference proceedings: keep the
+abstract short and move detailed methods into the main text.
+\end{abstract}
+
+\section{Introduction}
+State the contribution in one or two sentences.
+
+\section{Methods}
+A compact description of the experimental design.
+
+\begin{equation}
+  y = \beta_0 + \beta_1 x + \varepsilon
+\end{equation}
+
+\section{Results}
+\begin{table}[htbp]
+  \centering
+  \caption{Results summary}
+  \begin{tabular}{lrr}
+    \toprule
+    Treatment & Mean & SD \\
+    \midrule
+    Control & 1.00 & 0.05 \\
+    Treated & 1.42 & 0.08 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Conclusion}
+One paragraph, no new claims.
+
+\bibliographystyle{plain}
+% \bibliography{refs}
+
+\end{document}
+""",
+    },
+    {
+        "id": "nwafuthesis",
+        "name": "西农学位论文骨架",
+        "description": "nwafuthesis 学位论文骨架（摘要 / 章节 / 参考文献占位）。需要先把 nwafuthesis.cls 上传到编译沙箱才能编译通过。",
+        "kind": "thesis",
+        "tags": ["中文", "学位论文", "需类文件"],
+        "content": r"""% !TeX program = xelatex
+% ---------------------------------------------------------------------------
+% 重要说明（请先读完再编译）：
+%   这份模板用的是西北农林科技大学官方学位论文类文件 nwafuthesis.cls。
+%   编译沙箱里默认没有这个类文件，必须先把 nwafuthesis.cls 上传到沙箱
+%   （与 main.tex 放在同一目录，沙箱会把它当作主文件的一部分一起编译），
+%   否则编译会停在 "File `nwafuthesis.cls' not found"。
+%   门户目前只把源码文本送进沙箱，还没有开放「附加类文件」的入口，
+%   所以在门户里直接编译这份模板会失败——这不是模板本身写错了。
+% ---------------------------------------------------------------------------
+\documentclass{nwafuthesis}
+
+\title{学位论文题目}
+\author{作者姓名}
+\date{\today}
+
+\begin{document}
+
+\makenomenclature
+\makefrontmatter
+
+\include{abstract}
+\include{summary}
+\include{materials}
+\include{methods}
+\include{results}
+\include{discussion}
+\include{conclusion}
+\include{references}
+\include{appendix}
+\include{acknowledgements}
+
+\end{document}
+""",
+    },
+    {
+        "id": "letter",
+        "name": "正式信件",
+        "description": "letter 类公文写法：右上角落款、称呼、正文与签名，适合合作与事务性信件。",
+        "kind": "letter",
+        "tags": ["英文", "信件"],
+        "content": r"""\documentclass[11pt]{letter}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+\pagestyle{empty}
+\begin{document}
+
+\begin{flushright}
+\today\\
+\textbf{Editor-in-Chief}\\
+\emph{Journal Name}\\
+\texttt{editor@example.com}
+\end{flushright}
+
+\noindent Dear Editor,
+
+\vspace{0.6em}
+\noindent I am writing on behalf of the D509 Laboratory to submit our
+manuscript entitled ``Manuscript Title'' for consideration as a
+\emph{Article} in \emph{Journal Name}.
+
+\vspace{0.6em}
+\noindent The manuscript is original, has not been published elsewhere, and
+is not under review by another journal. All authors have approved the
+submission and declare no competing interests.
+
+\vspace{0.6em}
+\noindent We hope the manuscript is suitable for the journal and look
+forward to your response.
+
+\vspace{1.6em}
+\noindent Sincerely,\\[0.6em]
+\noindent \textbf{Author Name}\\
+Researcher\\
+D509 Laboratory\\
+\texttt{name@example.com}
+
+\end{document}
+""",
+    },
+    {
+        "id": "beamer",
+        "name": "学术幻灯片",
+        "description": "beamer 16:9 幻灯片骨架（标题 / 目录 / 背景 / 方法 / 结果 / 讨论 / 结论），适合组会与答辩。",
+        "kind": "slides",
+        "tags": ["英文", "幻灯片", "汇报"],
+        "content": r"""\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\setbeamertemplate{navigation symbols}{}
+\setbeamercolor{structure}{fg=blue!70!black}
+\setbeamertemplate{itemize item}{\textbullet}
+
+\title{Presentation Title}
+\author{Author Name \and D509 Laboratory}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}{Title}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Outline}
+  \begin{enumerate}
+    \item Background and question
+    \item Materials and methods
+    \item Results
+    \item Discussion and conclusion
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Background}
+  \begin{itemize}
+    \item The problem this study addresses.
+    \item Why the existing approaches fall short.
+    \item The hypothesis, stated in one line.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Methods}
+  \begin{itemize}
+    \item Samples, treatments and controls.
+    \item Measurements and statistics.
+  \end{itemize}
+  \begin{equation}
+    y = \beta_0 + \beta_1 x + \varepsilon
+  \end{equation}
+\end{frame}
+
+\begin{frame}{Results}
+  \begin{table}
+    \centering
+    \begin{tabular}{lrr}
+      \toprule
+      Treatment & Mean & SD \\
+      \midrule
+      Control & 1.00 & 0.05 \\
+      Treated & 1.42 & 0.08 \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+\end{frame}
+
+\begin{frame}{Discussion}
+  \begin{itemize}
+    \item What the numbers mean.
+    \item Limitations of the design.
+    \item Next experiments.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Conclusion}
+  \begin{itemize}
+    \item One sentence per contribution.
+    \item Take-home message.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Thanks}
+  \centering Questions and comments are welcome.
+\end{frame}
+
+\end{document}
+""",
+    },
+    {
         "id": "thesis-chapter",
         "name": "学位论文章节",
         "description": "ctexrep 章节骨架，含节、小节、公式与参考文献占位，可直接并入学位论文。",
         "kind": "thesis",
+        "tags": ["中文", "学位论文"],
         "content": r"""\documentclass[UTF8,12pt,fontset=fandol]{ctexrep}
 \usepackage[margin=2.8cm]{geometry}
 \usepackage{amsmath,amssymb}
@@ -188,6 +442,7 @@ Data and code will be deposited in a public repository upon acceptance.
         "name": "投稿信",
         "description": "给编辑部的 Cover Letter 模板，包含贡献声明、推荐审稿人与声明事项。",
         "kind": "letter",
+        "tags": ["中文", "投稿信"],
         "content": r"""\documentclass[UTF8,11pt,fontset=fandol]{ctexart}
 \usepackage[margin=2.54cm]{geometry}
 \pagestyle{empty}
@@ -295,10 +550,109 @@ async def _event(doc_id: str, owner: str, kind: str, note: str = "") -> None:
     )
 
 
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+async def prune_versions(doc_id: str, owner: str, keep: int = VERSION_KEEP) -> int:
+    """只保留最近 ``keep`` 个版本快照，返回删掉的条数。
+
+    版本表存的是整份源码快照，不设上限会一直涨；每次写入新版本后调用本函数，
+    把超出部分（最旧的）立刻删掉。
+    """
+    keep = max(0, keep)
+    rows = await _aq(
+        """
+        DELETE FROM labspace.latex_versions
+         WHERE id IN (
+               SELECT id FROM labspace.latex_versions
+                WHERE doc_id = %s AND owner = %s
+                ORDER BY created_at DESC, id DESC
+                OFFSET %s
+         )
+        RETURNING id
+        """,
+        (doc_id, owner, keep),
+    )
+    return len(rows)
+
+
+async def _version(doc_id: str, owner: str, kind: str, note: str, content: str) -> None:
+    """记一个可对比的版本：事件表留时间线，版本表存源码快照。
+
+    - 内容与上一版完全相同（sha256 一致）就不再存第二份源码，只留时间线事件；
+    - 存完新快照后调用 ``prune_versions``，把超出保留份数的旧快照删掉。
+
+    事件 id 用 ``INSERT ... RETURNING`` 取回，好让快照挂到具体那一次事件上；
+    ``db.query`` 是现成的执行入口，这里不再往 db.py 里加函数。
+    """
+    latest = await _aq(
+        "SELECT content FROM labspace.latex_versions WHERE doc_id=%s AND owner=%s"
+        " ORDER BY created_at DESC, id DESC LIMIT 1",
+        (doc_id, owner),
+    )
+    if latest and _sha256(str(latest[0].get("content") or "")) == _sha256(content):
+        # 源码没变：只记事件，不重复存同样的快照
+        await _event(doc_id, owner, kind, note)
+        return
+    rows = await _aq(
+        "INSERT INTO labspace.latex_events (doc_id, owner, kind, note) VALUES (%s,%s,%s,%s) RETURNING id",
+        (doc_id, owner, kind, note[:500]),
+    )
+    event_id = int(rows[0]["id"]) if rows else 0
+    await _ax(
+        "INSERT INTO labspace.latex_versions (event_id, doc_id, owner, content) VALUES (%s,%s,%s,%s)",
+        (event_id, doc_id, owner, content),
+    )
+    await prune_versions(doc_id, owner)
+
+
+def _review_out(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "docId": row.get("doc_id") or "",
+        "author": row.get("author") or "",
+        "lineFrom": int(row.get("line_from") or 1),
+        "lineTo": int(row.get("line_to") or 1),
+        "quote": row.get("quote") or "",
+        "comment": row.get("comment") or "",
+        "status": row.get("status") or "open",
+        "replyCount": int(row.get("reply_count") or 0),
+        "createdAt": _iso(row.get("created_at")),
+        "updatedAt": _iso(row.get("updated_at")),
+    }
+
+
+def _reply_out(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "reviewId": row.get("review_id") or "",
+        "author": row.get("author") or "",
+        "content": row.get("content") or "",
+        "createdAt": _iso(row.get("created_at")),
+    }
+
+
 async def _owned(doc_id: str, owner: str) -> dict[str, Any]:
     rows = await _aq("SELECT * FROM labspace.latex_documents WHERE id=%s AND owner=%s", (doc_id, owner))
     if not rows:
         raise HTTPException(status_code=404, detail="文稿不存在或无权访问")
+    return rows[0]
+
+
+async def _review_row(doc_id: str, owner: str, review_id: str) -> dict[str, Any]:
+    """取一条批注（带回复数）；不存在或不属于本人一律 404。"""
+    rows = await _aq(
+        """
+        SELECT r.*,
+               (SELECT count(*) FROM labspace.latex_review_replies rp WHERE rp.review_id = r.id) AS reply_count
+          FROM labspace.latex_reviews r
+         WHERE r.id = %s AND r.doc_id = %s AND r.owner = %s
+        """,
+        (review_id, doc_id, owner),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="批注不存在")
     return rows[0]
 
 
@@ -335,6 +689,25 @@ class EventIn(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class ReviewCreate(BaseModel):
+    """新建批注。前端用 camelCase（lineFrom / lineTo），也接受 snake_case。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    line_from: int = Field(default=1, ge=1, alias="lineFrom")
+    line_to: int = Field(default=1, ge=1, alias="lineTo")
+    quote: str = Field(default="", max_length=2000)
+    comment: str = Field(default="", max_length=4000)
+
+
+class ReviewStatus(BaseModel):
+    status: str = "open"
+
+
+class ReplyCreate(BaseModel):
+    content: str = Field(default="", max_length=4000)
+
+
 # ---------------------------------------------------------------- 路由
 
 
@@ -346,28 +719,39 @@ async def list_templates(user: dict = Depends(require_user)) -> dict[str, Any]:
     }
 
 
+@router.get("/templates/{template_id}")
+async def get_template(template_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    """单个模板（含源码）：前端「预览源码」用它。"""
+    for tpl in TEMPLATES:
+        if tpl["id"] == template_id:
+            return {"template": tpl}
+    raise HTTPException(status_code=404, detail="模板不存在")
+
+
 @router.get("/documents")
 async def list_documents(
     q: str = Query(default="", max_length=120),
     status: str = Query(default=""),
     user: dict = Depends(require_user),
 ) -> dict[str, Any]:
-    where = ["owner=%s"]
-    params: list[Any] = [user["sub"]]
-    if q.strip():
-        where.append("(title ILIKE %s OR venue ILIKE %s OR abstract ILIKE %s)")
-        like = f"%{q.strip()}%"
-        params.extend([like, like, like])
-    if status in STATUS_KEYS:
-        where.append("status=%s")
-        params.append(status)
+    # SQL 保持完全静态：筛选条件用「参数为空的短路判断」表达，
+    # 不拼 where 子句 —— 拼 SQL 的写法即使当前安全，也挡不住下一个人加一个
+    # 未转义的片段进来。
+    like = f"%{q.strip()}%" if q.strip() else "%"
+    status_key = status if status in STATUS_KEYS else ""
     rows = await _aq(
-        f"SELECT * FROM labspace.latex_documents WHERE {' AND '.join(where)}"
-        " ORDER BY updated_at DESC LIMIT 200",
-        tuple(params),
+        """
+        SELECT * FROM labspace.latex_documents
+         WHERE owner = %s
+           AND (%s = '' OR title ILIKE %s OR venue ILIKE %s OR abstract ILIKE %s)
+           AND (%s = '' OR status = %s)
+         ORDER BY updated_at DESC
+         LIMIT 200
+        """,
+        (user["sub"], q.strip(), like, like, like, status_key, status_key),
     )
     docs = [_doc_out(r) for r in rows]
-    counts = {k: 0 for k in STATUS_KEYS}
+    counts = dict.fromkeys(STATUS_KEYS, 0)
     for d in docs:
         counts[d["status"]] = counts.get(d["status"], 0) + 1
     return {"documents": docs, "counts": counts, "total": len(docs)}
@@ -399,8 +783,53 @@ async def create_document(body: DocCreate, user: dict = Depends(require_user), _
             body.due_date or None,
         ),
     )
-    await _event(doc_id, owner, "created", f"从模板「{tpl['name']}」创建")
+    await _version(doc_id, owner, "created", f"从模板「{tpl['name']}」创建", tpl["content"])
     return {"document": _doc_out(await _owned(doc_id, owner))}
+
+
+@router.post("/import-docx")
+async def import_docx(
+    file: UploadFile = File(...),
+    template: str = Form("article"),
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """把 .docx 转成 LaTeX 并建成一份新文稿。
+
+    转换规则与限制见 app/docx2latex.py：图片、公式、合并单元格等无法可靠还原
+    的部分会在 warnings 里逐条说明，不静默丢弃。
+    """
+    filename = (file.filename or "").strip()
+    if not filename.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="只支持 .docx 文件")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="文件为空")
+    if len(data) > MAX_CONTENT * 8:
+        raise HTTPException(status_code=413, detail="DOCX 超过 3.2 MB 上限")
+
+    title = Path(filename).stem[:MAX_TITLE] or "未命名文稿"
+    try:
+        conv = convert_docx(data, template=template, fallback_title=title)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    doc_id = uuid.uuid4().hex
+    owner = user["sub"]
+    kind = "thesis" if template == "nwafu" else "article"
+    await _ax(
+        """
+        INSERT INTO labspace.latex_documents (id, owner, title, kind, content)
+        VALUES (%s,%s,%s,%s,%s)
+        """,
+        (doc_id, owner, title, kind, conv.latex),
+    )
+    await _version(doc_id, owner, "created", f"由 DOCX 导入（{filename}）", conv.latex)
+    return {
+        "document": _doc_out(await _owned(doc_id, owner)),
+        "warnings": conv.warnings,
+        "stats": conv.stats,
+    }
 
 
 @router.get("/documents/{doc_id}")
@@ -416,51 +845,64 @@ async def update_document(
     _: None = Depends(require_csrf),
 ) -> dict[str, Any]:
     current = await _owned(doc_id, user["sub"])
-    fields: list[str] = []
-    params: list[Any] = []
     payload = body.model_dump(exclude_unset=True)
     if "status" in payload and payload["status"] not in STATUS_KEYS:
         raise HTTPException(status_code=400, detail="未知的投稿状态")
-    mapping = {
-        "title": "title",
-        "venue": "venue",
-        "authors": "authors",
-        "status": "status",
-        "abstract": "abstract",
-        "keywords": "keywords",
-        "content": "content",
-        "project_id": "project_id",
-        "knowledge_doc_id": "knowledge_doc_id",
-        "due_date": "due_date",
-    }
-    for key, column in mapping.items():
+
+    def pick(key: str) -> tuple[bool, Any]:
+        """返回 (是否要写这一列, 新值)。未出现在请求体里的列保持原值。"""
         if key not in payload:
-            continue
+            return False, None
         value = payload[key]
         if key == "title":
             value = (value or "").strip() or "未命名文稿"
         if key == "content" and not (value or "").strip():
-            continue
+            return False, None
         if key == "due_date" and value == "":
             value = None
-        fields.append(f"{column}=%s")
-        params.append(value)
-    if not fields:
+        return True, value
+
+    columns = ("title", "venue", "authors", "status", "abstract", "keywords", "content", "project_id", "knowledge_doc_id", "due_date")
+    flags_and_values: list[Any] = []
+    for key in columns:
+        set_flag, value = pick(key)
+        flags_and_values.extend([set_flag, value])
+    if not any(flags_and_values[0::2]):
         return {"document": _doc_out(current)}
-    params.extend([doc_id, user["sub"]])
+    # 静态 SQL：每列都是 CASE WHEN <是否更新> THEN <新值> ELSE <原值>，
+    # 既不需要拼接列名，也能表达"显式清空"（新值为 NULL）。
     await _ax(
-        f"UPDATE labspace.latex_documents SET {', '.join(fields)}, updated_at=now() WHERE id=%s AND owner=%s",
-        tuple(params),
+        """
+        UPDATE labspace.latex_documents SET
+          title            = CASE WHEN %s THEN %s ELSE title END,
+          venue            = CASE WHEN %s THEN %s ELSE venue END,
+          authors          = CASE WHEN %s THEN %s ELSE authors END,
+          status           = CASE WHEN %s THEN %s ELSE status END,
+          abstract         = CASE WHEN %s THEN %s ELSE abstract END,
+          keywords         = CASE WHEN %s THEN %s ELSE keywords END,
+          content          = CASE WHEN %s THEN %s ELSE content END,
+          project_id       = CASE WHEN %s THEN %s ELSE project_id END,
+          knowledge_doc_id = CASE WHEN %s THEN %s ELSE knowledge_doc_id END,
+          due_date         = CASE WHEN %s THEN %s ELSE due_date END,
+          updated_at       = now()
+         WHERE id = %s AND owner = %s
+        """,
+        tuple(flags_and_values) + (doc_id, user["sub"]),
     )
     new_status = payload.get("status")
     if new_status and new_status != current.get("status"):
         label = dict(STATUSES)
-        await _event(
-            doc_id,
-            user["sub"],
-            "status",
-            f"{label.get(current.get('status'), current.get('status'))} → {label.get(new_status, new_status)}",
-        )
+        prev = str(current.get("status") or "")
+        nxt = str(new_status)
+        await _event(doc_id, user["sub"], "status", f"{label.get(prev, prev)} → {label.get(nxt, nxt)}")
+    # 源码变了就留一个版本快照，版本对比才有得比（没变就不重复存）
+    new_content = payload.get("content")
+    if (
+        isinstance(new_content, str)
+        and new_content.strip()
+        and new_content != (current.get("content") or "")
+    ):
+        await _version(doc_id, user["sub"], "save", "保存源码", new_content)
     return {"document": _doc_out(await _owned(doc_id, user["sub"]))}
 
 
@@ -469,6 +911,14 @@ async def delete_document(doc_id: str, user: dict = Depends(require_user), _: No
     await _owned(doc_id, user["sub"])
     await _ax("DELETE FROM labspace.latex_documents WHERE id=%s AND owner=%s", (doc_id, user["sub"]))
     await _ax("DELETE FROM labspace.latex_events WHERE doc_id=%s AND owner=%s", (doc_id, user["sub"]))
+    await _ax("DELETE FROM labspace.latex_versions WHERE doc_id=%s AND owner=%s", (doc_id, user["sub"]))
+    await _ax("DELETE FROM labspace.latex_assets WHERE doc_id=%s AND owner=%s", (doc_id, user["sub"]))
+    await _ax(
+        "DELETE FROM labspace.latex_review_replies WHERE review_id IN"
+        " (SELECT id FROM labspace.latex_reviews WHERE doc_id=%s AND owner=%s)",
+        (doc_id, user["sub"]),
+    )
+    await _ax("DELETE FROM labspace.latex_reviews WHERE doc_id=%s AND owner=%s", (doc_id, user["sub"]))
     await asyncio.to_thread(shutil.rmtree, _doc_dir(doc_id), True)
     return {"ok": True}
 
@@ -501,15 +951,325 @@ async def add_event(
     return {"ok": True}
 
 
+@router.get("/documents/{doc_id}/reviews")
+async def list_reviews(doc_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    rows = await _aq(
+        """
+        SELECT r.*,
+               (SELECT count(*) FROM labspace.latex_review_replies rp WHERE rp.review_id = r.id) AS reply_count
+          FROM labspace.latex_reviews r
+         WHERE r.doc_id = %s AND r.owner = %s
+         ORDER BY r.created_at DESC, r.id DESC
+         LIMIT %s
+        """,
+        (doc_id, user["sub"], MAX_REVIEWS),
+    )
+    return {"reviews": [_review_out(r) for r in rows]}
+
+
+@router.post("/documents/{doc_id}/reviews")
+async def create_review(
+    doc_id: str,
+    body: ReviewCreate,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    line_from = body.line_from
+    line_to = max(body.line_to, body.line_from)
+    review_id = uuid.uuid4().hex
+    await _ax(
+        """
+        INSERT INTO labspace.latex_reviews
+          (id, doc_id, owner, author, line_from, line_to, quote, comment, status)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'open')
+        """,
+        (
+            review_id,
+            doc_id,
+            user["sub"],
+            user.get("name") or user.get("email") or "",
+            line_from,
+            line_to,
+            body.quote.strip(),
+            body.comment.strip(),
+        ),
+    )
+    return {"review": _review_out(await _review_row(doc_id, user["sub"], review_id))}
+
+
+@router.patch("/documents/{doc_id}/reviews/{review_id}")
+async def update_review(
+    doc_id: str,
+    review_id: str,
+    body: ReviewStatus,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    if body.status not in REVIEW_STATUS_KEYS:
+        raise HTTPException(status_code=400, detail="未知的批注状态")
+    await _review_row(doc_id, user["sub"], review_id)
+    await _ax(
+        "UPDATE labspace.latex_reviews SET status=%s, updated_at=now()"
+        " WHERE id=%s AND doc_id=%s AND owner=%s",
+        (body.status, review_id, doc_id, user["sub"]),
+    )
+    return {"review": _review_out(await _review_row(doc_id, user["sub"], review_id))}
+
+
+@router.delete("/documents/{doc_id}/reviews/{review_id}")
+async def delete_review(
+    doc_id: str,
+    review_id: str,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    await _review_row(doc_id, user["sub"], review_id)
+    await _ax("DELETE FROM labspace.latex_review_replies WHERE review_id=%s", (review_id,))
+    await _ax(
+        "DELETE FROM labspace.latex_reviews WHERE id=%s AND doc_id=%s AND owner=%s",
+        (review_id, doc_id, user["sub"]),
+    )
+    return {"ok": True}
+
+
+@router.get("/documents/{doc_id}/reviews/{review_id}/replies")
+async def list_replies(doc_id: str, review_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    await _review_row(doc_id, user["sub"], review_id)
+    rows = await _aq(
+        "SELECT * FROM labspace.latex_review_replies WHERE review_id=%s ORDER BY created_at ASC, id ASC LIMIT %s",
+        (review_id, MAX_REPLIES),
+    )
+    return {"replies": [_reply_out(r) for r in rows]}
+
+
+@router.post("/documents/{doc_id}/reviews/{review_id}/replies")
+async def add_reply(
+    doc_id: str,
+    review_id: str,
+    body: ReplyCreate,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    await _review_row(doc_id, user["sub"], review_id)
+    reply_id = uuid.uuid4().hex
+    await _ax(
+        "INSERT INTO labspace.latex_review_replies (id, review_id, owner, author, content)"
+        " VALUES (%s,%s,%s,%s,%s)",
+        (reply_id, review_id, user["sub"], user.get("name") or user.get("email") or "", body.content.strip()),
+    )
+    rows = await _aq("SELECT * FROM labspace.latex_review_replies WHERE id=%s", (reply_id,))
+    reply = rows[0] if rows else {"id": reply_id, "review_id": review_id, "content": body.content.strip()}
+    return {"reply": _reply_out(reply)}
+
+
+@router.get("/documents/{doc_id}/versions")
+async def list_versions(doc_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    """版本列表：以事件为时间线（创建 / 保存 / 编译），版本表里存着当时的源码。"""
+    await _owned(doc_id, user["sub"])
+    rows = await _aq(
+        """
+        SELECT e.id AS id, e.kind AS kind, e.note AS note, e.created_at AS created_at,
+               (v.id IS NOT NULL) AS has_content
+          FROM labspace.latex_events e
+          LEFT JOIN labspace.latex_versions v ON v.event_id = e.id
+         WHERE e.doc_id = %s AND e.owner = %s AND e.kind IN ('created','save','compile')
+         ORDER BY e.created_at DESC, e.id DESC
+         LIMIT %s
+        """,
+        (doc_id, user["sub"], MAX_VERSIONS),
+    )
+    return {
+        "versions": [
+            {
+                "id": int(r["id"]),
+                "kind": r.get("kind") or "save",
+                "note": r.get("note") or "",
+                "createdAt": _iso(r.get("created_at")),
+                "hasContent": bool(r.get("has_content")),
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/documents/{doc_id}/versions/{version_id}")
+async def get_version(doc_id: str, version_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    try:
+        vid = int(version_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="版本编号非法") from exc
+    rows = await _aq(
+        """
+        SELECT e.id AS id, e.kind AS kind, e.note AS note, e.created_at AS created_at, v.content AS content
+          FROM labspace.latex_events e
+          JOIN labspace.latex_versions v ON v.event_id = e.id
+         WHERE e.id = %s AND e.doc_id = %s AND e.owner = %s
+        """,
+        (vid, doc_id, user["sub"]),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="版本不存在")
+    row = rows[0]
+    return {
+        "version": {
+            "id": int(row["id"]),
+            "kind": row.get("kind") or "save",
+            "note": row.get("note") or "",
+            "createdAt": _iso(row.get("created_at")),
+            "content": row.get("content") or "",
+        }
+    }
+
+
+def _asset_out(row: dict[str, Any]) -> dict[str, Any]:
+    """素材对外形状：只给元信息，不带二进制内容。"""
+    return {
+        "id": row["id"],
+        "name": row.get("name") or "",
+        "bytes": int(row.get("bytes") or 0),
+        "contentType": row.get("content_type") or "application/octet-stream",
+        "createdAt": _iso(row.get("created_at")),
+    }
+
+
+def _asset_name(raw: str) -> str:
+    """文件名规范化：去掉路径成分（不能带目录，也不能带控制字符）。"""
+    name = raw.replace("\\", "/").split("/")[-1].strip()
+    name = re.sub(r"[\x00-\x1f\x7f]", "", name)
+    return name[:120]
+
+
+def _asset_ext(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+async def _asset_files(doc_id: str, owner: str) -> dict[str, bytes]:
+    """取该文稿的全部素材，键为文件名（同名只保留先上传的那个）。"""
+    rows = await _aq(
+        "SELECT name, data FROM labspace.latex_assets WHERE doc_id=%s AND owner=%s ORDER BY created_at ASC, id ASC",
+        (doc_id, owner),
+    )
+    files: dict[str, bytes] = {}
+    for row in rows:
+        name = _asset_name(str(row.get("name") or ""))
+        if not name or name in files:
+            continue
+        data = row.get("data")
+        files[name] = bytes(data) if data is not None else b""
+    return files
+
+
+@router.get("/documents/{doc_id}/assets")
+async def list_assets(doc_id: str, user: dict = Depends(require_user)) -> dict[str, Any]:
+    """素材列表（不含二进制）。素材按 owner 隔离，别人的素材看不到也删不掉。"""
+    await _owned(doc_id, user["sub"])
+    rows = await _aq(
+        "SELECT id, name, bytes, content_type, created_at FROM labspace.latex_assets"
+        " WHERE doc_id=%s AND owner=%s ORDER BY created_at ASC, id ASC",
+        (doc_id, user["sub"]),
+    )
+    return {"assets": [_asset_out(r) for r in rows]}
+
+
+@router.post("/documents/{doc_id}/assets")
+async def upload_asset(
+    doc_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """上传编译素材（.cls / .sty / 图片等）：编译时与源码一起进沙箱。"""
+    await _owned(doc_id, user["sub"])
+    name = _asset_name(file.filename or "")
+    if not name:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    ext = _asset_ext(name)
+    if ext not in ASSET_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="只支持这些扩展名：" + "、".join("." + e for e in ASSET_EXTENSIONS),
+        )
+    raw = await read_upload_capped(file, MAX_ASSET_BYTES, message="单个素材不能超过 2 MB")
+    if not raw:
+        raise HTTPException(status_code=400, detail="文件为空")
+
+    rows = await _aq(
+        "SELECT count(*) AS n, coalesce(sum(bytes), 0) AS total FROM labspace.latex_assets"
+        " WHERE doc_id=%s AND owner=%s",
+        (doc_id, user["sub"]),
+    )
+    count = int(rows[0].get("n") or 0) if rows else 0
+    total = int(rows[0].get("total") or 0) if rows else 0
+    if count >= MAX_ASSETS_PER_DOC:
+        raise HTTPException(status_code=400, detail=f"每份文稿最多 {MAX_ASSETS_PER_DOC} 个素材")
+    if total + len(raw) > MAX_ASSETS_TOTAL_BYTES:
+        raise HTTPException(status_code=413, detail="素材总大小超过 20 MB 上限")
+
+    asset_id = uuid.uuid4().hex
+    await _ax(
+        "INSERT INTO labspace.latex_assets (id, doc_id, owner, name, bytes, content_type, data)"
+        " VALUES (%s,%s,%s,%s,%s,%s,%s)",
+        (
+            asset_id,
+            doc_id,
+            user["sub"],
+            name,
+            len(raw),
+            file.content_type or "application/octet-stream",
+            raw,
+        ),
+    )
+    meta = await _aq(
+        "SELECT id, name, bytes, content_type, created_at FROM labspace.latex_assets WHERE id=%s",
+        (asset_id,),
+    )
+    if not meta:
+        raise HTTPException(status_code=500, detail="素材保存失败")
+    return {"asset": _asset_out(meta[0])}
+
+
+@router.delete("/documents/{doc_id}/assets/{asset_id}")
+async def delete_asset(
+    doc_id: str,
+    asset_id: str,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    await _owned(doc_id, user["sub"])
+    rows = await _aq(
+        "SELECT id FROM labspace.latex_assets WHERE id=%s AND doc_id=%s AND owner=%s",
+        (asset_id, doc_id, user["sub"]),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="素材不存在")
+    await _ax(
+        "DELETE FROM labspace.latex_assets WHERE id=%s AND doc_id=%s AND owner=%s",
+        (asset_id, doc_id, user["sub"]),
+    )
+    return {"ok": True}
+
+
 @router.post("/documents/{doc_id}/compile")
 async def compile_document(doc_id: str, user: dict = Depends(require_user), _: None = Depends(require_csrf)) -> dict[str, Any]:
     row = await _owned(doc_id, user["sub"])
     content = row.get("content") or ""
     if not content.strip():
         raise HTTPException(status_code=400, detail="文稿内容为空")
+    # 素材随源码一起送进编译沙箱：nwafuthesis.cls 之类的类文件放进去才能编过
+    files = await _asset_files(doc_id, user["sub"])
+    payload: dict[str, Any] = {"content": content}
+    if files:
+        payload["files"] = {name: base64.b64encode(data).decode("ascii") for name, data in files.items()}
     try:
         async with httpx.AsyncClient(timeout=settings.latex_timeout) as client:
-            resp = await client.post(f"{settings.latex_worker}/compile", json={"content": content})
+            resp = await client.post(f"{settings.latex_worker}/compile", json=payload)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail="编译服务不可用，请稍后重试") from exc
     if resp.status_code != 200:
@@ -535,14 +1295,14 @@ async def compile_document(doc_id: str, user: dict = Depends(require_user), _: N
             " WHERE id=%s AND owner=%s",
             (log, doc_id, user["sub"]),
         )
-        await _event(doc_id, user["sub"], "compile", "编译失败")
+        await _version(doc_id, user["sub"], "compile", "编译失败", content)
         return {"ok": False, "log": log, "ms": ms}
     await _ax(
         "UPDATE labspace.latex_documents SET compiled_at=now(), compile_ok=true, compile_log=%s, pdf_bytes=%s, updated_at=now()"
         " WHERE id=%s AND owner=%s",
         (log, pdf_bytes, doc_id, user["sub"]),
     )
-    await _event(doc_id, user["sub"], "compile", f"编译成功 · {pdf_bytes // 1024} KB · {ms} ms")
+    await _version(doc_id, user["sub"], "compile", f"编译成功 · {pdf_bytes // 1024} KB · {ms} ms", content)
     return {"ok": True, "log": log, "ms": ms, "pdfBytes": pdf_bytes}
 
 

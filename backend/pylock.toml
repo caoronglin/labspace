@@ -70,14 +70,14 @@ sha256 = "a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2"
 
 [[packages]]
 name = "click"
-version = "8.5.0"
+version = "8.5.1"
 
 [[packages.wheels]]
-name = "click-8.5.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl"
+name = "click-8.5.1-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/31/7d/164b7ffc8624fe9efb4221bf9af485d5c1e41b9ae118045d2b6dc5457d8b/click-8.5.1-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360"
+sha256 = "8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37"
 
 [[packages]]
 name = "cryptography"
@@ -91,15 +91,26 @@ url = "https://files.pythonhosted.org/packages/d3/69/2c833a049475e0a3444e94c7d0a
 sha256 = "9dab55f57c74c3cad24c323bacbbd04be4705ba6eb0d92e920b1fc4837ed5079"
 
 [[packages]]
-name = "fastapi"
-version = "0.136.3"
+name = "et-xmlfile"
+version = "2.0.0"
 
 [[packages.wheels]]
-name = "fastapi-0.136.3-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/e0/82/45359b62a067409bd929ae8a56b8ed13e5a8c8a61194b3c236920999ab83/fastapi-0.136.3-py3-none-any.whl"
+name = "et_xmlfile-2.0.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620"
+sha256 = "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"
+
+[[packages]]
+name = "fastapi"
+version = "0.162.2"
+
+[[packages.wheels]]
+name = "fastapi-0.162.2-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/d6/fb/0dc0f819163bc6b7f9e6802d7d0b1ac180fbbe4e75dbd10655c6a4d77796/fastapi-0.162.2-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "d0584f9662317e01140df94c64f4bed1d8b059fe35496e30c9c92f70e6e5ff15"
 
 [[packages]]
 name = "h11"
@@ -175,6 +186,46 @@ url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0
 sha256 = "9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7"
 
 [[packages]]
+name = "lxml"
+version = "6.1.3"
+
+[[packages.wheels]]
+name = "lxml-6.1.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/0a/20/e022dbc6b4753a9bc9fc5fb28a27163430c1731b9913997f6544c1b2518c/lxml-6.1.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl"
+
+[packages.wheels.hashes]
+sha256 = "909f4e927bb051f7740d6367285fc60cdcfdaf0258c2dba4ff5ba7eadadc250c"
+
+[[packages.wheels]]
+name = "lxml-6.1.3-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/ac/7d/8bf1fd8bae8247743968bb76d027a1ac5bd2c4b44495fba6a71b30d10706/lxml-6.1.3-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl"
+
+[packages.wheels.hashes]
+sha256 = "d85dfab42dd672f87a7f76e9de7172962aee69fa12044f0d6e1a23cbd53fb80e"
+
+[[packages]]
+name = "openpyxl"
+version = "3.1.5"
+
+[[packages.wheels]]
+name = "openpyxl-3.1.5-py2.py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"
+
+[[packages]]
+name = "opentelemetry-api"
+version = "1.45.2"
+
+[[packages.wheels]]
+name = "opentelemetry_api-1.45.2-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/a9/2d/610db864d7513158cebb8f36cc88e67e73bd6c7aa1905ef18d89e1281c81/opentelemetry_api-1.45.2-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34"
+
+[[packages]]
 name = "packaging"
 version = "26.3"
 
@@ -184,6 +235,24 @@ url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0
 
 [packages.wheels.hashes]
 sha256 = "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+
+[[packages]]
+name = "pillow"
+version = "13.0.0"
+
+[[packages.wheels]]
+name = "pillow-13.0.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/e6/99/fdf65cc539e266ab93546c261bdf98411fe165c6e4e13f9dbf597097192b/pillow-13.0.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+
+[packages.wheels.hashes]
+sha256 = "42d63be3af4f9b951b199b0a9d23365d37ab14687e6d77b74940432c8515c4ca"
+
+[[packages.wheels]]
+name = "pillow-13.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/ef/fe/f5cdaa2d1c4086e757430f368c271a58ee29cfe7378e7ae7b9d964015c25/pillow-13.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+
+[packages.wheels.hashes]
+sha256 = "5f56499c1a74d2b862beb0c33b8016f99d095858455df9d21583bbbc1c15b582"
 
 [[packages]]
 name = "pluggy"
@@ -198,21 +267,21 @@ sha256 = "7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec"
 
 [[packages]]
 name = "psycopg2-binary"
-version = "2.9.12"
+version = "2.9.13"
 
 [[packages.wheels]]
-name = "psycopg2_binary-2.9.12-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
-url = "https://files.pythonhosted.org/packages/b0/55/44df3965b5f297c50cc0b1b594a31c67d6127a9d133045b8a66611b14dfb/psycopg2_binary-2.9.12-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+name = "psycopg2_binary-2.9.13-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/8d/c4/a9a67ae65ad3d567eb0fc9cdf9a5a2783b779aecdcdc8945f1807b13d99e/psycopg2_binary-2.9.13-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
 
 [packages.wheels.hashes]
-sha256 = "9fe06d93e72f1c048e731a2e3e7854a5bfaa58fc736068df90b352cefe66f03f"
+sha256 = "e3861eba31f8ea8663fd876166b032fd89179e42aa63764d6feb281f13f9eb60"
 
 [[packages.wheels]]
-name = "psycopg2_binary-2.9.12-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
-url = "https://files.pythonhosted.org/packages/95/9c/eaa74021ac4e4d5c2f83d82fc6615a63f4fe6c94dc4e94c3990427053f67/psycopg2_binary-2.9.12-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+name = "psycopg2_binary-2.9.13-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/56/5c/87daea77c4132114d1a5da3a4928dd59446c3b3cc73d288cae08cf0b91a6/psycopg2_binary-2.9.13-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
 
 [packages.wheels.hashes]
-sha256 = "c41321a14dd74aceb6a9a643b9253a334521babfa763fa873e33d89cfa122fb5"
+sha256 = "f04ada42bcd537adbaf8b7f3140237a204e452a88d0c1831cfce69f7d2e59f4e"
 
 [[packages]]
 name = "pycparser"
@@ -227,65 +296,87 @@ sha256 = "a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e"
 
 [[packages]]
 name = "pydantic"
-version = "2.14.2"
+version = "2.14.3"
 
 [[packages.wheels]]
-name = "pydantic-2.14.2-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/97/01/c71a71258b58659c72504e5fd65b451f6e36e34dc931d0b237ded213c814/pydantic-2.14.2-py3-none-any.whl"
+name = "pydantic-2.14.3-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/72/b8/b864503789ef5c58597d2a7b4adbee62c26440ab1e682581fc6838df8947/pydantic-2.14.3-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "7efbf7507b937931cd32a5755acb00ea1cf5ccb1d4e8067a5850d5069e382118"
+sha256 = "3f7b347782ab7e4cf4c798496ae3a82787d9f21ec12676a9c564355eeef8daa8"
 
 [[packages]]
 name = "pydantic-core"
-version = "2.50.2"
+version = "2.50.4"
 
 [[packages.wheels]]
-name = "pydantic_core-2.50.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
-url = "https://files.pythonhosted.org/packages/08/93/2a6556bbdb8e918175af9d849a5d0b367b5644e41939d040f3a7215b1339/pydantic_core-2.50.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+name = "pydantic_core-2.50.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/91/23/e0c6e3cd09a0ac809953fea698c816b9f03bf0b35b6820c9553e4f5d85a8/pydantic_core-2.50.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
 
 [packages.wheels.hashes]
-sha256 = "9667637665acba166a7dbbc786f14c50512d3a01f7199e0e1a13b929e92d7c7a"
+sha256 = "c81d98e27d9d9261909dcccab1ba5d6ea1c98b0bb9470e368604614fd1d36ddd"
 
 [[packages.wheels]]
-name = "pydantic_core-2.50.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
-url = "https://files.pythonhosted.org/packages/79/be/b559a1ceaff8b1d4581733d47d2ffa785635ac05716eae4c964466aac6e8/pydantic_core-2.50.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+name = "pydantic_core-2.50.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+url = "https://files.pythonhosted.org/packages/2b/c0/1c8f2c8f1b03d3fe2fdd7962df8f5a744fe48c90b4c49615e4eb77d04141/pydantic_core-2.50.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
 
 [packages.wheels.hashes]
-sha256 = "31a1fb3ffbd1195b24490f671d12623dd4c9bfa56d6af0a299fa43b516134f5b"
+sha256 = "fb2bb5b557080da398b866408117d98fe9731a12334afd0cdff221b458cdc5dc"
+
+[[packages]]
+name = "pygments"
+version = "2.21.0"
+
+[[packages.wheels]]
+name = "pygments-2.21.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9"
 
 [[packages]]
 name = "pyjwt"
-version = "2.14.0"
+version = "2.15.1"
 
 [[packages.wheels]]
-name = "pyjwt-2.14.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/9c/97/672cb32ce0dfea44b740cb7b4f97038463b9cf7c0ead1aacf595572851d6/pyjwt-2.14.0-py3-none-any.whl"
+name = "pyjwt-2.15.1-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/50/ca/44de4e75f8aadc457f0634be3b542815078ded46dca30efb960edeecad6e/pyjwt-2.15.1-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "ad0cef71c756a56e74863c2919cf0985f72decbcfcb550ee2f422e7c62b5eedc"
+sha256 = "42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193"
 
 [[packages]]
 name = "pytest"
-version = "8.3.4"
+version = "9.2.0"
 
 [[packages.wheels]]
-name = "pytest-8.3.4-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/11/92/76a1c94d3afee238333bc0a42b82935dd8f9cf8ce9e336ff87ee14d9e1cf/pytest-8.3.4-py3-none-any.whl"
+name = "pytest-9.2.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/51/39/1f5d8c8877a0fa327db959c19341d4be61660de1ab6b7391f9eb805bcd67/pytest-9.2.0-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6"
+sha256 = "07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588"
 
 [[packages]]
 name = "pytest-asyncio"
-version = "0.25.0"
+version = "1.4.1.post1"
 
 [[packages.wheels]]
-name = "pytest_asyncio-0.25.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/88/56/2ee0cab25c11d4e38738a2a98c645a8f002e2ecf7b5ed774c70d53b92bb1/pytest_asyncio-0.25.0-py3-none-any.whl"
+name = "pytest_asyncio-1.4.1.post1-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/e3/de/adbc7578959cfab07e5e7c05cf6d54224a51e7667ea2c07458b6bc571e75/pytest_asyncio-1.4.1.post1-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "db5432d18eac6b7e28b46dcd9b69921b55c3b1086e85febfe04e70b18d9e81b3"
+sha256 = "0755e488cc0a2b9bd2eab7292cc6390d4cbb8390f1020745647bae5a708e0165"
+
+[[packages]]
+name = "python-docx"
+version = "1.2.0"
+
+[[packages.wheels]]
+name = "python_docx-1.2.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/d0/00/1e03a4989fa5795da308cd774f05b704ace555a70f9bf9d3be057b680bcf/python_docx-1.2.0-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7"
 
 [[packages]]
 name = "python-dotenv"
@@ -300,14 +391,25 @@ sha256 = "42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc"
 
 [[packages]]
 name = "python-multipart"
-version = "0.0.32"
+version = "0.0.33"
 
 [[packages.wheels]]
-name = "python_multipart-0.0.32-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl"
+name = "python_multipart-0.0.33-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/dd/1b/6b1b4164ec734cac911460ab599bfbe46afedd42c5c9627fe4235942c314/python_multipart-0.0.33-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23"
+sha256 = "8f16c07b36add9da6b2ee87d3efcaf0a45a6de9c3d0a5dd94e9ccf7675a7bc45"
+
+[[packages]]
+name = "python-pptx"
+version = "1.0.2"
+
+[[packages.wheels]]
+name = "python_pptx-1.0.2-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/d9/4f/00be2196329ebbff56ce564aa94efb0fbc828d00de250b1980de1a34ab49/python_pptx-1.0.2-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba"
 
 [[packages]]
 name = "pyyaml"
@@ -351,25 +453,25 @@ sha256 = "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
 
 [[packages]]
 name = "typing-inspection"
-version = "0.4.4"
+version = "0.4.5"
 
 [[packages.wheels]]
-name = "typing_inspection-0.4.4-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl"
+name = "typing_inspection-0.4.5-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/de/0c/ea2544850a7c135e15033a5c7a8e7211136184b7ae63e2239d557c2b3019/typing_inspection-0.4.5-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147"
+sha256 = "bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39"
 
 [[packages]]
 name = "uvicorn"
-version = "0.51.0"
+version = "0.54.0"
 
 [[packages.wheels]]
-name = "uvicorn-0.51.0-py3-none-any.whl"
-url = "https://files.pythonhosted.org/packages/45/ec/dbb7e5a6b91f86bfb9eb7d2988a2730907b6a729875b949c7f022e8b88fa/uvicorn-0.51.0-py3-none-any.whl"
+name = "uvicorn-0.54.0-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/38/0c/b54a4fdd7f90a3af8b02ebc9ce6712c2c208b7926a2f7bad95c33ebbe943/uvicorn-0.54.0-py3-none-any.whl"
 
 [packages.wheels.hashes]
-sha256 = "5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b"
+sha256 = "505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf"
 
 [[packages]]
 name = "uvloop"
@@ -418,16 +520,30 @@ url = "https://files.pythonhosted.org/packages/ef/75/6a95f93661bba2f1a4ec82eb26c
 [packages.wheels.hashes]
 sha256 = "25eb661d8ba7e2b85ebb4e7a1bb9f6a3280910ed10b84330a7abfb5ed32d2764"
 
+[[packages]]
+name = "xlsxwriter"
+version = "3.3.1"
+
+[[packages.wheels]]
+name = "xlsxwriter-3.3.1-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/88/eb/1e6af9959a567901a7e7c7cef2e75883e487df223ed67f9a8977ff863bd8/xlsxwriter-3.3.1-py3-none-any.whl"
+
+[packages.wheels.hashes]
+sha256 = "8e2c89e59d733fe59e112317218c64fbbc276d90a8c144ebd6f7fa15e7ab184a"
+
 [tool.pnpm]
 requirements = [
-    "fastapi==0.136.3",
+    "fastapi==0.162.2",
     "httpx==0.28.1",
-    "psycopg2-binary==2.9.12",
-    "pyjwt[crypto]==2.14.0",
-    "pytest-asyncio==0.25.0",
-    "pytest==8.3.4",
-    "python-multipart==0.0.32",
-    "uvicorn[standard]==0.51.0",
+    "openpyxl==3.1.5",
+    "psycopg2-binary==2.9.13",
+    "pyjwt[crypto]==2.15.1",
+    "pytest-asyncio==1.4.1.post1",
+    "pytest==9.2.0",
+    "python-docx==1.2.0",
+    "python-multipart==0.0.33",
+    "python-pptx==1.0.2",
+    "uvicorn[standard]==0.54.0",
 ]
 python-versions = [
     "3.12",

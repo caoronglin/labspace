@@ -3,11 +3,14 @@
 只做一件事：收到源码 → 在临时目录里用 xelatex 编译 → 返回 PDF（base64）与日志。
 - 不挂载任何门户数据卷，读不到账号、备份与用户文件；
 - `-no-shell-escape` 禁止 \\write18，容器本身无外网出口；
-- 单次编译超时 60s，临时目录随请求销毁。
+- 单次编译超时 60s，临时目录随请求销毁；
+- 请求里可以带 `files`（文件名 → base64），这些文件与 main.tex 写在**同一个
+  临时目录**里，编译时一并可见（类文件 .cls / 样式 .sty / 图片就是这么进来的）。
 """
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import shutil
@@ -17,9 +20,43 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_BODY = 2 * 1024 * 1024
+MAX_ASSETS = 20
+MAX_ASSET_BYTES = 2 * 1024 * 1024
+MAX_ASSETS_BYTES = 20 * 1024 * 1024
+# 请求体上限：源码 2 MB + 素材 20 MB（base64 还要膨胀一点）
+MAX_REQUEST = MAX_BODY + MAX_ASSETS_BYTES * 2
 TIMEOUT = int(os.environ.get("LATEX_COMPILE_TIMEOUT", "60"))
 PORT = int(os.environ.get("LATEX_WORKER_PORT", "8131"))
 ENGINE = os.environ.get("LATEX_ENGINE", "xelatex")
+
+
+def _decode_files(raw: object) -> dict[str, bytes]:
+    """把请求里的 ``files``（文件名 → base64 文本）解成 {文件名: 字节}。
+
+    只收平铺文件名（去掉路径成分）、限个数与限大小；不合规的直接丢弃，
+    不让请求体里的路径把文件写到临时目录之外。
+    """
+    if not isinstance(raw, dict):
+        return {}
+    files: dict[str, bytes] = {}
+    total = 0
+    for name, blob in raw.items():
+        if len(files) >= MAX_ASSETS:
+            break
+        if not isinstance(name, str) or not isinstance(blob, str):
+            continue
+        safe = os.path.basename(name.replace("\\", "/")).strip()
+        if not safe or safe.startswith(".") or safe in files:
+            continue
+        try:
+            data = base64.b64decode(blob, validate=True)
+        except (ValueError, binascii.Error):
+            continue
+        if not data or len(data) > MAX_ASSET_BYTES or total + len(data) > MAX_ASSETS_BYTES:
+            continue
+        files[safe] = data
+        total += len(data)
+    return files
 
 
 def _run(engine: str, workdir: str) -> tuple[bool, str, int]:
@@ -61,13 +98,17 @@ def _run(engine: str, workdir: str) -> tuple[bool, str, int]:
         return False, f"编译引擎 {engine} 未安装", 0
 
 
-def compile_pdf(content: str) -> dict:
+def compile_pdf(content: str, files: dict[str, bytes] | None = None) -> dict:
     if len(content.encode("utf-8")) > MAX_BODY:
         return {"ok": False, "log": "源码超过 2 MB 上限", "ms": 0, "pdf": ""}
     workdir = tempfile.mkdtemp(prefix="latex-", dir="/tmp")
     try:
         with open(os.path.join(workdir, "main.tex"), "w", encoding="utf-8") as fh:
             fh.write(content)
+        # 素材与 main.tex 同目录：xelatex 按文件名就能找到它们
+        for name, blob in (files or {}).items():
+            with open(os.path.join(workdir, name), "wb") as fh:
+                fh.write(blob)
         # 两遍编译以解析目录 / 交叉引用；第一遍失败就不再跑第二遍
         ok, log, ms = _run(ENGINE, workdir)
         if ok:
@@ -109,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
-        if length <= 0 or length > MAX_BODY + 4096:
+        if length <= 0 or length > MAX_REQUEST:
             self._json(413, {"error": "请求体过大或为空"})
             return
         try:
@@ -121,10 +162,10 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(content, str) or not content.strip():
             self._json(400, {"error": "content 不能为空"})
             return
-        result = compile_pdf(content)
+        result = compile_pdf(content, _decode_files(payload.get("files")))
         self._json(200, result)
 
-    def log_message(self, fmt: str, *args) -> None:  # 避免把源码内容写进访问日志
+    def log_message(self, format: str, *args) -> None:  # 避免把源码内容写进访问日志
         return
 
 

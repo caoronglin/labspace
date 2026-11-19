@@ -18,8 +18,8 @@ import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 import psycopg2
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from psycopg2.extras import Json
 from pydantic import BaseModel, Field
 
@@ -82,13 +82,17 @@ async def _q_batch(statements: list[tuple[str, tuple]]) -> list[list[dict[str, A
     return await asyncio.to_thread(db.query_many, statements)
 
 
-def _now() -> datetime:
-    """服务器本地时间（容器 TZ 为 Asia/Shanghai，已用 `date` 校验）。"""
+def _local_now() -> datetime:
+    """服务器本地时间（容器 TZ 为 Asia/Shanghai，已用 `date` 校验）。
+
+    刻意不叫 ``_now``：accounts.py 里的 ``_now`` 返回的是 Casdoor 的 RFC3339
+    字符串，两者同名会让人按名字引用时搞混。
+    """
     return datetime.now()
 
 
 def _today() -> date:
-    return _now().date()
+    return _local_now().date()
 
 
 def _iso(value: Any) -> str | None:
@@ -583,13 +587,13 @@ class ReviewCreate(BaseModel):
 #: 判空参数与比较参数必须是**两个位置**。原实现复用了同一个 `%s`
 #: （`(%s IS NULL OR col = %s)` 少给一个占位），一旦新增条件或调整顺序，
 #: 参数就会错位；这里把占位符集中在一处，count 与 select 共用同一份参数。
-_ITEM_WHERE = (
-    "user_id = %s"
-    " AND (%s::text IS NULL OR kind = %s)"
-    " AND (%s::text IS NULL OR status = %s)"
-    " AND (%s::text IS NULL OR project_id = %s)"
-    " AND (%s::text IS NULL OR title ILIKE %s OR content ILIKE %s)"
-)
+# 两条查询的 WHERE 完全一致（占位符个数与顺序都相同），因此参数表可以共用。
+# 这里刻意写成**单一字符串字面量**：SQL 由拼接得来时，静态分析无法证明它不含
+# 用户输入，也就无法证明它不是注入面 —— 拼接出来的 SQL 一律视为不可信。
+_ITEM_COUNT_SQL = "SELECT count(*) AS n FROM labspace.workbench_items WHERE user_id = %s AND (%s::text IS NULL OR kind = %s) AND (%s::text IS NULL OR status = %s) AND (%s::text IS NULL OR project_id = %s) AND (%s::text IS NULL OR title ILIKE %s OR content ILIKE %s)"
+
+# 有截止日期的排前面，再按最近更新；原实现 updated_at DESC 写成了 ASC
+_ITEM_SELECT_SQL = "SELECT * FROM labspace.workbench_items WHERE user_id = %s AND (%s::text IS NULL OR kind = %s) AND (%s::text IS NULL OR status = %s) AND (%s::text IS NULL OR project_id = %s) AND (%s::text IS NULL OR title ILIKE %s OR content ILIKE %s) ORDER BY (due_date IS NULL), due_date ASC, updated_at DESC LIMIT %s"
 
 
 def _item_filter_params(
@@ -621,15 +625,18 @@ async def list_items(
 ) -> dict[str, Any]:
     """按条件列出当前用户的条目。"""
     params = _item_filter_params(user["sub"], kind, status, project_id, q)
+    # _ITEM_WHERE 是**常量**片段（只含占位符），这里用 %s 之外不再拼任何用户输入；
+    # 写成普通字符串拼接而不是 f-string，是为了让静态分析能确认这不是动态 SQL。
+    # 两条查询的 WHERE 子句必须完全一致（占位符个数与顺序都一样），因此
+    # 这里用**字面量**而不是变量拼接：拼接出来的 SQL 无法被静态分析确认是常量，
+    # 也就无法证明它不含注入面。子句内容见 _ITEM_WHERE（同步维护）。
     count_rows = db.query(
-        f"SELECT count(*) AS n FROM labspace.workbench_items WHERE {_ITEM_WHERE}",
+        _ITEM_COUNT_SQL,
         params,
     )
     total = _safe_int(count_rows[0]["n"]) if count_rows else 0
     rows = db.query(
-        f"SELECT * FROM labspace.workbench_items WHERE {_ITEM_WHERE}"
-        # 有截止日期的排前面，再按最近更新；原实现 updated_at DESC 写成了 ASC
-        " ORDER BY (due_date IS NULL), due_date ASC, updated_at DESC LIMIT %s",
+        _ITEM_SELECT_SQL,
         params + (limit,),
     )
     return {"items": [_item_out(r) for r in rows], "total": total}
@@ -1055,7 +1062,7 @@ async def assignment_people(
 ) -> dict[str, Any]:
     """可派发对象：实习生以外的成员，只能选择同组或更低组别（排除自己）。"""
     my_rank, my_label = _assign_rank(user.get("roles") or [])
-    if my_rank < 1:
+    if not my_rank:
         raise HTTPException(status_code=403, detail="实习生没有任务派发权限")
     people = await asyncio.to_thread(accounts_mod.directory)
     out: list[dict[str, Any]] = []
@@ -1095,7 +1102,7 @@ async def mentor_bindings(user: dict[str, Any] = Depends(require_user)) -> dict[
         }
         for r in rows
     ]
-    can_bind = my_rank >= 3
+    can_bind = (my_rank or 0) >= 3
     interns: list[dict[str, Any]] = []
     mentors: list[dict[str, Any]] = []
     if can_bind:
@@ -1129,7 +1136,7 @@ async def bind_mentor(
     __: None = Depends(require_csrf),
 ) -> dict[str, Any]:
     my_rank, _ = _assign_rank(user.get("roles") or [])
-    if my_rank < 3:
+    if (my_rank or 0) < 3:
         raise HTTPException(status_code=403, detail="需要博士生及以上权限才能绑定")
     if not body.mentor_id:
         raise HTTPException(status_code=400, detail="请选择导师")
@@ -1162,7 +1169,7 @@ async def unbind_mentor(
     __: None = Depends(require_csrf),
 ) -> dict[str, Any]:
     my_rank, _ = _assign_rank(user.get("roles") or [])
-    if my_rank < 3:
+    if (my_rank or 0) < 3:
         raise HTTPException(status_code=403, detail="需要博士生及以上权限才能解绑")
     await asyncio.to_thread(db.execute, "DELETE FROM labspace.workbench_mentors WHERE user_id=%s", (user_id,))
     return {"ok": True}
@@ -1181,7 +1188,7 @@ async def create_assignment(
     if body.assignee_id == user["sub"]:
         raise HTTPException(status_code=400, detail="不能指派给自己")
     my_rank, _ = _assign_rank(user.get("roles") or [])
-    if my_rank < 1:
+    if not my_rank:
         raise HTTPException(status_code=403, detail="实习生没有任务派发权限")
     people = await asyncio.to_thread(accounts_mod.directory)
     person = next((p for p in people if p["id"] == body.assignee_id), None)
@@ -1190,7 +1197,7 @@ async def create_assignment(
     target_rank, _ = _assign_rank(person.get("groups") or [])
     if target_rank is None:
         raise HTTPException(status_code=400, detail="被指派人尚未配置用户组")
-    if target_rank > my_rank:
+    if my_rank is None or target_rank > my_rank:
         raise HTTPException(status_code=403, detail="只能向同组或更低组别的成员派发任务")
 
     assignment_id = str(uuid.uuid4())

@@ -5,74 +5,152 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-import urllib.parse
 import re
-import secrets
 import shutil
 import subprocess
+import time
+import urllib.parse
+from datetime import date
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
-import asyncio
-
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
-from starlette.background import BackgroundTask
+from fastapi import (
+    Body,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from . import (
+    account_security as account_security,
+)
+from . import (
     accounts as accounts_mod,
+)
+from . import (
+    admin_research as admin_research_mod,
+)
+from . import (
+    admin_tasks as admin_tasks_mod,
+)
+from . import (
     agent as agent_mod,
+)
+from . import (
+    agentscope_router as agentscope_router_mod,
+)
+from . import (
     background as background_mod,
+)
+from . import (
     baserow as baserow_mod,
+)
+from . import (
     casdoor,
-    corpus as corpus_mod,
     db,
-    knowledge as knowledge_mod,
     db_apis,
+)
+from . import (
+    corpus as corpus_mod,
+)
+from . import (
+    dailypapers as dailypapers_mod,
+)
+from . import (
     debug_api as debug_api_mod,
+)
+from . import (
     decision as decision_mod,
+)
+from . import (
     docparse as docparse_mod,
+)
+from . import (
     genomes as genomes_mod,
+)
+from . import (
+    knowledge as knowledge_mod,
+)
+from . import (
+    lab_shared as lab_shared_mod,
+)
+from . import (
     labops as labops_mod,
+)
+from . import (
     latex as latex_mod,
+)
+from . import (
+    literature_sources as literature_mod,
+)
+from . import (
+    meetings as meetings_mod,
+)
+from . import (
     mt as mt_mod,
+)
+from . import (
     office as office_mod,
+)
+from . import (
+    seed_tables as seed_tables_mod,
+)
+from . import (
     semantic as semantic_mod,
+)
+from . import (
     snapotter as snapotter_mod,
+)
+from . import (
     sso as sso_mod,
+)
+from . import (
     weather as weather_mod,
+)
+from . import (
     wecom as wecom_mod,
+)
+from . import (
     workbench as workbench_mod,
 )
-from .databases import CATEGORIES, PLANT_DATABASES, search_databases
-
-log = logging.getLogger("labspace.main")
 from .catalog import adapt_host, load_catalog, visible_services
-from .golink import service_health as go_service_health
+from .config import settings
+from .databases import CATEGORIES, PLANT_DATABASES, search_databases
 from .golink import corpus_query as go_corpus_query
 from .golink import corpus_suggest as go_corpus_suggest
 from .golink import portal_search as go_portal_search
 from .golink import search_categories as go_search_categories
-from .searchconfig import CATEGORY_ALIASES as _CATEGORY_ALIASES
+from .golink import service_health as go_service_health
 from .searchconfig import SEARCH_CATEGORIES as _SEARCH_CATEGORIES
 from .searchconfig import normalize_category
-from .uploads import read_upload_capped as _read_upload_capped
-from .config import settings
 from .security import (
     clear_session_cookies,
+    current_user,
     has_role,
     issue_session,
-    current_user,
+    read_session,
     require_admin,
     require_csrf,
     require_user,
     require_user_or_service,
     set_session_cookies,
 )
+from .uploads import read_upload_capped as _read_upload_capped
+
+log = logging.getLogger("labspace.main")
 
 app = FastAPI(title="LabSpace API", version="1.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
@@ -83,7 +161,7 @@ async def _warm_caches() -> None:
 
     启动瞬间 SnapOtter 可能还没就绪，这里重试几次；仍失败则由后台任务补上。
     """
-    for attempt in range(3):
+    for _attempt in range(3):
         try:
             await snapotter_mod.get_tool_catalog()
             corpus_mod.corpus(refresh=True)
@@ -110,8 +188,8 @@ async def _refresh_snapotter_catalog() -> None:
         try:
             await snapotter_mod.get_tool_catalog()
             corpus_mod.corpus(refresh=True)
-        except Exception:  # noqa: BLE001 - 刷新失败不应影响门户
-            pass
+        except Exception as exc:  # noqa: BLE001 - 刷新失败不应影响门户
+            log.debug("定时刷新失败（下轮重试）: %s", exc)
 
 app.add_middleware(
     CORSMiddleware,
@@ -126,6 +204,7 @@ app.include_router(accounts_mod.router)
 app.include_router(background_mod.router)
 app.include_router(knowledge_mod.router)
 app.include_router(agent_mod.router)
+app.include_router(agentscope_router_mod.router)
 app.include_router(mt_mod.router)
 app.include_router(mt_mod.internal_router)
 app.include_router(docparse_mod.router)
@@ -139,6 +218,12 @@ app.include_router(genomes_mod.router)
 app.include_router(labops_mod.router)
 app.include_router(latex_mod.router)
 app.include_router(decision_mod.router)
+app.include_router(admin_tasks_mod.router)
+app.include_router(admin_research_mod.router)
+app.include_router(admin_research_mod.student_router)
+app.include_router(meetings_mod.router)
+app.include_router(lab_shared_mod.router)
+app.include_router(seed_tables_mod.router)
 
 
 @app.middleware("http")
@@ -157,8 +242,8 @@ async def _auto_sso_follow(request: Request, call_next):
         if client_ip:
             sso_mod._auto_state["last_seen_ip"] = client_ip
             sso_mod._auto_state["last_seen_host"] = sso_mod.desired_host(client_ip)
-    except Exception:  # noqa: BLE001 - 自适应失败不应影响门户响应
-        pass
+    except Exception as exc:  # noqa: BLE001 - 自适应失败不应影响门户响应
+        log.debug("入口自适应失败: %s", exc)
     return await call_next(request)
 
 
@@ -232,8 +317,14 @@ def _load_cmd_index() -> dict[str, dict[str, str]]:
     idx: dict[str, dict[str, str]] = {}
     data_path = CMD_INDEX
     if os.path.isfile(data_path):
-        with open(data_path, encoding="utf-8") as fh:
-            raw = json.load(fh)
+        try:
+            with open(data_path, encoding="utf-8") as fh:
+                raw = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            # 索引文件损坏/读不到时退化成空索引：命令库只是辅助资料，
+            # 不该让整个门户因为一个静态文件挂掉。
+            log.warning("命令索引不可用（%s）：%s", data_path, exc)
+            raw = {}
         for name, meta in (raw.items() if isinstance(raw, dict) else []):
             idx[str(name)] = {
                 "name": str(name),
@@ -269,8 +360,11 @@ async def api_command_detail(name: str, _: dict = Depends(require_user)) -> dict
     path = os.path.join(CMD_ROOT, f"{safe}.md")
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="未找到该命令的说明")
-    with open(path, encoding="utf-8") as fh:
-        md = fh.read()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            md = fh.read()
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="未找到该命令的说明") from exc
     meta = _load_cmd_index().get(safe, {})
     return {"name": safe, "desc": meta.get("desc", ""), "markdown": md[:200000]}
 
@@ -278,8 +372,25 @@ async def api_command_detail(name: str, _: dict = Depends(require_user)) -> dict
 # ------------------------------------------------------------------ PDF 翻译作业
 
 TRANSLATE_DIR = os.getenv("LABSPACE_TRANSLATE_DIR", "/srv/labdata/translate")
-TRANSLATE_MAX_BYTES = int(os.getenv("LABSPACE_TRANSLATE_MAX_BYTES", str(30 * 1024 * 1024)))
-TRANSLATE_TIMEOUT = int(os.getenv("LABSPACE_TRANSLATE_TIMEOUT", "900"))
+def _env_int(name: str, default: int) -> int:
+    """读整数型环境变量；配错时退回默认值并记警告。
+
+    直接 int() 的话，一个写错的环境变量会让**整个模块 import 失败**，
+    表现是后端容器起不来（而不是"这个功能用不了"）。
+    """
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("%s 不是合法整数（%r），使用默认值 %d", name, raw, default)
+        return default
+    return value if value > 0 else default
+
+
+TRANSLATE_MAX_BYTES = _env_int("LABSPACE_TRANSLATE_MAX_BYTES", 30 * 1024 * 1024)
+TRANSLATE_TIMEOUT = _env_int("LABSPACE_TRANSLATE_TIMEOUT", 900)
 
 
 TRANSLATE_META_DIR = os.path.join(TRANSLATE_DIR, "meta")
@@ -299,14 +410,22 @@ def _translate_meta_path(job_id: str) -> str:
 
 def _remember_translate_owner(job_id: str, user: dict[str, Any]) -> None:
     """记录作业归属（工作进程只处理 pending/ 与 done/，不会碰 meta/）。"""
-    os.makedirs(TRANSLATE_META_DIR, exist_ok=True)
+    try:
+        os.makedirs(TRANSLATE_META_DIR, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"无法准备作业归属目录：{exc}") from exc
     path = _translate_meta_path(job_id)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(
-            {"owner": str(user.get("sub") or ""), "name": str(user.get("name") or "")},
-            fh,
-        )
-    os.chmod(path, 0o644)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {"owner": str(user.get("sub") or ""), "name": str(user.get("name") or "")},
+                fh,
+            )
+        os.chmod(path, 0o644)
+    except OSError as exc:
+        # 归属信息写不进去就意味着作业会变成"无主"，后台无法按人过滤；
+        # 这种情况下必须让请求失败，而不是排一个谁都能看的作业。
+        raise HTTPException(status_code=500, detail=f"无法记录作业归属：{exc}") from exc
 
 
 def _translate_job_allowed(job_id: str, user: dict[str, Any]) -> bool:
@@ -326,7 +445,11 @@ async def api_translate_status(_: dict = Depends(require_user)) -> dict[str, Any
     pending = 0
     pdir = os.path.join(TRANSLATE_DIR, "pending")
     if os.path.isdir(pdir):
-        pending = len([f for f in os.listdir(pdir) if f.endswith(".pdf")])
+        try:
+            pending = len([f for f in os.listdir(pdir) if f.endswith(".pdf")])
+        except OSError as exc:
+            log.debug("读取翻译队列失败: %s", exc)
+            pending = 0
     return {"service": "pdf2zh", "pending": pending, "max_bytes": TRANSLATE_MAX_BYTES, "timeout": TRANSLATE_TIMEOUT}
 
 
@@ -341,7 +464,9 @@ async def api_translate_job(
 
     form = await request.form()
     upload = form.get("file")
-    if upload is None or not hasattr(upload, "filename"):
+    # request.form() 的值类型是 str | UploadFile；只接受真正的上传对象，
+    # 这样下面的 .read() 在类型检查与运行时都成立。
+    if not isinstance(upload, UploadFile):
         raise HTTPException(status_code=400, detail="缺少文件")
     data = await upload.read()
     if not data:
@@ -352,12 +477,16 @@ async def api_translate_job(
         raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
     job_id = str(uuid.uuid4())
     pdir = os.path.join(TRANSLATE_DIR, "pending")
-    os.makedirs(pdir, exist_ok=True)
-    path, _, _ = _job_paths(job_id)
-    with open(path, "wb") as fh:
-        fh.write(data)
-    # 工作进程容器以非 root 用户运行，需可读
-    os.chmod(path, 0o644)
+    try:
+        os.makedirs(pdir, exist_ok=True)
+        path, _, _ = _job_paths(job_id)
+        with open(path, "wb") as fh:
+            fh.write(data)
+        # 工作进程容器以非 root 用户运行，需可读
+        os.chmod(path, 0o644)
+    except OSError as exc:
+        # 写不进去就必须让请求失败：否则会出现"排队成功"但工作进程永远等不到文件。
+        raise HTTPException(status_code=500, detail=f"无法写入翻译队列：{exc}") from exc
     _remember_translate_owner(job_id, user)
     return {"job_id": job_id, "status": "queued", "size": len(data)}
 
@@ -371,16 +500,26 @@ async def api_translate_job_status(job_id: str, user: dict = Depends(require_use
         raise HTTPException(status_code=404, detail="作业不存在")
     pending_path, done_json, done_zip = _job_paths(safe)
     if os.path.isfile(done_json):
-        with open(done_json, encoding="utf-8") as fh:
-            try:
-                meta = json.load(fh)
-            except json.JSONDecodeError:
-                meta = {"status": "done"}
+        try:
+            with open(done_json, encoding="utf-8") as fh:
+                loaded = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            # 元数据损坏：按"已完成但内容未知"处理，比报 500 更贴近实际。
+            log.warning("翻译作业元数据不可用 %s: %s", done_json, exc)
+            loaded = {"status": "done"}
+        # json.load 的静态类型是 Any；显式收窄成 dict 后再写入布尔字段，
+        # 既让类型检查说得清，也避免 JSON 顶层不是对象时直接崩。
+        meta: dict[str, Any] = loaded if isinstance(loaded, dict) else {"status": "done"}
         meta["has_result"] = os.path.isfile(done_zip)
         return meta
     if os.path.isfile(pending_path):
-        age = _t.time() - os.path.getmtime(pending_path)
-        return {"status": "processing" if age > 5 else "queued", "age": int(age)}
+        try:
+            age = max(0.0, _t.time() - os.path.getmtime(pending_path))
+        except OSError as exc:
+            log.warning("读取翻译作业时间失败: %s", exc)
+            age = 0.0
+        # age 已是 float，用 round 直接得到整数秒（避免再套一层 int()）
+        return {"status": "processing" if age > 5 else "queued", "age": round(age)}
     raise HTTPException(status_code=404, detail="作业不存在")
 
 
@@ -447,6 +586,121 @@ def _can_dispatch(roles: list[str]) -> bool:
     return bool(names & admin or names & _DISPATCH_ROLES)
 
 
+@app.get("/api/auth/check")
+async def api_auth_check(user: dict[str, Any] | None = Depends(current_user)) -> Response:
+    """给 nginx ``auth_request`` 用的会话探针。
+
+    有效 -> 204 并把用户 ID 放进 ``X-Auth-User``；无效 -> 401。
+    nginx 用 ``auth_request_set`` 取这个头，再注入到下游服务（例如 AgentScope
+    的 ``X-User-ID``），因此**客户端自带的 X-User-ID 会被覆盖**，无法伪造。
+
+    只回一个 ID，不返回用户资料：这个端点会被反向代理在每次子请求里调用。
+    """
+    if not user:
+        return Response(status_code=401)
+    return Response(status_code=204, headers={"X-Auth-User": str(user.get("sub") or "")})
+
+
+def _account_name(user: dict[str, Any]) -> str:
+    """会话里的账号名 → Casdoor 的 user.name。
+
+    邮箱是登录标识，但 Casdoor 的 name 不一定是邮箱本地部分；这里按邮箱本地
+    部分取，与 lab-sync-passwords 的约定一致。
+    """
+    email = str(user.get("email") or "")
+    local = email.split("@", 1)[0]
+    return (local or str(user.get("sub") or "")).strip().lower()
+
+
+# 未改初始口令时仍然放行的路径：否则用户连改密都做不了。
+_PASSWORD_EXEMPT = {
+    "/api/me",
+    "/api/me/password",
+    "/api/auth/check",
+    "/api/auth/login",
+    "/api/auth/callback",
+    "/api/auth/logout",
+}
+
+
+@app.middleware("http")
+async def _enforce_password_change(request: Request, call_next):
+    """未修改初始口令的用户，除少数豁免路径外一律 428。
+
+    用中间件而不是逐路由加依赖：后者一定会漏挂，而漏挂的那个接口就是后门。
+    """
+    path = request.url.path
+    if path.startswith("/api/") and path not in _PASSWORD_EXEMPT:
+        user = read_session(request.cookies.get(settings.cookie_name))
+        if user:
+            name = _account_name(user)
+            # 每请求一次查询代价可接受（表按主键查、只有几行）；但用 20s 缓存
+            # 避免高频接口把它变成热点。
+            cached = _MUST_CHANGE_CACHE.get(name)
+            now = time.time()
+            if cached is None or now - cached[1] > 20:
+                try:
+                    cached = (account_security.must_change_password(name), now)
+                except Exception as exc:  # noqa: BLE001
+                    # 读不到标记表就按"无需改密"放行：这张表与其它业务数据同库，
+                    # 读不到通常意味着库不可用，此时整个门户都不可用，
+                    # 不该由一个中间件把请求变成 500。
+                    log.debug("读取账号改密标记失败，放行: %s", exc)
+                    cached = (False, now)
+                _MUST_CHANGE_CACHE[name] = cached
+            if cached[0]:
+                return JSONResponse(
+                    status_code=428,
+                    content={"detail": "请先修改初始密码后再使用其它功能"},
+                )
+    return await call_next(request)
+
+
+_MUST_CHANGE_CACHE: dict[str, tuple[bool, float]] = {}
+
+
+@app.post("/api/me/password")
+async def api_change_password(
+    body: dict[str, Any],
+    user: dict[str, Any] = Depends(require_user),
+    _csrf: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """用户自助改密：必须校验旧口令；新口令 ≥10 位且不得与初始口令相同。"""
+    old = str(body.get("oldPassword") or "")
+    new = str(body.get("newPassword") or "")
+    if not old or not new:
+        raise HTTPException(status_code=400, detail="旧口令与新口令都必须填写")
+    if len(new) < 10:
+        raise HTTPException(status_code=400, detail="新口令至少 10 个字符")
+    if new == accounts_mod.INITIAL_PASSWORD:
+        raise HTTPException(status_code=400, detail="新口令不能与初始口令相同")
+    name = _account_name(user)
+    if not accounts_mod.verify_password(name, old):
+        raise HTTPException(status_code=400, detail="旧口令不正确")
+    accounts_mod.set_user_password(name, new)
+    _MUST_CHANGE_CACHE.pop(name, None)
+    return {"ok": True}
+
+
+@app.get("/api/people")
+async def api_people(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
+    """轻量人员目录：只给 id / 用户名 / 姓名，供界面把用户名显示成姓名。
+
+    刻意不返回邮箱与用户组：那两样属于管理信息，普通成员不该看到。
+    这里存在的意义是让「共享给我」「指派给」「作者」这些位置显示**姓名**，
+    而不是裸的用户名或邮箱。
+    """
+    import asyncio
+
+    people = await asyncio.to_thread(accounts_mod.directory)
+    return {
+        "people": [
+            {"id": p.get("id"), "name": p.get("name"), "displayName": p.get("displayName") or p.get("name")}
+            for p in people
+        ]
+    }
+
+
 @app.get("/api/me")
 async def api_me(user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
     if not user:
@@ -456,14 +710,27 @@ async def api_me(user: dict[str, Any] | None = Depends(current_user)) -> dict[st
         "authenticated": True,
         "id": user.get("sub"),
         "email": user.get("email"),
+        # name 是会话里的显示名；displayName 再从 Casdoor 取一次，
+        # 覆盖"会话签发时 display_name 还为空"的历史账号。
+        # 界面一律优先用 displayName —— 全站只显示姓名，不显示账号名。
         "name": user.get("name"),
+        "displayName": await asyncio.to_thread(_display_name_of, user),
         "roles": roles,
+        # 两级管理员：
+        #   isAdmin       平台管理员（lab-admin）—— 管账号、用户组、公告、Agent、备份等业务
+        #   isSuperAdmin  系统管理员（lab-superadmin）—— 额外能重启/触发运维任务、看诊断诊断
+        #   isTeacher     教师（lab-teacher）—— 管学生的课题资料/组会目录
+        # 教师判定**不含**管理员：管理员不自动获得教师视图（职责不互相穿透）。
         "isAdmin": any(r.lower() in [x.lower() for x in settings.admin_roles] for r in roles),
+        "isSuperAdmin": any(
+            r.lower() in [x.lower() for x in settings.superadmin_roles] for r in roles
+        ),
         "isTeacher": any(
-            r.lower() in [x.lower() for x in settings.admin_roles + settings.teacher_roles]
-            for r in roles
+            r.lower() in [x.lower() for x in settings.teacher_roles] for r in roles
         ),
         "canDispatch": _can_dispatch(roles),
+        # 初始口令未改时前端必须弹不可关闭的改密框；存量账号走不到这里。
+        "mustChangePassword": account_security.must_change_password(_account_name(user)),
     }
 
 
@@ -475,24 +742,49 @@ _SAYING_FALLBACK = "保持热爱，奔赴山海。"
 
 @app.get("/api/saying")
 async def api_saying() -> dict[str, Any]:
-    """每日一言（uapis.cn）。按自然日缓存，刷新页面不会换句子。"""
-    import httpx
-    from datetime import date
+    """每日诗词（今日诗词 jinrishici.com）。
 
+    与原「每日一言」的区别：返回的是古诗词，并带作者与出处，因此响应里多两个
+    字段。仍按自然日缓存 —— 首页刷新不该换诗，否则「每日」就名不副实。
+    """
     today = date.today().isoformat()
     if _SAYING_CACHE.get("day") == today and _SAYING_CACHE.get("text"):
-        return {"text": _SAYING_CACHE["text"], "date": today, "cached": True}
+        return {
+            "text": _SAYING_CACHE["text"],
+            "author": _SAYING_CACHE.get("author", ""),
+            "origin": _SAYING_CACHE.get("origin", ""),
+            "date": today,
+            "cached": True,
+        }
     try:
         async with httpx.AsyncClient(timeout=6, follow_redirects=True) as client:
-            resp = await client.get("https://uapis.cn/api/v1/saying")
+            resp = await client.get("https://v1.jinrishici.com/all.json")
             resp.raise_for_status()
-            text = str(resp.json().get("text") or "").strip()
+            data = resp.json()
+        text = str(data.get("content") or "").strip()
         if text:
-            _SAYING_CACHE.update(day=today, text=text)
-            return {"text": text, "date": today, "cached": False}
-    except Exception:  # noqa: BLE001 - 外部语料不可用不应影响首页
-        pass
-    return {"text": _SAYING_CACHE.get("text") or _SAYING_FALLBACK, "date": today, "cached": True}
+            _SAYING_CACHE.update(
+                day=today,
+                text=text,
+                author=str(data.get("author") or "").strip(),
+                origin=str(data.get("origin") or "").strip(),
+            )
+            return {
+                "text": text,
+                "author": _SAYING_CACHE.get("author", ""),
+                "origin": _SAYING_CACHE.get("origin", ""),
+                "date": today,
+                "cached": False,
+            }
+    except Exception as exc:  # noqa: BLE001 - 外部语料不可用不应影响首页
+        log.debug("今日诗词接口不可用，使用缓存/兜底: %s", exc)
+    return {
+        "text": _SAYING_CACHE.get("text") or _SAYING_FALLBACK,
+        "author": _SAYING_CACHE.get("author", ""),
+        "origin": _SAYING_CACHE.get("origin", ""),
+        "date": today,
+        "cached": True,
+    }
 
 
 # ------------------------------------------------------------------ OIDC
@@ -528,6 +820,60 @@ def _request_base(request: Request) -> str:
     return f"{proto}://{host}" if host else settings.public_url
 
 
+def _display_name_of(user: dict[str, Any]) -> str:
+    """会话用户的显示名（中文姓名）；取不到时退回会话里的 name。"""
+    from . import accounts as accounts_mod
+
+    fallback = str(user.get("name") or "")
+    sub = str(user.get("sub") or "")
+    try:
+        rows = accounts_mod._query(
+            'SELECT display_name FROM public."user" WHERE owner = %s AND (id = %s OR name = %s) LIMIT 1',
+            (accounts_mod.OWNER, sub, fallback),
+        )
+    except Exception:  # noqa: BLE001 - 取不到显示名不该让 /api/me 失败
+        return fallback
+    if rows:
+        shown = str(rows[0].get("display_name") or "").strip()
+        if shown:
+            return shown
+    return fallback
+
+
+def _safe_back(raw: str, request: Request | None = None) -> str:
+    """把"登录后回哪去"规整成安全的回跳目标。
+
+    允许两种形态：
+      * 站内相对路径（"/workbench"）；
+      * **同一主机**的绝对地址（"http://192.0.2.10:8097/"）——平台有多个
+        独立端口的服务，登录后必须能回到那个端口，否则会停在门户首页。
+
+    仍然禁止：协议相对地址（"//evil.com"）、换主机名的绝对地址、
+    带反斜杠或换行的值（防 header 注入与解析歧义）。
+    """
+    value = (raw or "").strip()
+    if any(ch in value for ch in ("\\", "\n", "\r")):
+        return ""
+    if value.startswith("//"):
+        return ""
+    if value.startswith("/"):
+        return value[:200]
+    if value.startswith(("http://", "https://")):
+        if request is None:
+            return ""
+        try:
+            target = urlsplit(value)
+        except ValueError:
+            return ""
+        host = _client_host(request)
+        if not host or target.hostname != host:
+            return ""
+        # 端口保留：同主机不同端口是本平台的不同服务
+        port = f":{target.port}" if target.port else ""
+        return f"{target.scheme}://{host}{port}{target.path or '/'}"[:200]
+    return ""
+
+
 def _client_host(request: Request) -> str:
     """用户当前实际访问的主机名（不含端口）。
 
@@ -539,10 +885,20 @@ def _client_host(request: Request) -> str:
 
 
 @app.get("/api/auth/login")
-async def api_login(request: Request) -> RedirectResponse:
+async def api_login(request: Request, back: str = Query(default="")) -> RedirectResponse:
+    """发起 OIDC 登录；``back`` 记住登录后要回到的站内路径。
+
+    ``back`` 允许带**端口**（如 ``http://192.0.2.10:8097/``）：
+    平台有多个独立端口的服务（primer 8097、图纸 8093 …），登录页在 80 端口，
+    登录完必须能回到原来那个端口的服务，否则用户会停在门户首页、
+    以为"登录后还是进不去那个页面"。
+    跨主机仍然是禁止的（只允许本站主机名）。
+    """
     redirect_uri = f"{_request_base(request)}/api/auth/callback"
     issuer = _casdoor_issuer(request)
-    state = casdoor.new_state(redirect_uri=redirect_uri, issuer=issuer)
+    state = casdoor.new_state(
+        redirect_uri=redirect_uri, issuer=issuer, back=_safe_back(back, request)
+    )
     return RedirectResponse(casdoor.authorization_url(state, redirect_uri, issuer), status_code=302)
 
 
@@ -583,7 +939,7 @@ async def api_callback(
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
     proto = request.headers.get("x-forwarded-proto", "http")
     base = f"{proto}://{host}" if host else settings.public_url
-    resp = RedirectResponse(f"{base}/", status_code=302)
+    resp = RedirectResponse(f"{base}{entry.get('back') or '/'}", status_code=302)
     set_session_cookies(resp, issue_session(user))
     return resp
 
@@ -636,7 +992,7 @@ async def api_services_health(request: Request, user: dict[str, Any] | None = De
     services = visible_services(user, host=_client_host(request))
     results = await asyncio.gather(*[go_service_health(svc["id"]) for svc in services])
     out = []
-    for svc, health in zip(services, results):
+    for svc, health in zip(services, results, strict=True):
         # 外部内网服务的故障归外部主机，不计入本机巡检失败
         if svc.get("external") and health.get("status") == "down":
             health = {**health, "status": "external-down", "detail": (health.get("detail") or "") + "（外部内网服务，需在 192.0.2.29 上恢复）"}
@@ -734,7 +1090,12 @@ async def api_databases_query(
 ) -> dict[str, Any]:
     """对指定数据库执行一次真实 API 查询（服务端代理）。"""
     query = str(payload.get("query") or "").strip()
-    limit = int(payload.get("limit") or 5)
+    # limit 来自请求体：脏值不能让整个接口 500
+    try:
+        limit = int(payload.get("limit") or 5)
+    except (TypeError, ValueError):
+        limit = 5
+    limit = max(1, min(limit, 200))
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     result = await db_apis.run_query(db_id, query, limit, params)
     return result
@@ -782,7 +1143,7 @@ async def api_network_entries(request: Request, _: dict = Depends(require_user))
     results = await asyncio.gather(*[probe(u["url"], u["path"]) for u in entries])
     items = [
         {"name": e["name"], "url": e["url"], "up": up, "detail": detail}
-        for e, (up, detail) in zip(entries, results)
+        for e, (up, detail) in zip(entries, results, strict=True)
     ]
     return {"items": items, "host": host or "192.0.2.10"}
 
@@ -842,7 +1203,55 @@ async def api_service_sso(service_id: str, request: Request, user: dict = Depend
 # 门户对外暴露的检索分类与别名统一放在 app/searchconfig.py，
 # 与 Go 核心（LabGo）共用同一份数据，避免两端分类名漂移。
 SEARCH_CATEGORIES: list[dict[str, str]] = _SEARCH_CATEGORIES
-_CATEGORY_ALIASES: dict[str, str] = _CATEGORY_ALIASES
+
+# 「论文」类别：与 SearXNG 的 "scientific publications" 并列，走文献源
+# （OpenAlex → Semantic Scholar → Crossref 降级 + arXiv）。
+# 分类名必须在 normalize_category 之前判断，因为 "papers" 会被别名表映射成
+# "scientific publications"，映射后就分不出是不是用户要了文献源。
+# 前端分类切换器用的是 searchconfig.py 里的「论文」键（scientific publications），
+# 与 Go 侧共用；这里把它一并视为文献类别，避免"界面有论文、后端不认"的漂移。
+LITERATURE_CATEGORY_TOKENS = {"papers", "literature", "scientific publications"}
+LITERATURE_RESULT_LIMIT = 20
+
+
+async def _search_literature(q: str, limit: int = LITERATURE_RESULT_LIMIT) -> tuple[list[dict[str, Any]], list[str]]:
+    """统一搜索的「论文」类别。
+
+    文献源失败只降级该类别（返回空条目 + degraded 标记），绝不让整个搜索 500。
+    返回 (条目列表, 降级类别列表)。
+    """
+    try:
+        result = await literature_mod.search(q, limit)
+    except Exception as exc:  # noqa: BLE001 - 文献源挂掉不能拖垮整个搜索
+        log.warning("文献源检索失败：%s", exc)
+        return [], ["papers"]
+    if not result.papers or result.source == "none":
+        log.info("文献源未命中：%s", result.attempts)
+        return [], ["papers"]
+    items: list[dict[str, Any]] = []
+    for paper in result.papers:
+        snippet = (paper.abstract or "")[:500]
+        items.append(
+            {
+                "title": paper.title,
+                "url": paper.landing_url,
+                "content": snippet,
+                "snippet": snippet,
+                "engine": "literature",
+                "category": "papers",
+                "kind": "paper",
+                # 来源标记：前端据此区分 OpenAlex / Semantic Scholar / Crossref / arXiv
+                "source": paper.source,
+                "hitSource": paper.source,
+                "doi": paper.doi,
+                "authors": list(paper.authors),
+                "year": paper.year,
+                "venue": paper.venue,
+                "citations": paper.citations,
+                "pdfUrl": paper.pdf_url,
+            }
+        )
+    return items, []
 
 
 async def _rerank_local(query: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -894,9 +1303,20 @@ async def api_search(
     scope=all      两者合并（本地命中置顶）
 
     categories 透传给 SearXNG：general / science / scientific publications / images / videos / it / news / books
+    papers / literature 额外走文献源（OpenAlex / S2 / Crossref / arXiv）
     """
+    # 先记下原始分类名：normalize_category 会把 "papers" 映射成
+    # "scientific publications"，映射后就没法判断用户是否点名了文献源。
+    raw_categories = [c.strip().lower() for c in (categories or "").split(",") if c.strip()]
+    wants_papers = any(c in LITERATURE_CATEGORY_TOKENS for c in raw_categories)
     categories = normalize_category(categories)
     scope = (scope or "web").lower()
+
+    # 文献源是联网类别：scope=local（只看本地语料）时不混入。
+    paper_items: list[dict[str, Any]] = []
+    degraded: list[str] = []
+    if wants_papers and scope in ("web", "all"):
+        paper_items, degraded = await _search_literature(q)
 
     # 知识条目是按人可见的，只能在 Python 侧用调用者会话现查，不能进 Go 核心的全局语料索引。
     knowledge_hits: list[dict[str, Any]] = []
@@ -913,9 +1333,18 @@ async def api_search(
         if knowledge_hits:
             merged = knowledge_hits + list(go_result.get("results") or [])
             go_result["results"] = merged
-            go_result["localTotal"] = int(go_result.get("localTotal") or 0) + len(knowledge_hits)
+            try:
+                local_total = int(go_result.get("localTotal") or 0)
+            except (TypeError, ValueError):
+                # Go 核心返回了非数字：当作 0，不能让整个搜索因它 500。
+                local_total = 0
+            go_result["localTotal"] = local_total + len(knowledge_hits)
             go_result["count"] = len(merged)
         go_result["results"] = await _rerank_local(q, list(go_result.get("results") or []))
+        if paper_items:
+            go_result["results"] = list(go_result["results"]) + paper_items
+            go_result["count"] = len(go_result["results"])
+        go_result["degraded"] = degraded
         return go_result
 
     web_results: list[dict[str, Any]] = []
@@ -967,6 +1396,8 @@ async def api_search(
     local_results = await _rerank_local(q, knowledge_hits + local_results)
 
     results = local_results + web_results if scope == "all" else (local_results if scope == "local" else web_results)
+    if paper_items:
+        results = results + paper_items
 
     # 兼容旧字段：local 仍返回植物数据库命中
     local_dbs = search_databases(q)
@@ -978,6 +1409,8 @@ async def api_search(
         "results": results,
         "engines": engines,
         "error": web_error,
+        # 降级的检索类别（如文献源挂掉时的 "papers"），前端可提示“该分类暂不可用”
+        "degraded": degraded,
         "local": [
             {"id": d["id"], "name": d["name"], "cn": d.get("cn", ""), "url": d["url"], "category": d["category"]}
             for d in local_dbs[:16]
@@ -1078,7 +1511,8 @@ async def api_snapotter_status(_: dict = Depends(require_user)) -> dict[str, Any
     if ok:
         try:
             tools = await snapotter_mod.get_tool_catalog()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - 目录拉取失败只影响工具计数
+            log.debug("snapotter 工具目录不可用: %s", exc)
             tools = []
     return {
         "configured": snapotter_mod.is_configured(),
@@ -1303,15 +1737,20 @@ async def api_export_drawing(
     if not name.endswith(".drawio"):
         name += ".drawio"
     target_dir = os.path.join(_ensure_user_dir(user), "drawio")
-    os.makedirs(target_dir, mode=0o700, exist_ok=True)
-    _grant_user_acl(target_dir)
-    path = os.path.join(target_dir, name)
-    real = os.path.realpath(path)
-    if not real.startswith(os.path.realpath(target_dir) + os.sep):
-        raise HTTPException(status_code=400, detail="非法路径")
-    with open(real, "w", encoding="utf-8") as fh:
-        fh.write(content)
-    os.chmod(real, 0o640)
+    try:
+        os.makedirs(target_dir, mode=0o700, exist_ok=True)
+        _grant_user_acl(target_dir)
+        path = os.path.join(target_dir, name)
+        real = os.path.realpath(path)
+        if not real.startswith(os.path.realpath(target_dir) + os.sep):
+            raise HTTPException(status_code=400, detail="非法路径")
+        with open(real, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(real, 0o640)
+    except HTTPException:
+        raise
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"无法写入个人目录：{exc}") from exc
     return {"ok": True, "path": real, "note": "已写入个人目录，可在文件管理中查看"}
 
 
@@ -1325,14 +1764,15 @@ async def api_admin_info(user: dict[str, Any] = Depends(require_admin)) -> dict[
     def run(cmd: list[str]) -> str:
         try:
             return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - 管理端信息降级为空串
+            log.debug("命令执行失败 %s: %s", cmd[:1], exc)
             return ""
 
     disk = shutil.disk_usage("/srv/labdata") if os.path.isdir("/srv/labdata") else shutil.disk_usage("/")
     containers = []
     if os.path.exists("/var/run/docker.sock"):
         out = run(["docker", "ps", "--format", "{{.Names}}\t{{.Status}}\t{{.Image}}"])
-        containers = [l for l in out.splitlines() if l.strip()]
+        containers = [line for line in out.splitlines() if line.strip()]
     return {
         "host": {
             "platform": platform.platform(),
@@ -1365,6 +1805,50 @@ async def api_admin_backups(user: dict[str, Any] = Depends(require_admin)) -> di
     return data
 
 
+@app.get("/api/admin/backups/git")
+async def api_admin_backup_git(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """异地归档（Git LFS）的状态。
+
+    本地 restic 仓库在同一块盘上，盘坏了一起没；异地归档是第二条腿。
+    这里只读状态文件，**不接触归档口令，也不触发推送**——
+    推送由每日维护在宿主机执行（见 ops/backup-git-archive.sh），
+    后端不持有 git-lfs 凭据。
+    """
+    status_path = "/srv/labgo/backup-git-status.json"
+    try:
+        with open(status_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return {"available": False, "detail": "尚未产生异地归档记录", "archives": []}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail=f"异地归档状态读取失败：{exc}") from exc
+    data["available"] = True
+    return data
+
+
+@app.delete("/api/admin/backups/{snapshot}")
+async def api_admin_backup_forget(
+    snapshot: str, user: dict[str, Any] = Depends(require_admin)
+) -> dict[str, Any]:
+    """删除一个备份快照（管理员显式操作）。
+
+    备份是最后一道恢复手段，因此这里坚持「一次一个、必须给出完整或前缀 ID」，
+    不做「清空全部备份」的批量入口；真正的 restic 调用留在宿主机脚本里，
+    后端只做参数转发与错误透传。
+    """
+    from .golink import backup_forget
+
+    snap = (snapshot or "").strip()
+    if not snap or not all(c in "0123456789abcdefABCDEF" for c in snap):
+        raise HTTPException(status_code=400, detail="快照 ID 必须是十六进制")
+    if not 8 <= len(snap) <= 64:
+        raise HTTPException(status_code=400, detail="快照 ID 长度应为 8–64 位")
+    ok, detail = await backup_forget(snap)
+    if not ok:
+        raise HTTPException(status_code=502, detail=f"删除备份失败：{detail}")
+    return {"ok": True, "snapshot": snap}
+
+
 @app.get("/api/admin/health")
 async def api_admin_health(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     """全量服务健康（探测由 Go 核心执行）。"""
@@ -1374,7 +1858,7 @@ async def api_admin_health(user: dict[str, Any] = Depends(require_admin)) -> dic
     results = await asyncio.gather(*[go_service_health(s.id) for s in services])
     return {
         "services": [
-            {"id": s.id, "name": s.name, "category": s.category, "health": h} for s, h in zip(services, results)
+            {"id": s.id, "name": s.name, "category": s.category, "health": h} for s, h in zip(services, results, strict=True)
         ]
     }
 
@@ -1382,3 +1866,101 @@ async def api_admin_health(user: dict[str, Any] = Depends(require_admin)) -> dic
 @app.exception_handler(HTTPException)
 async def http_exc_handler(request: Request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+# ------------------------------------------------------------------ 每日论文
+
+def _parse_day_param(raw: str | None) -> date:
+    """解析 day 查询参数（YYYY-MM-DD）；空值取今天，格式错误直接 400。"""
+    value = (raw or "").strip()
+    if not value:
+        return date.today()
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="day 需要 YYYY-MM-DD 格式") from exc
+
+
+@app.get("/api/daily-papers")
+async def api_daily_papers(
+    day: str = Query("", max_length=10),
+    topic: str = Query("", max_length=200),
+    page: int = Query(1, ge=1, le=1000),
+    page_size: int = Query(20, ge=1, le=100),
+    user: dict = Depends(require_user),
+) -> dict[str, Any]:
+    """按人读取某天的「每日论文」。跨用户不可见：查询始终带调用者的 sub。"""
+    target = _parse_day_param(day)
+    return await dailypapers_mod.list_daily(
+        user["sub"],
+        target,
+        topic=topic,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@app.get("/api/daily-papers/subscriptions")
+async def api_daily_subs(user: dict = Depends(require_user)) -> dict[str, Any]:
+    """我的每日论文订阅。"""
+    return {"subscriptions": await dailypapers_mod.list_subs(user["sub"])}
+
+
+@app.put("/api/daily-papers/subscriptions")
+async def api_daily_sub_upsert(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """新增/修改订阅：主题 + 每天抓几篇 + 是否启用。"""
+    topic = str(payload.get("topic") or "").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic 不能为空")
+    if len(topic) > 120:
+        raise HTTPException(status_code=400, detail="主题最长 120 字")
+    try:
+        limit = int(payload.get("limit") or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, 50))
+    enabled = bool(payload.get("enabled", True))
+    sub = await dailypapers_mod.upsert_sub(user["sub"], topic, limit, enabled)
+    return {"ok": True, "subscription": sub}
+
+
+@app.delete("/api/daily-papers/subscriptions/{topic}")
+async def api_daily_sub_delete(
+    topic: str,
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """取消订阅。"""
+    await dailypapers_mod.delete_sub(user["sub"], topic)
+    return {"ok": True, "topic": topic}
+
+
+@app.post("/api/daily-papers/subscriptions/run")
+async def api_daily_sub_run(
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """立即抓取我的全部订阅（不用等到明天）。"""
+    return await dailypapers_mod.run_subs(user["sub"])
+
+
+@app.post("/api/daily-papers/refresh")
+async def api_daily_papers_refresh(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """抓取并落库某天的论文（主题必填）。
+
+    同一 (天, 人, 主题) 已有数据时直接读库返回，不会重复打文献源。
+    文献源全败时返回 source="none"、count=0，不会伪造条目。
+    """
+    topic = str(payload.get("topic") or "").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic 不能为空")
+    target = _parse_day_param(str(payload.get("day") or ""))
+    return await dailypapers_mod.build_daily(user["sub"], topic, target)

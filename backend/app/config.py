@@ -47,7 +47,17 @@ class Settings:
     casdoor_db_password: str = os.getenv("CASDOOR_DB_PASSWORD", "")
 
     # 角色
+    # 管理员分两级：
+    #   * lab-admin        平台管理员 —— 管业务（账号、用户组、公告、Agent 配置、备份、共享目录）
+    #   * lab-superadmin   系统管理员 —— 在平台管理员之上，额外管**平台级**操作：
+    #                       服务状态、运维任务、调试与诊断、全局配置与密钥
+    # 分层的理由：出故障时需要能"重启服务、看日志、清缓存"的人，
+    # 但这类能力不该和"改谁是什么角色"混在同一个账号里 —— 后者一旦被滥用
+    # 会直接影响实验室的权限结构。系统管理员应由少数人持有。
     admin_roles: list[str] = field(default_factory=lambda: _list("LABSPACE_ADMIN_ROLES", "lab-admin"))
+    superadmin_roles: list[str] = field(
+        default_factory=lambda: _list("LABSPACE_SUPERADMIN_ROLES", "lab-superadmin")
+    )
     teacher_roles: list[str] = field(default_factory=lambda: _list("LABSPACE_TEACHER_ROLES", "lab-teacher"))
 
     # 文件根目录（受控保存）
@@ -63,6 +73,14 @@ class Settings:
 
     # Go 核心（LabGo）：服务目录、健康检查、内嵌探测的权威实现
     labgo_base: str = os.getenv("LABSPACE_LABGO_BASE", "http://172.28.0.1:8122").rstrip("/")
+    # AgentScope Agent Service（独立容器，只绑回环，经 docker 网桥访问）。
+    # 门户只做鉴权与事件翻译，不重复实现它的会话/知识库/工具栈。
+    agentscope_base: str = os.getenv("LABSPACE_AGENTSCOPE_BASE", "http://agentscope:8100").rstrip("/")
+    # 平台级模型凭据（AgentScope 用）。管理员在「管理端 → Agent」里配置优先；
+    # 没有配置时回落到这里，避免新用户第一次打开助手就 502。
+    agent_model_base: str = os.getenv("LABSPACE_AGENT_MODEL_BASE", "").rstrip("/")
+    agent_model_key: str = os.getenv("LABSPACE_AGENT_MODEL_KEY", "")
+    agent_model_name: str = os.getenv("LABSPACE_AGENT_MODEL", "")
 
     # 知识库 RAG（宿主机 FlashRAG 服务，仅监听 docker 网桥地址）
     rag_base: str = os.getenv("LABSPACE_RAG_BASE", "http://172.28.0.1:8112").rstrip("/")
@@ -85,6 +103,9 @@ class Settings:
     systemone_model: str = os.getenv("LABSPACE_SYSTEMONE_MODEL", "Kev-4b")
     # 内部服务令牌（pi 插件等可信内部调用使用 X-Lab-Service-Token 头）
     service_token: str = os.getenv("LABSPACE_SERVICE_TOKEN", "")
+    # 宿主机运维服务（lab-oidc-sync.service，root 运行、令牌鉴权）。
+    # 只用于必须在本机 root 环境执行的动作（目前是 restic 快照删除）。
+    oidc_sync_url: str = os.getenv("LABSPACE_OIDC_SYNC_URL", "").rstrip("/")
     # Baserow 数据表（容器内网地址；管理员凭据仅从 600 权限文件读取）
     baserow_url: str = os.getenv("LABSPACE_BASEROW_URL", "http://lab-baserow").rstrip("/")
     baserow_host: str = os.getenv("LABSPACE_BASEROW_HOST", "192.0.2.10:8094")
