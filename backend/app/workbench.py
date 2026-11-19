@@ -128,6 +128,9 @@ def _item_out(row: dict[str, Any]) -> dict[str, Any]:
         "tags": list(row.get("tags") or []),
         "project_id": row.get("project_id"),
         "plan_id": row.get("plan_id"),
+        # 待办可以挂到文件存储里的具体文件/目录（见 db.py 的迁移说明）
+        "link_source": row.get("link_source") or "",
+        "link_path": row.get("link_path") or "",
         "due_date": _iso(row.get("due_date")),
         "source": row.get("source") or "manual",
         "ai_class": row.get("ai_class"),
@@ -484,6 +487,9 @@ class ItemCreate(BaseModel):
     project_id: str | None = None
     plan_id: str | None = None
     status: str = "active"
+    # 挂到文件存储里的某个文件/目录（source 如 users/public，path 为相对路径）
+    link_source: str = ""
+    link_path: str = ""
 
 
 class ItemPatch(BaseModel):
@@ -496,6 +502,8 @@ class ItemPatch(BaseModel):
     project_id: str | None = None
     plan_id: str | None = None
     status: str | None = None
+    link_source: str | None = None
+    link_path: str | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -630,13 +638,27 @@ async def list_items(
     # 两条查询的 WHERE 子句必须完全一致（占位符个数与顺序都一样），因此
     # 这里用**字面量**而不是变量拼接：拼接出来的 SQL 无法被静态分析确认是常量，
     # 也就无法证明它不含注入面。子句内容见 _ITEM_WHERE（同步维护）。
+    # 直接把 SQL 字面量写进调用（而不是用模块常量）：
+    # 静态分析只能确认"字面量"不含注入面，看到变量名一律报可疑。
+    # 两条查询的 WHERE 子句必须完全一致，改动时同步改另一条。
     count_rows = db.query(
-        _ITEM_COUNT_SQL,
+        "SELECT count(*) AS n FROM labspace.workbench_items"
+        " WHERE user_id = %s"
+        " AND (%s::text IS NULL OR kind = %s)"
+        " AND (%s::text IS NULL OR status = %s)"
+        " AND (%s::text IS NULL OR project_id = %s)"
+        " AND (%s::text IS NULL OR title ILIKE %s OR content ILIKE %s)",
         params,
     )
     total = _safe_int(count_rows[0]["n"]) if count_rows else 0
     rows = db.query(
-        _ITEM_SELECT_SQL,
+        "SELECT * FROM labspace.workbench_items"
+        " WHERE user_id = %s"
+        " AND (%s::text IS NULL OR kind = %s)"
+        " AND (%s::text IS NULL OR status = %s)"
+        " AND (%s::text IS NULL OR project_id = %s)"
+        " AND (%s::text IS NULL OR title ILIKE %s OR content ILIKE %s)"
+        " ORDER BY (due_date IS NULL), due_date ASC, updated_at DESC LIMIT %s",
         params + (limit,),
     )
     return {"items": [_item_out(r) for r in rows], "total": total}
@@ -660,8 +682,9 @@ async def create_item(
     db.execute(
         """
         INSERT INTO labspace.workbench_items
-            (id, user_id, kind, title, content, status, priority, tags, project_id, plan_id, due_date, source)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')
+            (id, user_id, kind, title, content, status, priority, tags, project_id, plan_id, due_date,
+             link_source, link_path, source)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'manual')
         """,
         (
             item_id,
@@ -675,6 +698,8 @@ async def create_item(
             body.project_id,
             body.plan_id,
             body.due_date,
+            str(body.link_source or ""),
+            str(body.link_path or ""),
         ),
     )
     rows = db.query(
@@ -705,7 +730,7 @@ async def patch_item(
         raise HTTPException(status_code=400, detail="优先级无效")
 
     db.execute(
-        "UPDATE labspace.workbench_items SET kind = CASE WHEN %s THEN %s::text ELSE kind END, title = CASE WHEN %s THEN %s::text ELSE title END, content = CASE WHEN %s THEN %s::text ELSE content END, tags = CASE WHEN %s THEN %s::text[] ELSE tags END, priority = CASE WHEN %s THEN %s::text ELSE priority END, due_date = CASE WHEN %s THEN %s::date ELSE due_date END, project_id = CASE WHEN %s THEN %s::text ELSE project_id END, plan_id = CASE WHEN %s THEN %s::text ELSE plan_id END, status = CASE WHEN %s THEN %s::text ELSE status END, updated_at = now() WHERE id=%s AND user_id=%s",
+        "UPDATE labspace.workbench_items SET kind = CASE WHEN %s THEN %s::text ELSE kind END, title = CASE WHEN %s THEN %s::text ELSE title END, content = CASE WHEN %s THEN %s::text ELSE content END, tags = CASE WHEN %s THEN %s::text[] ELSE tags END, priority = CASE WHEN %s THEN %s::text ELSE priority END, due_date = CASE WHEN %s THEN %s::date ELSE due_date END, project_id = CASE WHEN %s THEN %s::text ELSE project_id END, plan_id = CASE WHEN %s THEN %s::text ELSE plan_id END, status = CASE WHEN %s THEN %s::text ELSE status END, link_source = CASE WHEN %s THEN %s::text ELSE link_source END, link_path = CASE WHEN %s THEN %s::text ELSE link_path END, updated_at = now() WHERE id=%s AND user_id=%s",
         (
             "kind" in fields, fields.get("kind"),
             "title" in fields, fields.get("title"),
@@ -716,6 +741,8 @@ async def patch_item(
             "project_id" in fields, fields.get("project_id"),
             "plan_id" in fields, fields.get("plan_id"),
             "status" in fields, fields.get("status"),
+            "link_source" in fields, str(fields.get("link_source") or ""),
+            "link_path" in fields, str(fields.get("link_path") or ""),
             item_id, user["sub"],
         ),
     )

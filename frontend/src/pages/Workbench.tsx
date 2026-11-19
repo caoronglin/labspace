@@ -166,6 +166,8 @@ function ItemRow({
   danger?: boolean;
   busy?: boolean;
 }) {
+  // ItemRow 是独立组件（不在页面组件内），导航要用自己的 hook
+  const navigate = useNavigate();
   return (
     <Flex
       gap={10}
@@ -187,6 +189,24 @@ function ItemRow({
             优先级{priorityCn(item.priority)}
           </Tag>
           <Tag style={{ margin: 0, fontSize: 11 }}>{kindCn(item.kind)}</Tag>
+          {/* 待办挂在文件存储里的具体文件/目录上：给一个能跳回去的入口，
+              否则用户看到"处理文件 X"还得自己去翻文件存储。 */}
+          {item.link_path ? (
+            <Typography.Link
+              style={{ fontSize: 11.5 }}
+              onClick={() =>
+                navigate(
+                  `/files?source=${encodeURIComponent(item.link_source || 'users')}&dir=${encodeURIComponent(
+                    item.link_path!.includes('/')
+                      ? item.link_path!.slice(0, item.link_path!.lastIndexOf('/'))
+                      : '',
+                  )}`,
+                )
+              }
+            >
+              <FolderOpenOutlined /> 打开文件位置
+            </Typography.Link>
+          ) : null}
         </Flex>
         {item.content ? (
           <Typography.Paragraph

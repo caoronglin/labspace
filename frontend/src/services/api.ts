@@ -895,6 +895,9 @@ export interface WorkbenchItem {
   project_id?: string | null;
   plan_id?: string | null;
   due_date?: string | null;
+  /** 挂到文件存储里的文件/目录：来源（users/public/…）与相对路径。 */
+  link_source?: string;
+  link_path?: string;
   source?: string;
   ai_class?: string;
   ai_reason?: string;

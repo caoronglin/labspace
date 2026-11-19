@@ -28,6 +28,7 @@ import {
   AppstoreOutlined,
   ArrowLeftOutlined,
   BookOutlined,
+  CheckSquareOutlined,
   ClearOutlined,
   ClockCircleOutlined,
   CloudUploadOutlined,
@@ -1169,6 +1170,26 @@ export default function Files() {
     });
   };
 
+  /**
+   * 从文件/目录建一条工作台待办。
+   *
+   * link_source + link_path 存的是**路径**而不是文件 id：id 会随重新扫描
+   * 变化，路径稳定。待办里就多一个「打开」入口，直接跳回这个位置。
+   */
+  const createTodoFromEntry = async (entry: FileEntry) => {
+    try {
+      await api.workbenchCreateItem({
+        kind: 'task',
+        title: entry.dir ? `处理目录「${entry.name}」` : `处理文件「${entry.name}」`,
+        link_source: source,
+        link_path: entry.path,
+      });
+      message.success('已加入工作台待办');
+    } catch (e) {
+      message.error(`加入待办失败：${fileErrorText((e as Error).message)}`);
+    }
+  };
+
   const rowMenu = (entry: FileEntry): MenuProps['items'] => {
     const items: NonNullable<MenuProps['items']> = [];
     if (isPersonal && !isSharedView && entry.path && entry.path !== homePath) {
@@ -1194,6 +1215,15 @@ export default function Files() {
       icon: <BookOutlined />,
       label: entry.dir ? '入库该目录的文档' : '入库知识库',
       onClick: () => ingestToKnowledge(entry),
+    });
+    // 工作台联动：把这份文件/目录挂成一条待办。
+    // 这是"看文件时想起要做的事"的典型场景 —— 以前只能切到工作台
+    // 手打一遍路径，或者干脆忘了。
+    items.push({
+      key: 'workbench-todo',
+      icon: <CheckSquareOutlined />,
+      label: entry.dir ? '把该目录加入待办' : '把该文件加入待办',
+      onClick: () => createTodoFromEntry(entry),
     });
     // PDF 联动：直接把这份 PDF 带进门户自绘的 PDF 工具箱
     // （合并/拆分/压缩/加水印…），不用先下载到本地再传回去。

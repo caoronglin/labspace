@@ -619,6 +619,13 @@ CREATE INDEX IF NOT EXISTS lab_roster_advisor_idx ON labspace.lab_roster (adviso
 -- identity（身份：博士后/博士生/硕士生/本科生/实习生/科研助理）是后加的需求。
 -- CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，所以这里显式 ALTER（幂等）。
 ALTER TABLE labspace.lab_roster ADD COLUMN IF NOT EXISTS identity text NOT NULL DEFAULT '硕士生';
+
+-- 工作台待办挂到具体文件（link_source + link_path）。
+-- 待办与文件存储原本是两个独立世界：待办写"整理这批测序数据"，
+-- 用户还得自己去文件存储里找那个目录。加两列让它能直接指过去。
+-- 存 source+path 而不是文件 id：id 会随重新扫描变化，路径是稳定的。
+ALTER TABLE labspace.workbench_items ADD COLUMN IF NOT EXISTS link_source text NOT NULL DEFAULT '';
+ALTER TABLE labspace.workbench_items ADD COLUMN IF NOT EXISTS link_path   text NOT NULL DEFAULT '';
 """
 
 
