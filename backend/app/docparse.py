@@ -20,8 +20,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from .security import require_csrf, require_user
 from .http import async_client as http_client
+from .security import require_csrf, require_user
 from .uploads import read_upload_capped
 
 router = APIRouter(prefix="/api/docparse", tags=["docparse"])

@@ -17,7 +17,7 @@ SnapOtter API 约定（见官方 llms.txt）：
 """
 from __future__ import annotations
 
-import asyncio
+import logging
 import os
 import re
 import time
@@ -27,6 +27,8 @@ from urllib.parse import urlsplit
 import httpx
 
 from .http import async_client
+
+log = logging.getLogger("labspace.snapotter")
 
 SNAPOTTER_BASE = os.getenv("SNAPOTTER_BASE_URL", "http://lab-snapotter:1349").rstrip("/")
 SNAPOTTER_API = f"{SNAPOTTER_BASE}/api/v1"
@@ -70,7 +72,8 @@ async def list_tools() -> dict[str, Any]:
                 r = await client.get(f"{SNAPOTTER_API}{path}", headers=_headers())
                 if r.status_code == 200:
                     return r.json()
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - 单点工具查询失败不影响其它工具
+                log.debug("查询 SnapOtter 工具 %s 失败：%s", path, exc)
                 continue
     return {"tools": []}
 

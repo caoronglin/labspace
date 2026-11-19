@@ -21,8 +21,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .config import settings
-from .security import require_user
 from .http import async_client
+from .security import require_user
 
 router = APIRouter(prefix="/api/mt", tags=["mt"])
 internal_router = APIRouter(prefix="/internal/mt", tags=["mt-internal"])

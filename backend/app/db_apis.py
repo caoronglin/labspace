@@ -11,8 +11,9 @@ import asyncio
 import json
 import re
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -563,7 +564,7 @@ async def _get_json(url: str, timeout: float = 12.0, retries: int = 0) -> Any:
         raise RuntimeError(f"上游返回 HTTP {resp.status_code}")
     ctype = (resp.headers.get("content-type") or "").lower()
     body = resp.text or ""
-    if "json" not in ctype and not body.lstrip()[:1] in ("{", "["):
+    if "json" not in ctype and body.lstrip()[:1] not in ("{", "["):
         raise RuntimeError(
             "上游返回了非 JSON 内容（常见于服务维护、限流或被网关拦截），"
             f"HTTP {resp.status_code}，响应前 80 字符：{body.strip()[:80]}"
@@ -1376,7 +1377,7 @@ async def probe(key: str) -> tuple[bool, str]:
 async def _probe_uncached(spec: ApiSpec, key: str, now: float) -> tuple[bool, str]:
     try:
         if spec.transform == "blast_submit":
-            resp = await _get(f"https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Info", timeout=10.0)
+            resp = await _get("https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Info", timeout=10.0)
         elif spec.transform == "kegg":
             resp = await _get("https://rest.kegg.jp/info/kegg", timeout=10.0)
         elif spec.transform == "rcsb":
@@ -1433,7 +1434,7 @@ async def probe_all() -> dict[str, tuple[bool, str]]:
             return await probe(k)
 
     results = await asyncio.gather(*(_one(k) for k in keys))
-    return dict(zip(keys, results))
+    return dict(zip(keys, results, strict=True))
 
 
 async def run_query(key: str, query: str, limit: int = 5, params: dict | None = None) -> dict[str, Any]:
@@ -1525,7 +1526,7 @@ def api_index() -> list[dict[str, Any]]:
 
 def api_summary() -> dict[str, Any]:
     """概览：可 API 化的库数量与清单。"""
-    with_api = [k for k in ADAPTERS]
+    with_api = list(ADAPTERS)
     return {
         "total": len(PLANT_DATABASES),
         "withApi": len(with_api),

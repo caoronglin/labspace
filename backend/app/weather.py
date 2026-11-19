@@ -10,11 +10,10 @@ import os
 import time
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .security import require_user
 from .http import async_client as http_client
+from .security import require_user
 
 router = APIRouter(prefix="/api/weather", tags=["weather"])
 

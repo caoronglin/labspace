@@ -12,12 +12,14 @@
 """
 from __future__ import annotations
 
-import json
-import os
+import logging
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .catalog import load_catalog
+
+log = logging.getLogger("labspace.corpus")
 from .databases import PLANT_DATABASES
 
 # --------------------------------------------------------------------- 工具清单
@@ -360,8 +362,10 @@ def build_corpus(include_commands: bool = True) -> list[CorpusEntry]:
                     weight=0.95,
                 )
             )
-    except Exception:  # noqa: BLE001 - 语料构建失败不应影响门户
-        pass
+    except Exception as exc:  # noqa: BLE001 - 语料构建失败不应影响门户
+        # 不静默：语料是搜索的数据源，构建失败会让人以为"没有可搜的内容"。
+        # 记一行日志，页面照常可用。
+        log.warning("构建搜索语料失败：%s", exc)
 
     return entries
 
