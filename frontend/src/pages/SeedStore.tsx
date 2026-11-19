@@ -10,7 +10,7 @@
  *
  * 模板接口未就绪时只显示提示，不造假数据。
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import {
   Alert,
@@ -25,6 +25,7 @@ import {
   Input,
   Popover,
   Segmented,
+  Select,
   Space,
   Tag,
   Tooltip,
@@ -105,6 +106,15 @@ export default function SeedStore() {
   const [onlyPendingBackup, setOnlyPendingBackup] = useState(false);
   /** 视图切换：表格 / 卡片 / 时间线 / 突变类型看板。 */
   const [view, setView] = useState<SeedViewKey>("table");
+  /**
+   * 标签筛选（多选）。
+   *
+   * 「标签」字段是逗号分隔的自由标签（高产 / 抗病 / 待测交…），
+   * 台账里最常问的就是「哪些材料带这个标签」。以前只能靠搜索框逐字匹配，
+   * 而搜索是全表模糊匹配，混进备注里的同名文字也会命中。
+   * 这里按**标签字段拆分后精确匹配**，且只筛当前页数据（不额外请求）。
+   */
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   /** Excel 导入：正在解析写入时禁用按钮，避免重复提交。 */
   const [importing, setImporting] = useState(false);
 
@@ -193,12 +203,44 @@ export default function SeedStore() {
     }
   };
 
-  // 「仅看待备份」是本页的筛选：它作用在当前页结果上，语义写在按钮提示里。
-  const shownRows = useMemo(
-    () =>
-      onlyPendingBackup ? rows.filter((r) => isPendingBackup(r, fields)) : rows,
-    [rows, fields, onlyPendingBackup],
+  /** 「标签」字段名（模板里可能叫「标签」也可能没有）。 */
+  const tagFieldName = useMemo(
+    () => fields.find((f) => f.name.includes('标签'))?.name,
+    [fields],
   );
+
+  /** 把某行的标签字段拆成数组（逗号可能是中英文、分号）。 */
+  const tagsOf = useCallback((row: BaserowRow): string[] => {
+    if (!tagFieldName) return [];
+    return String(row[tagFieldName] ?? '')
+      .split(/[,，;；]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }, [tagFieldName]);
+
+  /** 当前页出现过的所有标签（带出现次数，按次数排序）。 */
+  const availableTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      for (const t of tagsOf(r)) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([value, n]) => ({ value, label: `${value}（${n}）` }));
+  }, [rows, tagsOf]);
+
+  // 「仅看待备份」+「标签」都是本页筛选：作用在当前页结果上，语义写在提示里。
+  const shownRows = useMemo(() => {
+    let out = onlyPendingBackup ? rows.filter((r) => isPendingBackup(r, fields)) : rows;
+    if (tagFilter.length) {
+      out = out.filter((r) => {
+        const own = tagsOf(r);
+        // 多选取「任一命中」：用户选了两个标签通常是"或"的意思
+        return tagFilter.some((t) => own.includes(t));
+      });
+    }
+    return out;
+  }, [rows, fields, onlyPendingBackup, tagFilter, tagsOf]);
 
   // 统计基于当前页数据（服务端一次只给一页），总数用服务端 count。
   const stats = useMemo(
@@ -454,6 +496,20 @@ export default function SeedStore() {
                     ) : null}
                   </Button>
                 </Tooltip>
+                {/* 标签筛选：按标签字段拆分后精确匹配（比搜索框的全表模糊匹配准） */}
+                {availableTags.length ? (
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    size="middle"
+                    style={{ minWidth: 180, maxWidth: 320 }}
+                    placeholder="按标签筛选"
+                    value={tagFilter}
+                    onChange={setTagFilter}
+                    options={availableTags}
+                    maxTagCount="responsive"
+                  />
+                ) : null}
               </Space>
               <Space size={8} wrap>
                 <Popover
