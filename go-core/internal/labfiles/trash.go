@@ -28,7 +28,8 @@ const (
 	trashDirName      = ".trash"
 	trashManifestName = "trash.json"
 	// defaultTrashRetentionDays 是未配置 LABGO_TRASH_DAYS 时的保留期。
-	defaultTrashRetentionDays = 30
+	// 全站统一 7 天：回收站与各类日志保持同一口径，不出现 30/90 天混用。
+	defaultTrashRetentionDays = 7
 )
 
 var trashIDRE = regexp.MustCompile(`^[a-f0-9]{12}$`)
@@ -250,6 +251,11 @@ func (r *Registry) Trash(identity Identity, id string) (TrashItem, error) {
 		}
 		return TrashItem{}, ErrForbidden
 	}
+	// 删除权可能被限定在时间窗内（如"学生只能删最近 48 小时上传的材料"）。
+	// 窗口外的条目即使有 delete 权限也拒绝。
+	if err := r.checkDeleteWindow(identity, e.Source, e.Path, e.Modified); err != nil {
+		return TrashItem{}, err
+	}
 	full, err := r.diskPath(e.Source, e.Path)
 	if err != nil {
 		return TrashItem{}, ErrNotFound
@@ -307,10 +313,47 @@ func (r *Registry) Trash(identity Identity, id string) (TrashItem, error) {
 		}
 		return TrashItem{}, storageError("write trash manifest", err)
 	}
+	// 共享路径被删除后，把这一路径上的**共享授权**一并撤掉：
+	// 文件本身已经移走（物理上只有一份），留着授权只会让列表里出现
+	// "共享给某人"但点开是 404 的幽灵条目。
+	r.purgeShareScopes(e.Path)
 	if err := r.Scan(); err != nil {
 		return item, storageError("rescan after trash", err)
 	}
 	return item, nil
+}
+
+// purgeShareScopes 撤掉某个路径上的共享授权。
+//
+// 判据：个人空间的"自己的家目录"授权写作 Source=users, Path=<用户名>（不含 "/"），
+// 而共享授权写作 Path=<owner>/<相对路径>（含 "/"）。因此只清理含 "/" 的那些。
+func (r *Registry) purgeShareScopes(path string) {
+	if path == "" || !strings.Contains(path, "/") {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	changed := false
+	for key, scopes := range r.acl.Identities {
+		kept := make([]Scope, 0, len(scopes))
+		for _, sc := range scopes {
+			if sc.Source == "users" && strings.Contains(sc.Path, "/") &&
+				(sc.Path == path || strings.HasPrefix(sc.Path, path+"/")) {
+				changed = true
+				continue
+			}
+			kept = append(kept, sc)
+		}
+		if len(kept) != len(scopes) {
+			r.acl.Identities[key] = kept
+		}
+	}
+	if !changed {
+		return
+	}
+	if err := r.persistACLLocked(); err != nil {
+		log.Printf("labfiles: purge share scopes for %s failed: %v", path, err)
+	}
 }
 
 // ListTrash 返回调用者有权处置（即在原路径仍有 delete 权限）的回收站条目，
@@ -492,6 +535,91 @@ func (r *Registry) ensureRestoreParent(identity Identity, source, rel string) er
 }
 
 // Purge 永久删除一条回收站记录（保留期未满时的显式操作）。
+// Destroy 永久删除一个条目（**不进回收站**）。
+//
+// 与 Trash 的区别：Trash 先移到回收站、保留 7 天可恢复；
+
+// checkDeleteWindow 校验该身份在给定路径上的删除时间窗。
+//
+// 授权上的 DeleteWithin（如"48h"）表示"只允许删最近这段时间内上传/修改的内容"。
+// 窗口外的条目即使有 delete 权限也必须拒绝 —— 且这条规则必须覆盖
+// **所有**删除路径（进回收站、永久删除、清理回收站），否则"更危险的那条路"
+// 反而没有门槛。
+func (r *Registry) checkDeleteWindow(identity Identity, source, path, modified string) error {
+	window := r.deleteWindowFor(identity, source, path)
+	if window <= 0 {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, modified)
+	if err != nil {
+		// 修改时间读不出来就按超期处理：宁可少让删，不多让删。
+		return ErrForbidden
+	}
+	if time.Since(t) > window {
+		return ErrForbidden
+	}
+	return nil
+}
+
+// Destroy 直接从磁盘抹掉，不可恢复。用于"确定不要了"的场景，
+// 比如误传的大文件、涉密材料、批量清理。
+//
+// 权限与 Trash 一致（需要该路径的 delete 权限），共享路径同样会撤掉授权。
+func (r *Registry) Destroy(identity Identity, id string) (TrashItem, error) {
+	e, ok := r.Get(id)
+	if !ok || e.Path == "" {
+		return TrashItem{}, ErrNotFound
+	}
+	if !r.CanPath(identity, e.Source, e.Path, "delete") {
+		if !r.CanPath(identity, e.Source, e.Path, "read") {
+			return TrashItem{}, ErrNotFound
+		}
+		return TrashItem{}, ErrForbidden
+	}
+	// 永久删除**同样**受删除时间窗约束。
+	//
+	// 以前这里没有窗口判定：Trash() 检查了"48h 内才可删"，但 Destroy()
+	// 直接从磁盘抹掉、绕过回收站与窗口 → 学生只要知道条目 id，
+	// 就能把导师三天前放进共享目录的材料永久删掉，且不可恢复。
+	// 永久删除比进回收站更危险，所以窗口判定必须在这条路上也生效。
+	if err := r.checkDeleteWindow(identity, e.Source, e.Path, e.Modified); err != nil {
+		return TrashItem{}, err
+	}
+	full, err := r.diskPath(e.Source, e.Path)
+	if err != nil {
+		return TrashItem{}, ErrNotFound
+	}
+	info, statErr := os.Lstat(full)
+	if statErr != nil {
+		return TrashItem{}, ErrNotFound
+	}
+	paths, size, err := measurePath(full)
+	if err != nil {
+		return TrashItem{}, storageError("measure destroy target", err)
+	}
+	if _, _, err := removePayload(full); err != nil {
+		return TrashItem{}, storageError("destroy target", err)
+	}
+	// 共享路径被永久删除后，同样要撤掉授权（否则会留下点开即 404 的幽灵条目）
+	r.purgeShareScopes(e.Path)
+	item := TrashItem{
+		ID:        e.ID,
+		Source:    e.Source,
+		Path:      e.Path,
+		Name:      e.Name,
+		Dir:       info.IsDir(),
+		Paths:     paths,
+		Size:      size,
+		Modified:  e.Modified,
+		DeletedAt: time.Now().UTC().Format(time.RFC3339),
+		DeletedBy: identity.LocalPart(),
+	}
+	if err := r.Scan(); err != nil {
+		return item, storageError("rescan after destroy", err)
+	}
+	return item, nil
+}
+
 func (r *Registry) Purge(identity Identity, itemID string) (TrashSummary, error) {
 	empty := TrashSummary{}
 	r.trMu.Lock()

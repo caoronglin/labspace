@@ -227,7 +227,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path == "/v1/admin/file-access-preview" ||
 		r.URL.Path == "/v1/admin/file-groups" ||
 		strings.HasPrefix(r.URL.Path, "/v1/admin/file-access/") ||
-		strings.HasPrefix(r.URL.Path, "/v1/admin/file-groups/") {
+		strings.HasPrefix(r.URL.Path, "/v1/admin/file-groups/") ||
+		strings.HasPrefix(r.URL.Path, "/v1/admin/personal-access/") {
 		s.serveAdmin(w, r, actor)
 		return
 	}

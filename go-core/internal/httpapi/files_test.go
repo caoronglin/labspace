@@ -386,7 +386,7 @@ func TestFileDeleteRoutesThroughTrash(t *testing.T) {
 	if page.Count != 1 || len(page.Items) != 1 {
 		t.Fatalf("unexpected trash page: %+v", page)
 	}
-	if page.TotalBytes != int64(len(">m1\nATGC\n")) || page.RetentionDays != 30 {
+	if page.TotalBytes != int64(len(">m1\nATGC\n")) || page.RetentionDays != 7 {
 		t.Fatalf("unexpected trash summary: %+v", page)
 	}
 	if page.Items[0].SourceLabel == "" || !page.Items[0].Restorable {
@@ -472,5 +472,309 @@ func TestTrashListingNeedsSessionAndStaysPrivate(t *testing.T) {
 	w = fileMutate(t, s, "POST", "/v1/files/trash/restore", other, `{"id":"`+deleted.Trash.ID+`"}`)
 	if w.Code != 404 {
 		t.Fatalf("cross-account restore accepted: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// shareFileServer 建立一个带 ACL 落盘路径的文件服务：共享要写 ACL 文件，
+// 没有落盘路径时 SetPersonalShare 一律拒绝。
+func shareFileServer(t *testing.T) *Server {
+	t.Helper()
+	root := fileTree(t)
+	aclPath := filepath.Join(t.TempDir(), "labgo-acl.json")
+	if err := os.WriteFile(aclPath, []byte(`{"identities":{}}`), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	scopes := func(name string) []labfiles.Scope {
+		return []labfiles.Scope{{Source: "users", Path: name, View: true, Download: true, Modify: true, Create: true, Delete: true}}
+	}
+	reg := labfiles.NewWithACL(root, labfiles.ACL{Identities: map[string][]labfiles.Scope{
+		"student01@local": scopes("student01"),
+		"student02@local": scopes("student02"),
+	}}, aclPath)
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	v, err := session.New([]byte(fileSecret), session.Options{AdminRoles: []string{"lab-admin"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Server{Session: v, Files: reg}
+}
+
+func TestShareEndpointCarriesWritableFlag(t *testing.T) {
+	s := shareFileServer(t)
+	token := fileToken(t, "student01@local", []string{"lab-student"})
+	other := fileToken(t, "student02@local", []string{"lab-student"})
+
+	share := func(body string) labfiles.PersonalShare {
+		t.Helper()
+		w := fileMutate(t, s, "POST", "/v1/files/shares", token, body)
+		if w.Code != 200 {
+			t.Fatalf("share failed: %d %s", w.Code, w.Body.String())
+		}
+		var payload struct {
+			Share labfiles.PersonalShare `json:"share"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload.Share
+	}
+
+	if got := share(`{"path":"maize.fa","recipients":["student02"],"writable":true}`); !got.Writable {
+		t.Fatalf("writable share not echoed: %+v", got)
+	}
+	// 缺省 writable 即只读：共享默认不授予写权限。
+	if got := share(`{"path":"maize.fa","recipients":["student02"]}`); got.Writable {
+		t.Fatalf("read-only share reported writable: %+v", got)
+	}
+
+	// 接收方的「共享给我」列表必须带同一个标记。
+	w := fileCall(t, s, "GET", "/v1/files/shares", other)
+	if w.Code != 200 {
+		t.Fatalf("shares listing: %d %s", w.Code, w.Body.String())
+	}
+	var page struct {
+		SharedWith []labfiles.SharedEntry `json:"sharedWith"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.SharedWith) != 1 || page.SharedWith[0].Writable {
+		t.Fatalf("shared-with listing wrong: %+v", page.SharedWith)
+	}
+
+	// 接收方不能给自己升权：对别人的家目录发起共享必须被拒。
+	w = fileMutate(t, s, "POST", "/v1/files/shares", other, `{"path":"../student01/maize.fa","recipients":["student02"],"writable":true}`)
+	if w.Code == 200 {
+		t.Fatalf("recipient widened a share: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// contentFileServer 建立一个带可编辑文本文件、二进制文件与两个新共享源
+// （课题资料 / 组会汇报）的文件服务。
+//
+// student01 对 notes.md 有改写权限；student02 只有只读权限。
+func contentFileServer(t *testing.T) (*Server, string) {
+	t.Helper()
+	root := t.TempDir()
+	mk := func(rel string) {
+		if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("public")
+	mk("research/2024-09-01-陈同学")
+	mk("meeting/2026-W48")
+	for rel, body := range map[string]string{
+		"public/notes.md": "# notes\n",
+		"public/maize.fa": ">m1\nATGC\n",
+		"research/2024-09-01-陈同学/progress.md": "week 1\n",
+		"meeting/2026-W48/report.md":          "report\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := labfiles.New(root, labfiles.ACL{Identities: map[string][]labfiles.Scope{
+		"student01@local": {
+			{Source: "public", View: true, Download: true, Create: true, Modify: true},
+			{Source: "research", Path: "2024-09-01-陈同学", View: true, Download: true, Create: true, Modify: true},
+			{Source: "meeting", Path: "2026-W48", View: true, Download: true, Create: true, Modify: true},
+		},
+		"student02@local": {
+			{Source: "public", View: true, Download: true},
+		},
+	}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	v, err := session.New([]byte(fileSecret), session.Options{AdminRoles: []string{"lab-admin"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Server{Session: v, Files: reg}, root
+}
+
+type contentPayload struct {
+	Text string `json:"text"`
+	ETag string `json:"etag"`
+}
+
+// TestFileContentRoundTrip 在线编辑的读改写往返。
+func TestFileContentRoundTrip(t *testing.T) {
+	s, root := contentFileServer(t)
+	token := fileToken(t, "student01@local", []string{"lab-student"})
+	id := entryIDByName(t, s, "public", "notes.md")
+
+	r := fileCall(t, s, "GET", "/v1/files/"+id+"/content", token)
+	if r.Code != 200 {
+		t.Fatalf("read content: %d %s", r.Code, r.Body.String())
+	}
+	var first contentPayload
+	if err := json.Unmarshal(r.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Text != "# notes\n" || first.ETag == "" {
+		t.Fatalf("unexpected content payload: %+v", first)
+	}
+
+	body, err := json.Marshal(map[string]string{"text": "# notes\nupdated\n", "etag": first.ETag})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := fileMutate(t, s, "PUT", "/v1/files/"+id+"/content", token, string(body))
+	if w.Code != 200 {
+		t.Fatalf("update content: %d %s", w.Code, w.Body.String())
+	}
+	var updated struct {
+		Entry labfiles.Entry `json:"entry"`
+		ETag  string         `json:"etag"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.ETag == "" || updated.ETag == first.ETag {
+		t.Fatalf("etag not refreshed: %+v", updated)
+	}
+	if updated.Entry.Path != "notes.md" || updated.Entry.Size == 0 {
+		t.Fatalf("entry not refreshed: %+v", updated.Entry)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "public", "notes.md"))
+	if err != nil || string(raw) != "# notes\nupdated\n" {
+		t.Fatalf("file not rewritten: %q %v", raw, err)
+	}
+	r = fileCall(t, s, "GET", "/v1/files/"+id+"/content", token)
+	if r.Code != 200 {
+		t.Fatalf("read back: %d %s", r.Code, r.Body.String())
+	}
+	var second contentPayload
+	if err := json.Unmarshal(r.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.Text != "# notes\nupdated\n" || second.ETag != updated.ETag {
+		t.Fatalf("read back mismatch: %+v", second)
+	}
+}
+
+// TestFileContentRejectsStaleETag etag 对不上时返回 409，并附上当前 etag。
+func TestFileContentRejectsStaleETag(t *testing.T) {
+	s, root := contentFileServer(t)
+	token := fileToken(t, "student01@local", []string{"lab-student"})
+	id := entryIDByName(t, s, "public", "notes.md")
+
+	w := fileMutate(t, s, "PUT", "/v1/files/"+id+"/content", token,
+		`{"text":"overwrite","etag":"0123456789abcdef"}`)
+	if w.Code != 409 {
+		t.Fatalf("stale etag accepted: %d %s", w.Code, w.Body.String())
+	}
+	var conflict struct {
+		Error string `json:"error"`
+		ETag  string `json:"etag"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &conflict); err != nil {
+		t.Fatal(err)
+	}
+	if conflict.ETag == "" || conflict.ETag == "0123456789abcdef" {
+		t.Fatalf("conflict response carries no current etag: %+v", conflict)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "public", "notes.md"))
+	if err != nil || string(raw) != "# notes\n" {
+		t.Fatalf("stale write changed the file: %q %v", raw, err)
+	}
+}
+
+// TestFileContentRejectsNonTextFile 非文本文件不能在线编辑。
+func TestFileContentRejectsNonTextFile(t *testing.T) {
+	s, _ := contentFileServer(t)
+	token := fileToken(t, "student01@local", []string{"lab-student"})
+	id := entryIDByName(t, s, "public", "maize.fa")
+
+	w := fileMutate(t, s, "PUT", "/v1/files/"+id+"/content", token, `{"text":">m2\nATGC\n"}`)
+	if w.Code != 400 {
+		t.Fatalf("binary file accepted for editing: %d %s", w.Code, w.Body.String())
+	}
+	if r := fileCall(t, s, "GET", "/v1/files/"+id+"/content", token); r.Code != 400 {
+		t.Fatalf("binary file content read: %d %s", r.Code, r.Body.String())
+	}
+}
+
+// TestFileContentRejectsOversizedText 超过 1 MiB 的文本返回 413。
+func TestFileContentRejectsOversizedText(t *testing.T) {
+	s, _ := contentFileServer(t)
+	token := fileToken(t, "student01@local", []string{"lab-student"})
+	id := entryIDByName(t, s, "public", "notes.md")
+
+	body, err := json.Marshal(map[string]string{
+		"text": strings.Repeat("a", (1<<20)+1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := fileMutate(t, s, "PUT", "/v1/files/"+id+"/content", token, string(body))
+	if w.Code != 413 {
+		t.Fatalf("oversized text accepted: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// TestFileContentRequiresModifyPermission 没有改写权限的人被拒。
+func TestFileContentRequiresModifyPermission(t *testing.T) {
+	s, root := contentFileServer(t)
+	id := entryIDByName(t, s, "public", "notes.md")
+	other := fileToken(t, "student02@local", []string{"lab-student"})
+
+	w := fileMutate(t, s, "PUT", "/v1/files/"+id+"/content", other, `{"text":"not mine"}`)
+	if w.Code != 403 {
+		t.Fatalf("write without modify permission accepted: %d %s", w.Code, w.Body.String())
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "public", "notes.md"))
+	if err != nil || string(raw) != "# notes\n" {
+		t.Fatalf("refused write still changed the file: %q %v", raw, err)
+	}
+	// 只读的人仍然可以读内容。
+	if r := fileCall(t, s, "GET", "/v1/files/"+id+"/content", other); r.Code != 200 {
+		t.Fatalf("read-only content read: %d %s", r.Code, r.Body.String())
+	}
+}
+
+// TestFileContentHidesUnreadableFiles 看不到的文件不能读内容。
+func TestFileContentHidesUnreadableFiles(t *testing.T) {
+	s, _ := contentFileServer(t)
+	id := entryIDByName(t, s, "public", "notes.md")
+	stranger := fileToken(t, "stranger@local", []string{"lab-student"})
+
+	if r := fileCall(t, s, "GET", "/v1/files/"+id+"/content", stranger); r.Code != 404 {
+		t.Fatalf("unreadable file content exposed: %d %s", r.Code, r.Body.String())
+	}
+	if w := fileMutate(t, s, "PUT", "/v1/files/"+id+"/content", stranger, `{"text":"x"}`); w.Code != 404 {
+		t.Fatalf("unreadable file content written: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// TestNewSharedSourcesAreListed 新的两个共享源出现在源清单里。
+func TestNewSharedSourcesAreListed(t *testing.T) {
+	s, _ := contentFileServer(t)
+	token := fileToken(t, "student01@local", []string{"lab-student"})
+	r := fileCall(t, s, "GET", "/v1/files/sources", token)
+	if r.Code != 200 {
+		t.Fatalf("sources: %d %s", r.Code, r.Body.String())
+	}
+	var payload struct {
+		Sources []struct {
+			ID       string `json:"id"`
+			Label    string `json:"label"`
+			Shared   bool   `json:"shared"`
+			Listable bool   `json:"listable"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]bool{}
+	for _, src := range payload.Sources {
+		byID[src.ID] = src.Shared
+	}
+	if !byID["research"] || !byID["meeting"] {
+		t.Fatalf("new shared sources missing: %+v", payload.Sources)
 	}
 }

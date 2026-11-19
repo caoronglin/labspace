@@ -62,6 +62,32 @@ func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, a actor) {
 			"directories": s.Files.Directories(),
 			"groups":      s.Files.FileGroups(),
 		})
+	case strings.HasPrefix(r.URL.Path, "/v1/admin/personal-access/") && r.Method == http.MethodGet:
+		name, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/v1/admin/personal-access/"))
+		if err != nil || name == "" || strings.Contains(name, "/") {
+			deny(w, 400, "invalid account name")
+			return
+		}
+		jsonResponse(w, 200, map[string]any{"scopes": s.Files.PersonalAccess(name)})
+	case strings.HasPrefix(r.URL.Path, "/v1/admin/personal-access/") && r.Method == http.MethodPut:
+		name, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/v1/admin/personal-access/"))
+		if err != nil || name == "" || strings.Contains(name, "/") {
+			deny(w, 400, "invalid account name")
+			return
+		}
+		var req struct {
+			Grants []labfiles.Grant `json:"grants"`
+		}
+		if err := decodeAdminJSON(r, &req); err != nil {
+			deny(w, 400, "invalid request body")
+			return
+		}
+		scopes, err := s.Files.SetPersonalAccess(name, req.Grants)
+		if err != nil {
+			adminError(w, err)
+			return
+		}
+		jsonResponse(w, 200, map[string]any{"ok": true, "scopes": scopes})
 	case strings.HasPrefix(r.URL.Path, "/v1/admin/file-access/") && r.Method == http.MethodPut:
 		name, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/v1/admin/file-access/"))
 		if err != nil || name == "" || strings.Contains(name, "/") {

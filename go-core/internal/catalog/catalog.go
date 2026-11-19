@@ -152,7 +152,15 @@ func Default() *Service {
 				Description: "课程、实验环境、终端工作区、提交与批阅（门户内嵌统一入口）",
 				URL:         "/bioinfo", Icon: "CodeOutlined",
 				OpenMode: "link",
-				Tags:     []string{"生信", "实训", "终端", "课程"},
+				// 生信平台用自己的 OIDC 客户端（client_id=bioinfo-training），
+				// 不认门户会话 cookie —— 门户直接内嵌会是一个 401 的空壳。
+				// 这里给出它的登录入口，前端「一键登录」调用后走 Casdoor 授权；
+				// 用户已经登录过 Casdoor，因此这一跳无需再次输密码（等效 SSO）。
+				// 用绝对地址而不是 /bioinfo/...：门户 80 的 /bioinfo 是 SPA 路由，
+				// 不是到 8102 的透传代理（实测返回 index.html 而非 302）。
+				// adaptText 会把 192.0.2.10 换成用户当前访问的主机。
+				SSOURL: "http://192.0.2.10:8102/api/v1/auth/login",
+				Tags:   []string{"生信", "实训", "终端", "课程"},
 				Guide: []string{
 					"门户 /bioinfo 是统一入口，按「总览 / 课程 / 实验 / 终端工作区 / 提交记录」分区内嵌平台。",
 					"统一使用 Casdoor 账号登录；教师可发布课程与实验，学生在受控终端里完成作业。",
@@ -204,6 +212,57 @@ func Default() *Service {
 				},
 				Enabled: true, Status: "preserved", Engine: "SnapOtter",
 				Health: HealthSpec{URL: "http://127.0.0.1:8092/api/v1/health", Kind: "http"},
+			},
+			{
+				ID: "primer", Name: "引物设计（Primer3）", Category: "research",
+				Description: "单条/批量引物设计、qPCR、探针、环状模板向外扩增；内含 Primer3 2.6.1，全部本地计算",
+				// 走独立端口而不是门户路径：Primer 的 SPA 用绝对资源路径
+				// （/assets/...），挂在 /primer-app/ 子路径下资源会 404。
+				// 与 draw.io / JBrowse 的做法一致：绝对 URL + adaptText 自动换主机。
+				URL: "http://192.0.2.10:8097/", Icon: "ExperimentOutlined",
+				OpenMode: "link",
+				Tags:     []string{"引物", "PCR", "qPCR", "Primer3", "克隆"},
+				Guide: []string{
+					"从门户进入需先登录：该应用本身无鉴权，入口由 nginx 用门户会话做 auth_request 校验。",
+					"所有计算在本机完成，序列不上传外网。",
+				},
+				Enabled: true, Status: "new", Engine: "Primer3 2.6.1 + FastAPI",
+				// 探活走门户代理端口：容器只绑回环，内网只能经 nginx 访问。
+				Health: HealthSpec{URL: "http://127.0.0.1:8097/health", Kind: "http"},
+			},
+			{
+				ID: "webssh", Name: "内网终端（WebSSH）", Category: "research",
+				Description: "浏览器里的 SSH/SFTP：手机也能连内网 HPC 与桌面，不用装 SSH 客户端",
+				// 独立端口 + 绝对 URL：应用自己带 WebSocket 与静态资源，
+				// 挂子路径会 404（与 primer / draw.io 同样的做法）。
+				URL: "http://192.0.2.10:8105/", Icon: "CodeOutlined",
+				OpenMode: "link",
+				Tags:     []string{"SSH", "终端", "HPC", "远程", "运维"},
+				Guide: []string{
+					"入口由 nginx 用门户会话做 auth_request 校验；应用自己还有一层账号（首次需在该页面注册）。",
+					"SSH 目标被白名单限制在实验室的 HPC 与桌面，不能拿它当跳板扫内网。",
+					"会话数、传输量、连接速率都有配额（见 compose.yaml）。",
+				},
+				Enabled: true, Status: "new", Engine: "WebSSH 3 (Python)",
+				Health: HealthSpec{URL: "http://127.0.0.1:8105/ready", Kind: "http"},
+			},
+			{
+				ID: "stirling", Name: "PDF 工具箱", Category: "research",
+				Description: "论文 PDF 的合并、拆分、压缩、旋转、删页与重排；全部本机处理，文件不出内网",
+				// 指向**门户自绘**的页面（/pdf），不是 Stirling 自己的界面：
+				// 与 Baserow 多维表格同一条原则 —— 能自己画的就自己画，
+				// 免得用户在里面再登一次、还得适应另一套导航。
+				// Stirling 的原生界面仍在 8106 端口可用，供需要完整功能时直达。
+				URL: "/pdf", Icon: "FilePdfOutlined",
+				OpenMode: "link",
+				Tags:     []string{"PDF", "论文", "合并", "拆分", "转换"},
+				Guide: []string{
+					"入口由 nginx 用门户会话做 auth_request 校验。",
+					"转换会拉起 LibreOffice 子进程，已限制并发（SYSTEM_EXECUTORPROCESSLIMIT=2）与单任务超时。",
+					"不调用任何第三方 OCR / 转换 API，上传的文件不出本机。",
+				},
+				Enabled: true, Status: "new", Engine: "Stirling PDF 3.3 (Java)",
+				Health: HealthSpec{URL: "http://127.0.0.1:8106/actuator/health", Kind: "http"},
 			},
 		},
 		native: []NativeItem{

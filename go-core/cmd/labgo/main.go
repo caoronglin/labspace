@@ -341,6 +341,35 @@ func main() {
 	}()
 	log.Printf("LabGo reference server on %s (loopback only; fail-closed)", addr)
 
+	// --- 组会汇报的周目录定期压缩：老周目录打包成 tar.gz，省空间。
+	// 保留窗口由 LABGO_MEETING_KEEP_WEEKS 决定（默认 8 周）。
+	meetingKeepWeeks := 8
+	if n, err := strconv.Atoi(env("LABGO_MEETING_KEEP_WEEKS", "8")); err == nil && n >= 0 {
+		meetingKeepWeeks = n
+	}
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if fileRegistry == nil {
+					continue
+				}
+				compressed, err := fileRegistry.CompressOldMeetingFolders(meetingKeepWeeks)
+				if err != nil {
+					log.Printf("WARN: meeting archive: %v", err)
+					continue
+				}
+				if len(compressed) > 0 {
+					log.Printf("meeting archive: compressed %d week folders", len(compressed))
+				}
+			}
+		}
+	}()
+
 	// --- Docker bridge listener: containers reach the core through the
 	// host bridge address (the portal backend calls the core this way).
 	bridgeAddr := strings.TrimSpace(os.Getenv("LABGO_BRIDGE_ADDR"))

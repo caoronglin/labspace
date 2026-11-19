@@ -122,7 +122,8 @@ func TestTrashRoundTripRestoresFileAndMtime(t *testing.T) {
 	}
 	if exp, perr := time.Parse(time.RFC3339, got.ExpiresAt); perr != nil {
 		t.Fatalf("expiresAt is not a timestamp: %v", perr)
-	} else if days := time.Until(exp) / (24 * time.Hour); days < 29 || days > 30 {
+	} else if days := time.Until(exp) / (24 * time.Hour); days < 6 || days > 7 {
+		// 全站统一 7 天保留（与日志同口径），不再有 30/90 天
 		t.Fatalf("unexpected retention window: %v", days)
 	}
 

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func writeTree(t *testing.T) string {
@@ -57,6 +59,20 @@ func acl() ACL {
 
 func student() Identity {
 	return Identity{UserID: "student01@local", Email: "student01@local", Roles: []string{"lab-student"}}
+}
+
+// aclWritable mirrors the production ACL shape: a user's own home directory is
+// granted create/modify/delete, not just view/download. The base acl() fixture
+// deliberately omits create, so the move tests build on this instead.
+func aclWritable() ACL {
+	a := acl()
+	a.Identities["student01@local"] = []Scope{
+		{Source: "public", View: true, Download: true},
+		{Source: "users", Path: "student01", View: true, Download: true, Modify: true, Create: true, Delete: true},
+		{Source: "plasmids", View: true, Download: true},
+		{Source: "genomes", Path: "grp-rnaseq", View: true, Download: true},
+	}
+	return a
 }
 
 func TestScanIndexesRealTree(t *testing.T) {
@@ -624,12 +640,16 @@ func TestPersonalShareGrantsReadOnlyToRecipient(t *testing.T) {
 	if err := reg.Scan(); err != nil {
 		t.Fatal(err)
 	}
-	share, err := reg.SetPersonalShare("student01", "maize.fa", []string{"student02"})
+	owner := Identity{UserID: "student01@local", Email: "student01@local"}
+	share, err := reg.SetPersonalShare(owner, "maize.fa", []string{"student02"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if share.Path != "maize.fa" || len(share.Recipients) != 1 || share.Recipients[0] != "student02" {
 		t.Fatalf("unexpected share: %+v", share)
+	}
+	if share.Writable {
+		t.Fatal("a read-only share reported writable")
 	}
 	recipient := Identity{UserID: "student02@local", Email: "student02@local"}
 	if !reg.CanPath(recipient, "users", "student01/maize.fa", "read") {
@@ -645,13 +665,19 @@ func TestPersonalShareGrantsReadOnlyToRecipient(t *testing.T) {
 	if len(shared) != 1 || shared[0].Owner != "student01" || shared[0].Path != "student01/maize.fa" {
 		t.Fatalf("shared-with listing wrong: %+v", shared)
 	}
+	if shared[0].Writable {
+		t.Fatal("read-only share reported as writable")
+	}
 	shares := reg.PersonalShares("student01")
 	if len(shares) != 1 || shares[0].Path != "maize.fa" || len(shares[0].Recipients) != 1 {
 		t.Fatalf("owner share listing wrong: %+v", shares)
 	}
+	if shares[0].Writable {
+		t.Fatal("owner share listing reported a read-only share as writable")
+	}
 
 	// 替换为空名单即撤销共享。
-	if _, err := reg.SetPersonalShare("student01", "maize.fa", nil); err != nil {
+	if _, err := reg.SetPersonalShare(owner, "maize.fa", nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if reg.CanPath(recipient, "users", "student01/maize.fa", "read") {
@@ -661,14 +687,203 @@ func TestPersonalShareGrantsReadOnlyToRecipient(t *testing.T) {
 		t.Fatal("revoked share still listed")
 	}
 
-	if _, err := reg.SetPersonalShare("student01", "maize.fa", []string{"ghost"}); !errors.Is(err, ErrNotFound) {
+	if _, err := reg.SetPersonalShare(owner, "maize.fa", []string{"ghost"}, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown recipient accepted: %v", err)
 	}
-	if _, err := reg.SetPersonalShare("student01", "../student02/secret.fa", nil); !errors.Is(err, ErrInvalidPath) {
+	if _, err := reg.SetPersonalShare(owner, "../student02/secret.fa", nil, false); !errors.Is(err, ErrInvalidPath) {
 		t.Fatalf("traversal accepted: %v", err)
 	}
-	if _, err := New(root, acl()).SetPersonalShare("student01", "maize.fa", nil); !errors.Is(err, ErrACLStore) {
+	if _, err := New(root, acl()).SetPersonalShare(owner, "maize.fa", nil, false); !errors.Is(err, ErrACLStore) {
 		t.Fatalf("share without an ACL store accepted: %v", err)
+	}
+}
+
+// shareACL mirrors the production ACL shape: both students own a fully
+// writable home directory, so a shared file can really be moved into the
+// recipient's own space.
+func shareACL() ACL {
+	a := aclWritable()
+	a.Identities["student02@local"] = []Scope{
+		{Source: "public", View: true, Download: true},
+		{Source: "users", Path: "student02", View: true, Download: true, Create: true, Modify: true, Delete: true},
+		{Source: "plasmids", View: true, Download: true},
+		{Source: "genomes", Path: "grp-mcn", View: true, Download: true},
+	}
+	return a
+}
+
+func TestPersonalShareWritableGrantsEditRights(t *testing.T) {
+	root := writeTree(t)
+	path := aclFile(t, root)
+	if err := os.WriteFile(filepath.Join(root, "users/student01/notes.md"), []byte("notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := NewWithACL(root, shareACL(), path)
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	owner := Identity{UserID: "student01@local", Email: "student01@local"}
+	recipient := Identity{UserID: "student02@local", Email: "student02@local"}
+
+	share, err := reg.SetPersonalShare(owner, "maize.fa", []string{"student02"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !share.Writable {
+		t.Fatalf("writable share not reported: %+v", share)
+	}
+	if !reg.CanPath(recipient, "users", "student01/maize.fa", "modify") {
+		t.Fatal("writable share did not grant modify")
+	}
+	if !reg.CanPath(recipient, "users", "student01/maize.fa", "create") {
+		t.Fatal("writable share did not grant create")
+	}
+	if !reg.CanPath(recipient, "users", "student01/maize.fa/new.txt", "create") {
+		t.Fatal("writable share did not grant create inside the shared directory")
+	}
+	// 共享出去的路径允许接收方删除：物理上只有一份，删除是全局的
+	// （owner 那份也会消失），因此共享出去的条目必须有 delete 权限。
+	if !reg.CanPath(recipient, "users", "student01/maize.fa", "delete") {
+		t.Fatal("shared file must be deletable by the recipient")
+	}
+	if reg.CanPath(recipient, "users", "student01", "create") {
+		t.Fatal("writable share escaped the shared path")
+	}
+
+	// SharedWith 与 PersonalShares 必须报告同一个"可编辑"标记。
+	shared := reg.SharedWith(recipient)
+	if len(shared) != 1 || !shared[0].Writable {
+		t.Fatalf("shared-with listing wrong: %+v", shared)
+	}
+	shares := reg.PersonalShares("student01")
+	if len(shares) != 1 || !shares[0].Writable {
+		t.Fatalf("owner share listing wrong: %+v", shares)
+	}
+
+	// 标记随 ACL 一起落盘：重新加载后仍然是可写共享。
+	loaded, err := LoadACL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewWithACL(root, loaded, path)
+	if err := reloaded.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.CanPath(recipient, "users", "student01/maize.fa", "modify") {
+		t.Fatal("writable grant did not survive a reload")
+	}
+
+	// 接收方现在真的可以移动共享出来的文件（共享视图"无法移动"的根因修复）。
+	var sharedFile Entry
+	for _, e := range reg.Visible(recipient, "users") {
+		if e.Path == "student01/maize.fa" {
+			sharedFile = e
+		}
+	}
+	if sharedFile.ID == "" {
+		t.Fatal("shared file not visible to the recipient")
+	}
+	if _, err := reg.Move(recipient, sharedFile.ID, "student02"); err != nil {
+		t.Fatalf("recipient could not move the shared file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "users/student02/maize.fa")); err != nil {
+		t.Fatalf("moved file missing in the recipient's home: %v", err)
+	}
+}
+
+func TestPersonalShareReadOnlyKeepsRecipientLocked(t *testing.T) {
+	root := writeTree(t)
+	path := aclFile(t, root)
+	if err := os.WriteFile(filepath.Join(root, "users/student01/notes.md"), []byte("notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := NewWithACL(root, shareACL(), path)
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	owner := Identity{UserID: "student01@local", Email: "student01@local"}
+	recipient := Identity{UserID: "student02@local", Email: "student02@local"}
+
+	// 先开一个可写共享，再改回只读：旧的写权限必须一并撤销。
+	if _, err := reg.SetPersonalShare(owner, "notes.md", []string{"student02"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.CanPath(recipient, "users", "student01/notes.md", "modify") {
+		t.Fatal("writable share did not grant modify")
+	}
+
+	share, err := reg.SetPersonalShare(owner, "notes.md", []string{"student02"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.Writable {
+		t.Fatalf("read-only share reported writable: %+v", share)
+	}
+	if !reg.CanPath(recipient, "users", "student01/notes.md", "read") {
+		t.Fatal("recipient cannot read the shared file")
+	}
+	if !reg.CanPath(recipient, "users", "student01/notes.md", "download") {
+		t.Fatal("recipient cannot download the shared file")
+	}
+	if reg.CanPath(recipient, "users", "student01/notes.md", "modify") {
+		t.Fatal("read-only share granted modify")
+	}
+	if reg.CanPath(recipient, "users", "student01/notes.md", "create") {
+		t.Fatal("read-only share granted create")
+	}
+	shared := reg.SharedWith(recipient)
+	if len(shared) != 1 || shared[0].Writable {
+		t.Fatalf("shared-with listing wrong: %+v", shared)
+	}
+	shares := reg.PersonalShares("student01")
+	if len(shares) != 1 || shares[0].Writable {
+		t.Fatalf("owner share listing wrong: %+v", shares)
+	}
+
+	var sharedFile Entry
+	for _, e := range reg.Visible(recipient, "users") {
+		if e.Path == "student01/notes.md" {
+			sharedFile = e
+		}
+	}
+	if sharedFile.ID == "" {
+		t.Fatal("shared file not visible to the recipient")
+	}
+	if _, err := reg.Move(recipient, sharedFile.ID, "student02"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("read-only share allowed a move: %v", err)
+	}
+}
+
+func TestPersonalShareRecipientCannotEscalate(t *testing.T) {
+	root := writeTree(t)
+	path := aclFile(t, root)
+	reg := NewWithACL(root, shareACL(), path)
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	owner := Identity{UserID: "student01@local", Email: "student01@local"}
+	recipient := Identity{UserID: "student02@local", Email: "student02@local"}
+
+	if _, err := reg.SetPersonalShare(owner, "maize.fa", []string{"student02"}, false); err != nil {
+		t.Fatal(err)
+	}
+	// owner 恒取调用者身份：收件人无法把别人的家目录路径改成自己的可写共享。
+	if _, err := reg.SetPersonalShare(recipient, "student01/maize.fa", []string{"student02"}, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("recipient could target another home: %v", err)
+	}
+	if _, err := reg.SetPersonalShare(recipient, "../student01/maize.fa", nil, true); !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("traversal accepted: %v", err)
+	}
+	if _, err := reg.SetPersonalShare(recipient, "maize.fa", []string{"student02"}, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("recipient could share a path it does not own: %v", err)
+	}
+	// 收件人自己的那一份共享必须仍然是只读。
+	if reg.CanPath(recipient, "users", "student01/maize.fa", "modify") {
+		t.Fatal("recipient escalated its own grant")
+	}
+	shares := reg.PersonalShares("student01")
+	if len(shares) != 1 || shares[0].Writable {
+		t.Fatalf("owner share listing changed by the recipient: %+v", shares)
 	}
 }
 
@@ -976,5 +1191,332 @@ func TestDeprovisionUserRequiresACLStore(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(reg.Root(), "users", "student01")); err != nil {
 		t.Fatal("personal directory was removed although the ACL store refused")
+	}
+}
+
+// Move is the "drag into another folder" operation. These tests pin the three
+// properties the storage UI depends on: the subtree follows the directory, a
+// destination collision is refused instead of overwritten, and a directory can
+// never be moved into its own subtree.
+//
+// Note: Entry.Path inside one source is source-relative ("student01/maize.fa"),
+// the source itself travels separately in Entry.Source.
+func TestMoveRelocatesFileAndKeepsRegistryInSync(t *testing.T) {
+	root := writeTree(t)
+	if err := os.MkdirAll(filepath.Join(root, "users/student01/sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := New(root, aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var file Entry
+	for _, e := range reg.Visible(student(), "users") {
+		if e.Name == "maize.fa" {
+			file = e
+		}
+	}
+	if file.ID == "" {
+		t.Fatal("seed file not indexed")
+	}
+	if _, err := reg.Move(student(), file.ID, "student01"); err != nil {
+		t.Fatalf("moving into the same directory must be a no-op, got %v", err)
+	}
+	moved, err := reg.Move(student(), file.ID, "student01/sub")
+	if err != nil {
+		t.Fatalf("move failed: %v", err)
+	}
+	if moved.Path != "student01/sub/maize.fa" {
+		t.Fatalf("unexpected destination: %q", moved.Path)
+	}
+	if _, err := os.Stat(filepath.Join(root, "users/student01/maize.fa")); !os.IsNotExist(err) {
+		t.Fatal("source file still on disk after move")
+	}
+	if got, ok := reg.Get(moved.ID); !ok || got.Path != moved.Path {
+		t.Fatalf("registry did not re-index the moved entry: %+v", got)
+	}
+}
+
+func TestMoveRefusesOverwrite(t *testing.T) {
+	root := writeTree(t)
+	if err := os.MkdirAll(filepath.Join(root, "users/student01/target"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "users/student01/target/maize.fa"), []byte(">x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := New(root, aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var src Entry
+	for _, e := range reg.Visible(student(), "users") {
+		if e.Path == "student01/maize.fa" {
+			src = e
+		}
+	}
+	if src.ID == "" {
+		t.Fatal("seed file not indexed")
+	}
+	if _, err := reg.Move(student(), src.ID, "student01/target"); !errors.Is(err, ErrExists) {
+		t.Fatalf("expected ErrExists, got %v", err)
+	}
+}
+
+func TestMoveRefusesDirectoryIntoItsOwnSubtree(t *testing.T) {
+	root := writeTree(t)
+	if err := os.MkdirAll(filepath.Join(root, "users/student01/a/b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := New(root, aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var dir Entry
+	for _, e := range reg.Visible(student(), "users") {
+		if e.Path == "student01/a" {
+			dir = e
+		}
+	}
+	if dir.ID == "" {
+		t.Fatal("seed directory not indexed")
+	}
+	if _, err := reg.Move(student(), dir.ID, "student01/a/b"); !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("expected ErrInvalidPath, got %v", err)
+	}
+	if _, err := reg.Move(student(), dir.ID, "student01/a"); !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("expected ErrInvalidPath for self-move, got %v", err)
+	}
+}
+
+func TestMoveRequiresModifyAndCreate(t *testing.T) {
+	root := writeTree(t)
+	if err := os.MkdirAll(filepath.Join(root, "public/drop"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := New(root, aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var publicFile Entry
+	for _, e := range reg.Visible(student(), "public") {
+		if e.Name == "readme.md" {
+			publicFile = e
+		}
+	}
+	if publicFile.ID == "" {
+		t.Fatal("seed public file not indexed")
+	}
+	if _, err := reg.Move(student(), publicFile.ID, "drop"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("read-only source must refuse the move, got %v", err)
+	}
+	other := Identity{UserID: "student02@local", Email: "student02@local", Roles: []string{"lab-student"}}
+	if _, err := reg.Move(other, publicFile.ID, "drop"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-owner must not move another user's entry, got %v", err)
+	}
+}
+
+// Copy 与目录大小是文件存储两个新能力：复制必须保留子树且不覆盖，
+// 目录大小必须只统计同源子树（否则跨源串味，数字会莫名其妙变大）。
+func TestCopyDuplicatesFileWithoutTouchingSource(t *testing.T) {
+	root := writeTree(t)
+	if err := os.MkdirAll(filepath.Join(root, "users/student01/target"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := New(root, aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var src Entry
+	for _, e := range reg.Visible(student(), "users") {
+		if e.Path == "student01/maize.fa" {
+			src = e
+		}
+	}
+	if src.ID == "" {
+		t.Fatal("seed file not indexed")
+	}
+	copied, err := reg.Copy(student(), src.ID, "student01/target", "")
+	if err != nil {
+		t.Fatalf("copy failed: %v", err)
+	}
+	if copied.Path != "student01/target/maize.fa" {
+		t.Fatalf("unexpected destination: %q", copied.Path)
+	}
+	if _, err := os.Stat(filepath.Join(root, "users/student01/maize.fa")); err != nil {
+		t.Fatal("copy must keep the source file")
+	}
+	if _, err := reg.Copy(student(), src.ID, "student01/target", ""); !errors.Is(err, ErrExists) {
+		t.Fatalf("expected ErrExists on second copy, got %v", err)
+	}
+}
+
+func TestCopyDirectoryRecursesAndSkipsHidden(t *testing.T) {
+	root := writeTree(t)
+	if err := os.MkdirAll(filepath.Join(root, "users/student01/proj/raw"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "users/student01/proj/raw/a.txt"), []byte("aaa"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "users/student01/proj/.hidden"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := New(root, aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	var dir Entry
+	for _, e := range reg.Visible(student(), "users") {
+		if e.Path == "student01/proj" {
+			dir = e
+		}
+	}
+	if dir.ID == "" {
+		t.Fatal("seed directory not indexed")
+	}
+	copied, err := reg.Copy(student(), dir.ID, "student01", "proj-copy")
+	if err != nil {
+		t.Fatalf("copy dir failed: %v", err)
+	}
+	if copied.Path != "student01/proj-copy" || !copied.Dir {
+		t.Fatalf("unexpected copy result: %+v", copied)
+	}
+	if _, err := os.Stat(filepath.Join(root, "users/student01/proj-copy/raw/a.txt")); err != nil {
+		t.Fatal("nested file missing from copied tree")
+	}
+	if _, err := os.Stat(filepath.Join(root, "users/student01/proj-copy/.hidden")); !os.IsNotExist(err) {
+		t.Fatal("hidden files must not be copied")
+	}
+}
+
+func TestVisibleFillsDirSizeFromOwnSourceOnly(t *testing.T) {
+	reg := New(writeTree(t), aclWritable())
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range reg.Visible(student(), "users") {
+		if e.Path != "student01" || !e.Dir {
+			continue
+		}
+		// 只有 maize.fa（9 字节）；另一用户目录不计入
+		if e.DirSize != int64(len(">m1\nATGC\n")) {
+			t.Fatalf("unexpected dir size: %d", e.DirSize)
+		}
+		return
+	}
+	t.Fatal("home directory not visible")
+}
+
+// 共享文件的删除必须"全局生效"：接收方删了，owner 那份也没了（同一个物理文件），
+// 并且这一路径上的共享授权要一起撤掉，不能留下"共享给某人但点开 404"的幽灵条目。
+func TestSharedFileDeletePropagatesToOwner(t *testing.T) {
+	root := writeTree(t)
+	aclPath := filepath.Join(t.TempDir(), "acl.json")
+	reg := NewWithACL(root, acl(), aclPath)
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	owner := Identity{UserID: "student01@local", Email: "student01@local", Roles: []string{"lab-student"}}
+	recipient := Identity{UserID: "student02@local", Email: "student02@local", Roles: []string{"lab-student"}}
+
+	// owner 把自己的一份共享给接收方
+	if _, err := reg.SetPersonalShare(owner, "maize.fa", []string{"student02"}, false); err != nil {
+		t.Fatalf("share failed: %v", err)
+	}
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	shared, ok := reg.lookup("users", "student01/maize.fa")
+	if !ok {
+		t.Fatal("shared file not indexed")
+	}
+	// 接收方看得到这份文件
+	if !reg.CanPath(recipient, "users", "student01/maize.fa", "read") {
+		t.Fatal("recipient cannot read the shared file")
+	}
+	// 接收方可以删除（删除即全局删除）
+	if _, err := reg.Trash(recipient, shared.ID); err != nil {
+		t.Fatalf("recipient delete failed: %v", err)
+	}
+	// owner 那份也没了：物理文件只有一个
+	if _, ok := reg.lookup("users", "student01/maize.fa"); ok {
+		t.Fatal("owner copy still present after recipient deleted it")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "users", "student01", "maize.fa")); !os.IsNotExist(statErr) {
+		t.Fatal("file still on disk after delete")
+	}
+	// 共享授权也要撤掉：不能再有人"共享给我"一个已删除的文件
+	if reg.CanPath(recipient, "users", "student01/maize.fa", "read") {
+		t.Fatal("share grant survived the deletion")
+	}
+}
+
+func TestShareGrantAllowsDeleteForRecipient(t *testing.T) {
+	aclPath := filepath.Join(t.TempDir(), "acl.json")
+	reg := NewWithACL(writeTree(t), acl(), aclPath)
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	owner := Identity{UserID: "student01@local", Email: "student01@local", Roles: []string{"lab-student"}}
+	recipient := Identity{UserID: "student02@local", Email: "student02@local", Roles: []string{"lab-student"}}
+	if _, err := reg.SetPersonalShare(owner, "maize.fa", []string{"student02"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if !reg.CanPath(recipient, "users", "student01/maize.fa", "delete") {
+		t.Fatal("recipient must be able to delete a shared file (delete is global)")
+	}
+}
+
+// TestVisibleUnderWritePressureDoesNotDeadlock 守住一个会导致线上整体挂死的坑：
+//
+// Visible() 原来持有读锁时又调用 fillDirSizes()，后者再次 RLock。
+// Go 的 RWMutex 是写者优先的——只要有写者在排队，新的 RLock 就会阻塞，
+// 递归读锁于是永久死锁（实测表现：文件列表与 /v1/admin/file-access 全挂死，
+// goroutine 卡在 RLock、进程 CPU 为 0%）。
+//
+// 这里一边持续写 ACL（制造写者排队），一边反复列目录；只要路径里还有递归
+// 读锁，本测试就会超时失败。
+func TestVisibleUnderWritePressureDoesNotDeadlock(t *testing.T) {
+	root := writeTree(t)
+	reg := NewWithACL(root, acl(), aclFile(t, root))
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	id := student()
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// 写者：不断改 ACL，制造持续的写锁竞争。
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			_, _ = reg.SetPersonalAccess("student02", []Grant{})
+		}
+	}()
+
+	// 读者：反复列目录（走 Visible → fillDirSizesLocked）。
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		for i := 0; i < 200; i++ {
+			_ = reg.Visible(id, "users")
+		}
+	}()
+
+	select {
+	case <-readDone:
+		close(done)
+		wg.Wait()
+	case <-time.After(20 * time.Second):
+		close(done)
+		t.Fatal("Visible 在写压力下死锁（递归 RLock）")
 	}
 }

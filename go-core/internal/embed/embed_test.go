@@ -73,8 +73,8 @@ func TestClassifyAllowsEntryHostInFrameAncestors(t *testing.T) {
 	)
 	cases := map[string]bool{
 		"http://198.51.100.71": true,
-		"http://192.0.2.10":   true,
-		"http://10.0.0.9":       false,
+		"http://192.0.2.10":  true,
+		"http://10.0.0.9":      false,
 	}
 	for ancestor, want := range cases {
 		ok, _, _ := classify(rec.Result(), ancestor)

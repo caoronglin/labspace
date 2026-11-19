@@ -52,23 +52,31 @@ type Source struct {
 }
 
 // Sources are the shared lab sources plus each account's personal space.
+//
+// research（课题资料）与 meeting（组会汇报）是按目录授权的共享源：它们的
+// 可见范围来自每个学生/每个周目录的 ACL 名单，而不是默认共享集合。
 func Sources() []Source {
 	return []Source{
 		{ID: "public", Label: "公共资料", Shared: true},
 		{ID: "plasmids", Label: "公共质粒", Shared: true},
 		{ID: "genomes", Label: "公共基因组", Shared: true},
+		{ID: "research", Label: "课题资料", Shared: true},
+		{ID: "meeting", Label: "组会汇报", Shared: true},
 		{ID: "users", Label: "个人文件", Shared: false},
 	}
 }
 
 // Entry is one file or directory in the lab tree.
 type Entry struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Dir      bool   `json:"dir"`
-	Size     int64  `json:"size"`
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Path   string `json:"path"`
+	Name   string `json:"name"`
+	Dir    bool   `json:"dir"`
+	Size   int64  `json:"size"`
+	// DirSize 是目录下所有文件字节数之和（目录自身 Size 恒为 0）。
+	// 在列出时按当前快照计算，供列表直接显示，不必再让前端逐个请求。
+	DirSize  int64  `json:"dirSize,omitempty"`
 	Modified string `json:"modified"`
 	// Created 是条目创建时间（ext4 crtime）；文件系统未提供 birth time
 	// 时由 Scan 回退为修改时间。
@@ -88,6 +96,15 @@ type Scope struct {
 	// Deny 把该条目变成显式拒绝。拒绝优先于任何允许（包括管理员绕过），
 	// 这样"单独收回某个人的某项权限"才是可表达、可验证的配置。
 	Deny bool `json:"deny,omitempty"`
+	// NoDirs 只给“建文件”的权限，不给“建文件夹”的权限。
+	// 共享文件-组员 里的学生就是这个档位：能往指定目录上传材料，
+	// 但不能改动目录结构（不能自己加子目录、改名、移动）。
+	// 字段缺省 = 允许建文件夹（老 ACL 行为不变）。
+	NoDirs bool `json:"no_dirs,omitempty"`
+	// DeleteWithin 把删除权限制在时间窗内，例如 "48h"：
+	// 只有最近 48 小时内改动过的条目才能删（学生删除自己刚上传的材料）。
+	// 字段缺省 = 删除权不受时间限制（老 ACL 行为不变）。
+	DeleteWithin string `json:"delete_within,omitempty"`
 }
 
 // grants reports whether the scope allows action. A denied scope never grants.
@@ -102,12 +119,43 @@ func (s Scope) grants(action string) bool {
 		return s.Download
 	case "create":
 		return s.Create
+	case "mkdir":
+		// 建文件夹与建文件分开：共享目录里的学生只准上传，不准改结构。
+		return s.Create && !s.NoDirs
 	case "modify":
 		return s.Modify
 	case "delete":
 		return s.Delete
 	}
 	return false
+}
+
+// deleteWindow 解析 DeleteWithin（"48h" / "2d" / "30m"）。
+// 解析不了就当没有时间窗（宁可宽松也不要静默收紧权限）。
+func (s Scope) deleteWindow() time.Duration {
+	raw := strings.TrimSpace(strings.ToLower(s.DeleteWithin))
+	if raw == "" {
+		return 0
+	}
+	if strings.HasSuffix(raw, "d") {
+		if days, err := strconv.Atoi(strings.TrimSuffix(raw, "d")); err == nil && days > 0 {
+			return time.Duration(days) * 24 * time.Hour
+		}
+		return 0
+	}
+	if strings.HasSuffix(raw, "h") {
+		if hours, err := strconv.Atoi(strings.TrimSuffix(raw, "h")); err == nil && hours > 0 {
+			return time.Duration(hours) * time.Hour
+		}
+		return 0
+	}
+	if strings.HasSuffix(raw, "m") {
+		if mins, err := strconv.Atoi(strings.TrimSuffix(raw, "m")); err == nil && mins > 0 {
+			return time.Duration(mins) * time.Minute
+		}
+		return 0
+	}
+	return 0
 }
 
 // ACL 是两层权限模型：预配置用户组（groups）给出默认授权，
@@ -123,6 +171,10 @@ func DefaultGroups() map[string][]Scope {
 	public := Scope{Source: "public", View: true, Download: true}
 	plasmids := Scope{Source: "plasmids", View: true, Download: true}
 	genomes := Scope{Source: "genomes", View: true, Download: true}
+	// 课题资料与组会汇报**不进**默认共享集合：学生的可见范围来自每个目录
+	// 的 ACL 名单（没有名单 = 不可见），老师与管理员另按整源授权。
+	research := Scope{Source: "research", View: true, Download: true}
+	meeting := Scope{Source: "meeting", View: true, Download: true}
 	shared := []Scope{public, plasmids, genomes}
 	rw := func(s Scope) Scope {
 		s.Create, s.Modify, s.Delete = true, true, true
@@ -145,10 +197,12 @@ func DefaultGroups() map[string][]Scope {
 	}
 	return map[string][]Scope{
 		"lab-student": merge(shared...),
-		// 教师维护公共基因组数据，其余共享源只读。
-		"lab-teacher": merge(public, plasmids, rw(genomes)),
+		// 教师维护公共基因组数据，其余共享源只读；课题资料按整源可读写，
+		// 这样老师能看到每个学生的目录。
+		"lab-teacher": merge(public, plasmids, rw(genomes), rw(research)),
 		// 实验室管理员管理全部共享内容；个人空间仍然互相隔离。
-		"lab-admin": merge(rw(public), rw(plasmids), rw(genomes)),
+		// 组会汇报的整源权限只给管理员，便于管理周目录与授权名单。
+		"lab-admin": merge(rw(public), rw(plasmids), rw(genomes), rw(research), rw(meeting)),
 	}
 }
 
@@ -532,6 +586,7 @@ func (r *Registry) Visible(identity Identity, source string) []Entry {
 		}
 		return out[i].Path < out[j].Path
 	})
+	r.fillDirSizesLocked(out)
 	return out
 }
 
@@ -707,6 +762,29 @@ func storageError(op string, err error) error {
 	return fmt.Errorf("%w: %s: %w", ErrStorage, op, err)
 }
 
+// deleteWindowFor 返回该身份在给定路径上的删除时间窗（0 = 无限制）。
+//
+// 多条授权都允许删除时取**最紧**的那个窗口：任何一条限定都比不限定更严格。
+func (r *Registry) deleteWindowFor(identity Identity, source, path string) time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var window time.Duration
+	for _, ru := range r.rulesFor(identity) {
+		if ru.Scope.Source != source || !scopeCovers(ru.Scope, path) {
+			continue
+		}
+		if ru.Scope.blocks("delete") || !ru.Scope.grants("delete") {
+			continue
+		}
+		if w := ru.Scope.deleteWindow(); w > 0 {
+			if window == 0 || w < window {
+				window = w
+			}
+		}
+	}
+	return window
+}
+
 // CanPath checks an action against a source-relative path that may not exist
 // yet (used for create/upload/rename destinations).
 func (r *Registry) CanPath(identity Identity, source, rel, action string) bool {
@@ -797,10 +875,13 @@ func personalScopes(name string) []Scope {
 }
 
 // PersonalShare is one path inside an owner's home shared with other accounts.
-// Path is relative to the owner's home directory.
+// Path is relative to the owner's home directory. Writable reports whether the
+// recipients may also change the shared path (rename/move/upload); deleting is
+// never granted.
 type PersonalShare struct {
 	Path       string   `json:"path"`
 	Recipients []string `json:"recipients"`
+	Writable   bool     `json:"writable"`
 }
 
 // SharedEntry is one entry another account has shared with the caller.
@@ -813,9 +894,13 @@ type SharedEntry struct {
 	Size     int64  `json:"size"`
 	Modified string `json:"modified"`
 	Created  string `json:"created"`
+	// Writable reports whether the owner granted edit rights on this entry.
+	Writable bool `json:"writable"`
 }
 
 // PersonalShares lists the paths an owner shared together with their readers.
+// Writable is derived from the stored scope itself, so the flag the owner set
+// and the flag the interface shows can never drift apart.
 func (r *Registry) PersonalShares(owner string) []PersonalShare {
 	owner = strings.ToLower(strings.TrimSpace(owner))
 	prefix := owner + "/"
@@ -825,6 +910,7 @@ func (r *Registry) PersonalShares(owner string) []PersonalShare {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	byPath := map[string]map[string]bool{}
+	writable := map[string]bool{}
 	for key, scopes := range r.acl.Identities {
 		name := localPart(key)
 		if name == "" || name == owner {
@@ -848,6 +934,9 @@ func (r *Registry) PersonalShares(owner string) []PersonalShare {
 				byPath[rel] = map[string]bool{}
 			}
 			byPath[rel][name] = true
+			if s.Modify {
+				writable[rel] = true
+			}
 		}
 	}
 	out := make([]PersonalShare, 0, len(byPath))
@@ -857,17 +946,22 @@ func (r *Registry) PersonalShares(owner string) []PersonalShare {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		out = append(out, PersonalShare{Path: rel, Recipients: names})
+		out = append(out, PersonalShare{Path: rel, Recipients: names, Writable: writable[rel]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }
 
 // SetPersonalShare replaces the readers of one home-relative path. Recipients
-// receive read-only access through an explicit user scope; groups and admins
-// can never be used to reach another account's home.
-func (r *Registry) SetPersonalShare(owner, rel string, recipients []string) (PersonalShare, error) {
-	owner = strings.ToLower(strings.TrimSpace(owner))
+// receive read access through an explicit user scope; groups and admins can
+// never be used to reach another account's home.
+//
+// The owner is always the calling identity, never a name from the request:
+// only the owner of the home directory may widen a share, and a recipient can
+// therefore never raise its own grant. writable adds move/rename/upload on the
+// shared path; deleting stays with the owner.
+func (r *Registry) SetPersonalShare(actor Identity, rel string, recipients []string, writable bool) (PersonalShare, error) {
+	owner := strings.ToLower(strings.TrimSpace(actor.LocalPart()))
 	if !provisionNameRE.MatchString(owner) {
 		return PersonalShare{}, fmt.Errorf("%w: invalid user name", ErrInvalidPath)
 	}
@@ -899,6 +993,18 @@ func (r *Registry) SetPersonalShare(owner, rel string, recipients []string) (Per
 	}
 	sort.Strings(people)
 
+	// The grant itself is the single source of truth for "可编辑": the flag is
+	// read back from the stored scope, so the ACL can never disagree with the
+	// state the interface shows.
+	// 共享出去的路径：**任何人删除都会同步删掉 owner 那一份**（同一个物理文件）。
+	// 因此接收方必须有 delete 权限，否则"共享的文件谁都不能删"；
+	// 可编辑再额外给改名/移动/上传。
+	grant := Scope{Source: "users", Path: full, View: true, Download: true, Delete: true}
+	if writable {
+		grant.Modify = true
+		grant.Create = true
+	}
+
 	r.mu.Lock()
 	previous := make(map[string][]Scope, len(r.acl.Identities))
 	for key, scopes := range r.acl.Identities {
@@ -918,9 +1024,7 @@ func (r *Registry) SetPersonalShare(owner, rel string, recipients []string) (Per
 	}
 	for _, name := range people {
 		for _, key := range r.aclKeysFor(name) {
-			r.acl.Identities[key] = mergeScope(r.acl.Identities[key], Scope{
-				Source: "users", Path: full, View: true, Download: true,
-			})
+			r.acl.Identities[key] = mergeScope(r.acl.Identities[key], grant)
 		}
 	}
 	if err := r.persistACLLocked(); err != nil {
@@ -929,7 +1033,7 @@ func (r *Registry) SetPersonalShare(owner, rel string, recipients []string) (Per
 		return PersonalShare{}, err
 	}
 	r.mu.Unlock()
-	return PersonalShare{Path: clean, Recipients: people}, nil
+	return PersonalShare{Path: clean, Recipients: people, Writable: writable}, nil
 }
 
 // SharedWith lists the personal entries other accounts explicitly shared with
@@ -963,6 +1067,9 @@ func (r *Registry) SharedWith(identity Identity) []SharedEntry {
 		out = append(out, SharedEntry{
 			ID: e.ID, Owner: who, Path: e.Path, Name: e.Name, Dir: e.Dir, Size: e.Size,
 			Modified: e.Modified, Created: e.Created,
+			// "可编辑" 由 scope 本身决定：owner 勾选了协作编辑时授予的 scope
+			// 带 modify，未勾选时只有 view/download。
+			Writable: ru.Scope.grants("modify"),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -1197,6 +1304,9 @@ type Grant struct {
 	Source string `json:"source"`
 	Path   string `json:"path"`
 	Access string `json:"access"`
+	// DeleteWithin 把删除权限制在时间窗内（如 "48h"）。
+	// 配合 access=upload 使用：学生只能删自己刚上传不久的材料。
+	DeleteWithin string `json:"delete_within,omitempty"`
 }
 
 func (r *Registry) validateGrant(g Grant) (Scope, error) {
@@ -1220,18 +1330,161 @@ func (r *Registry) validateGrant(g Grant) (Scope, error) {
 			return Scope{}, fmt.Errorf("%w: unknown directory", ErrNotFound)
 		}
 	}
+	var scope Scope
 	switch strings.ToLower(strings.TrimSpace(g.Access)) {
 	case "read":
-		return Scope{Source: g.Source, Path: clean, View: true, Download: true}, nil
+		scope = Scope{Source: g.Source, Path: clean, View: true, Download: true}
 	case "write":
-		return Scope{Source: g.Source, Path: clean, View: true, Download: true,
-			Create: true, Modify: true, Delete: true}, nil
+		scope = Scope{Source: g.Source, Path: clean, View: true, Download: true,
+			Create: true, Modify: true, Delete: true}
+	case "upload":
+		// “只上传”档位：能看能传，不能下载、不能改、不能删、不能建子目录。
+		// 用于共享文件-组员里的学生：目录结构由导师维护。
+		scope = Scope{Source: g.Source, Path: clean, View: true, Create: true, NoDirs: true}
 	case "deny":
 		// 只置 Deny、不置任何权限位：拒绝该路径下的一切操作。
-		return Scope{Source: g.Source, Path: clean, Deny: true}, nil
+		scope = Scope{Source: g.Source, Path: clean, Deny: true}
 	default:
-		return Scope{}, fmt.Errorf("%w: access must be read, write or deny", ErrInvalidPath)
+		return Scope{}, fmt.Errorf("%w: access must be read, write, upload or deny", ErrInvalidPath)
 	}
+	if window := strings.TrimSpace(g.DeleteWithin); window != "" && scope.Delete {
+		scope.DeleteWithin = window
+	}
+	if window := strings.TrimSpace(g.DeleteWithin); window != "" && !scope.Delete && !scope.Deny {
+		// 显式给了时间窗就意味着允许删除（upload 档位也需要能删自己刚传的文件）。
+		scope.Delete = true
+		scope.DeleteWithin = window
+	}
+	return scope, nil
+}
+
+// SetPersonalAccess replaces the **personal-space** (users source) scopes of an
+// account. Other sources are untouched.
+//
+// 这是「共享文件-组员」这类需求的落点：共享树物理上在导师家目录下（users 源），
+// 而 SetFileGrants 明确保留 users 源、不写它，所以这里单独开一个入口。
+//
+// 规则：
+//   - 只能授权 users 源，路径必须已存在且是目录；
+//   - 不能把自己的家目录授权给别人（那是账号管理的事，不是共享）；
+//   - 同一账号下的多条授权按路径去重，拒绝优先。
+func (r *Registry) SetPersonalAccess(name string, grants []Grant) ([]Scope, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !provisionNameRE.MatchString(name) {
+		return nil, fmt.Errorf("%w: invalid user name", ErrInvalidPath)
+	}
+	granted := make([]Scope, 0, len(grants))
+	index := map[string]int{}
+	for _, g := range grants {
+		scope, err := r.validatePersonalGrant(name, g)
+		if err != nil {
+			return nil, err
+		}
+		key := scope.Path
+		if i, ok := index[key]; ok {
+			if scope.Deny {
+				granted[i] = scope
+				continue
+			}
+			if granted[i].Deny {
+				continue
+			}
+			granted[i].Create = granted[i].Create || scope.Create
+			granted[i].Modify = granted[i].Modify || scope.Modify
+			granted[i].Delete = granted[i].Delete || scope.Delete
+			granted[i].Download = granted[i].Download || scope.Download
+			granted[i].View = granted[i].View || scope.View
+			continue
+		}
+		index[key] = len(granted)
+		granted = append(granted, scope)
+	}
+	sort.Slice(granted, func(i, j int) bool { return granted[i].Path < granted[j].Path })
+
+	r.mu.Lock()
+	keys := r.aclKeysFor(name)
+	previous := make(map[string][]Scope, len(keys))
+	for _, key := range keys {
+		previous[key] = append([]Scope(nil), r.acl.Identities[key]...)
+		scopes := make([]Scope, 0, len(granted)+2)
+		for _, s := range r.acl.Identities[key] {
+			// **自己家目录的授权必须保留**：那是账号开户时发的，
+			// 与共享目录授权是两回事，被顺手抹掉的话本人就进不去自己的文件了。
+			if s.Source != "users" || s.Path == name {
+				scopes = append(scopes, s)
+			}
+		}
+		scopes = append(scopes, granted...)
+		r.acl.Identities[key] = scopes
+	}
+	if err := r.persistACLLocked(); err != nil {
+		for key, scopes := range previous {
+			r.acl.Identities[key] = scopes
+		}
+		r.mu.Unlock()
+		return nil, err
+	}
+	result := append([]Scope(nil), r.acl.Identities[keys[0]]...)
+	r.mu.Unlock()
+	return result, nil
+}
+
+// validatePersonalGrant 校验一条个人空间授权。
+func (r *Registry) validatePersonalGrant(owner string, g Grant) (Scope, error) {
+	if strings.ToLower(strings.TrimSpace(g.Source)) != "users" {
+		return Scope{}, fmt.Errorf("%w: personal access must target the users source", ErrInvalidPath)
+	}
+	clean, err := cleanRelative(g.Path)
+	if err != nil {
+		return Scope{}, err
+	}
+	if clean == "" {
+		return Scope{}, fmt.Errorf("%w: personal access needs a directory", ErrInvalidPath)
+	}
+	home := strings.ToLower(strings.TrimSpace(owner))
+	if clean == home || strings.HasPrefix(clean, home+"/") {
+		return Scope{}, fmt.Errorf("%w: cannot grant access to one's own home", ErrInvalidPath)
+	}
+	info, statErr := os.Stat(filepath.Join(r.root, "users", filepath.FromSlash(clean)))
+	if statErr != nil || !info.IsDir() {
+		return Scope{}, fmt.Errorf("%w: unknown directory", ErrNotFound)
+	}
+	var scope Scope
+	switch strings.ToLower(strings.TrimSpace(g.Access)) {
+	case "read":
+		scope = Scope{Source: "users", Path: clean, View: true, Download: true}
+	case "write":
+		scope = Scope{Source: "users", Path: clean, View: true, Download: true,
+			Create: true, Modify: true, Delete: true}
+	case "upload":
+		scope = Scope{Source: "users", Path: clean, View: true, Create: true, NoDirs: true}
+	case "deny":
+		scope = Scope{Source: "users", Path: clean, Deny: true}
+	default:
+		return Scope{}, fmt.Errorf("%w: access must be read, write, upload or deny", ErrInvalidPath)
+	}
+	if window := strings.TrimSpace(g.DeleteWithin); window != "" && !scope.Deny {
+		scope.Delete = true
+		scope.DeleteWithin = window
+	}
+	return scope, nil
+}
+
+// PersonalAccess reports the personal-space scopes of an account.
+func (r *Registry) PersonalAccess(name string) []Scope {
+	name = strings.ToLower(strings.TrimSpace(name))
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := []Scope{}
+	for _, key := range r.aclKeysFor(name) {
+		for _, s := range r.acl.Identities[key] {
+			if s.Source == "users" {
+				out = append(out, s)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 // SetFileGrants replaces every shared-source permission of an account with the
@@ -1551,6 +1804,42 @@ func (r *Registry) Directories() map[string][]string {
 	return out
 }
 
+// VisibleDirs returns the source-relative directories the identity may read,
+// sorted, for the storage UI's "move to folder" picker. The source root is
+// always offered ("") because every visible entry can be moved back to it.
+// Personal spaces only offer the caller's own home subtree, matching can().
+func (r *Registry) VisibleDirs(identity Identity, source string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rules := r.rulesFor(identity)
+	out := []string{""}
+	for _, e := range r.entries {
+		if e.Source != source || !e.Dir || e.Path == "" {
+			continue
+		}
+		if source == "users" && !personalPathAllowed(identity, e.Path) {
+			if !r.personalAccessLocked(identity, e.Path, "read") {
+				continue
+			}
+			if !canRead(rules, source, e.Path, identity.Admin) {
+				continue
+			}
+		} else if !canRead(rules, source, e.Path, identity.Admin) {
+			continue
+		}
+		out = append(out, e.Path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// canRead is the read-side decision used by VisibleDirs. It mirrors decide()
+// without taking the registry lock again (callers already hold it).
+func canRead(rules []rule, source, path string, admin bool) bool {
+	ok, _ := decide(rules, source, path, "read", admin)
+	return ok
+}
+
 // WritePaths returns the source-relative directories where the identity holds
 // write permission. An empty path means the whole source is writable.
 func (r *Registry) WritePaths(identity Identity, source string) []string {
@@ -1565,6 +1854,18 @@ func (r *Registry) WritePaths(identity Identity, source string) []string {
 		}
 		// 个人空间只暴露自己的家目录，绝不返回表示"整源可写"的空路径。
 		candidates[home] = true
+		// **别人家目录里的共享子树**也是可写路径：例如组员共享目录
+		// （adminlegacy/共享文件-组员/2601_孙同学）。
+		// 界面靠这份清单决定要不要显示「上传」按钮；不给的话学生看得见目录却传不上去。
+		for _, ru := range rules {
+			if ru.Scope.Source != "users" || ru.Scope.Deny || ru.Scope.Path == "" {
+				continue
+			}
+			if ru.Scope.Path == home || !ru.Scope.grants("create") {
+				continue
+			}
+			candidates[ru.Scope.Path] = true
+		}
 	} else {
 		candidates[""] = true
 		for _, ru := range rules {
@@ -1582,6 +1883,66 @@ func (r *Registry) WritePaths(identity Identity, source string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// MkdirPaths returns the source-relative directories where the identity may
+// **create folders** (not just upload files).
+//
+// 学生在组员共享目录里只准上传材料、不准自己加子目录（Scope.NoDirs），
+// 界面要据此把「新建文件夹」藏起来，所以「能传文件」与「能建目录」必须分开报。
+func (r *Registry) MkdirPaths(identity Identity, source string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	rules := r.rulesFor(identity)
+	candidates := map[string]bool{}
+	if source == "users" {
+		home := identity.LocalPart()
+		if home == "" {
+			return []string{}
+		}
+		candidates[home] = true
+		for _, ru := range rules {
+			if ru.Scope.Source != "users" || ru.Scope.Deny || ru.Scope.Path == "" {
+				continue
+			}
+			if ru.Scope.Path == home || !ru.Scope.grants("mkdir") {
+				continue
+			}
+			candidates[ru.Scope.Path] = true
+		}
+	} else {
+		candidates[""] = true
+		for _, ru := range rules {
+			if ru.Scope.Source == source {
+				candidates[ru.Scope.Path] = true
+			}
+		}
+	}
+	admin := identity.Admin && source != "users"
+	out := []string{}
+	for p := range candidates {
+		if writableAt(rules, source, p, admin) && mkdirAt(rules, source, p) {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// mkdirAt 判断该路径上是否允许新建文件夹。
+func mkdirAt(rules []rule, source, path string) bool {
+	for _, ru := range rules {
+		if ru.Scope.Source != source || !scopeCovers(ru.Scope, path) {
+			continue
+		}
+		if ru.Scope.blocks("mkdir") {
+			return false
+		}
+		if ru.Scope.grants("mkdir") {
+			return true
+		}
+	}
+	return false
 }
 
 // persistACLLocked rewrites the ACL document atomically, preserving unknown
@@ -1744,14 +2105,40 @@ func (r *Registry) lookup(source, rel string) (Entry, bool) {
 	return e, ok
 }
 
+// ensureParentDirs 按需创建 rel 的父目录链。共享源目录（例如新建的
+// /srv/lab/research）在第一次上传前并不存在，这时不能因为父目录缺失
+// 就把整次写入打回。
+func (r *Registry) ensureParentDirs(source, rel string) error {
+	full, err := r.diskPath(source, rel)
+	if err != nil {
+		return err
+	}
+	parent := filepath.Dir(full)
+	if info, err := os.Stat(parent); err == nil {
+		if !info.IsDir() {
+			return ErrNotFound
+		}
+		return nil
+	}
+	if err := os.MkdirAll(parent, 0o770); err != nil {
+		return storageError("create parent directory", err)
+	}
+	return nil
+}
+
 // CreateDir creates one directory inside a writable scope.
 func (r *Registry) CreateDir(identity Identity, source, rel string) (Entry, error) {
 	clean, err := cleanRelative(rel)
 	if err != nil || clean == "" {
 		return Entry{}, ErrInvalidPath
 	}
-	if !r.CanPath(identity, source, clean, "create") {
+	// 建文件夹与上传文件分开判定：共享目录里的学生只准上传材料，
+	// 不准自己加子目录（目录结构由导师维护）。
+	if !r.CanPath(identity, source, clean, "mkdir") {
 		return Entry{}, ErrForbidden
+	}
+	if err := r.ensureParentDirs(source, clean); err != nil {
+		return Entry{}, err
 	}
 	full, _, err := r.parentDir(source, clean)
 	if err != nil {
@@ -1786,7 +2173,8 @@ func (r *Registry) WriteFile(identity Identity, source, dir, name string, src io
 	if dirClean != "" {
 		rel = dirClean + "/" + name
 	}
-	full, parent, err := r.parentDir(source, rel)
+	// 权限判定先于磁盘操作：没有写权限的调用者不得在磁盘上留下目录。
+	full, err := r.diskPath(source, rel)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -1802,6 +2190,13 @@ func (r *Registry) WriteFile(identity Identity, source, dir, name string, src io
 		}
 	} else if !r.CanPath(identity, source, rel, "create") {
 		return Entry{}, ErrForbidden
+	}
+	if err := r.ensureParentDirs(source, rel); err != nil {
+		return Entry{}, err
+	}
+	full, parent, err := r.parentDir(source, rel)
+	if err != nil {
+		return Entry{}, err
 	}
 	tmp, err := os.CreateTemp(parent, ".upload-*")
 	if err != nil {
@@ -1874,6 +2269,214 @@ func (r *Registry) Rename(identity Identity, id, newName string) (Entry, error) 
 	}
 	if err := os.Rename(oldFull, newFull); err != nil {
 		return Entry{}, storageError("rename entry", err)
+	}
+	if err := r.Scan(); err != nil {
+		return Entry{}, err
+	}
+	if moved, ok := r.lookup(e.Source, rel); ok {
+		return moved, nil
+	}
+	return Entry{}, ErrNotFound
+}
+
+// fillDirSizes 为一批条目里的目录累计其子树大小。
+// 直接遍历内存中的条目表（已由 Scan 建立），不做磁盘 IO；
+// 只统计同一来源下以 "<path>/" 开头的文件条目，因此不会跨源串味。
+// fillDirSizesLocked 给目录条目填充子树大小。
+//
+// **调用方必须已持有 r.mu 读锁**（名字带 Locked 就是提示）。
+// 这里绝不能再自己 RLock：Go 的 RWMutex 是写者优先的——
+// 一旦有写者在排队，新的 RLock 就会阻塞，递归读锁于是永久死锁。
+// 线上表现：文件列表与 /v1/admin/file-access 全部挂死，
+// goroutine 卡在 RLock 7~9 分钟，而进程 CPU 是 0%。
+func (r *Registry) fillDirSizesLocked(entries []Entry) {
+	for i := range entries {
+		if !entries[i].Dir || entries[i].Path == "" {
+			continue
+		}
+		prefix := entries[i].Path + "/"
+		var total int64
+		for _, other := range r.entries {
+			if other.Source != entries[i].Source || other.Dir || !strings.HasPrefix(other.Path, prefix) {
+				continue
+			}
+			total += other.Size
+		}
+		entries[i].DirSize = total
+	}
+}
+
+// Copy 把文件或目录（含子树）复制到同一来源的目标目录。
+// newName 为空时沿用原名；目标已存在同名条目时返回 ErrExists，不覆盖。
+func (r *Registry) Copy(identity Identity, id, targetDir, newName string) (Entry, error) {
+	e, ok := r.Get(id)
+	if !ok || e.Path == "" {
+		return Entry{}, ErrNotFound
+	}
+	if !r.CanPath(identity, e.Source, e.Path, "read") {
+		return Entry{}, ErrNotFound
+	}
+	dest, err := cleanRelative(targetDir)
+	if err != nil {
+		return Entry{}, err
+	}
+	name := strings.TrimSpace(newName)
+	if name == "" {
+		name = e.Name
+	}
+	if err := validName(name); err != nil {
+		return Entry{}, err
+	}
+	rel := name
+	if dest != "" {
+		rel = dest + "/" + name
+	}
+	if e.Dir && (dest == e.Path || strings.HasPrefix(dest, e.Path+"/")) {
+		return Entry{}, ErrInvalidPath
+	}
+	if !r.CanPath(identity, e.Source, rel, "create") {
+		return Entry{}, ErrForbidden
+	}
+	if dest != "" {
+		parentEntry, ok := r.lookup(e.Source, dest)
+		if !ok || !parentEntry.Dir {
+			return Entry{}, ErrNotFound
+		}
+	}
+	oldFull, err := r.diskPath(e.Source, e.Path)
+	if err != nil {
+		return Entry{}, ErrNotFound
+	}
+	newFull, _, err := r.parentDir(e.Source, rel)
+	if err != nil {
+		return Entry{}, err
+	}
+	if _, err := os.Lstat(newFull); err == nil {
+		return Entry{}, ErrExists
+	}
+	if e.Dir {
+		err = copyTree(oldFull, newFull)
+	} else {
+		err = copyFile(oldFull, newFull)
+	}
+	if err != nil {
+		return Entry{}, storageError("copy entry", err)
+	}
+	if err := r.Scan(); err != nil {
+		return Entry{}, err
+	}
+	if copied, ok := r.lookup(e.Source, rel); ok {
+		return copied, nil
+	}
+	return Entry{}, ErrNotFound
+}
+
+// copyFile 复制单个文件并保留可读权限（0640，与上传落盘一致）。
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	return out.Close()
+}
+
+// copyTree 递归复制目录（保留目录结构，不跟随符号链接）。
+func copyTree(src, dst string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(dst, 0o770); err != nil {
+			return err
+		}
+		children, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			// 隐藏文件（含回收站目录）不参与复制
+			if strings.HasPrefix(child.Name(), ".") {
+				continue
+			}
+			if err := copyTree(filepath.Join(src, child.Name()), filepath.Join(dst, child.Name())); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return copyFile(src, dst)
+}
+
+// Move relocates one entry (file, or a directory with its whole subtree) into
+// another directory of the same source. Pure renames stay on Rename(); this is
+// the "drag into another folder" operation the storage UI exposes.
+//
+// Permission model: the caller needs modify on the entry being moved and create
+// on the destination directory. Destination collisions are refused rather than
+// silently overwritten, and a directory can never be moved into its own
+// subtree (os.Rename would fail late and leave a half-scanned registry).
+func (r *Registry) Move(identity Identity, id, targetDir string) (Entry, error) {
+	e, ok := r.Get(id)
+	if !ok || e.Path == "" {
+		return Entry{}, ErrNotFound
+	}
+	dest, err := cleanRelative(targetDir)
+	if err != nil {
+		return Entry{}, err
+	}
+	if !r.CanPath(identity, e.Source, e.Path, "modify") {
+		if !r.CanPath(identity, e.Source, e.Path, "read") {
+			return Entry{}, ErrNotFound
+		}
+		return Entry{}, ErrForbidden
+	}
+
+	rel := e.Name
+	if dest != "" {
+		rel = dest + "/" + e.Name
+	}
+	if rel == e.Path {
+		return e, nil
+	}
+	if e.Dir && (dest == e.Path || strings.HasPrefix(dest, e.Path+"/")) {
+		return Entry{}, ErrInvalidPath
+	}
+	if !r.CanPath(identity, e.Source, rel, "create") {
+		return Entry{}, ErrForbidden
+	}
+	// The destination directory must exist and be a directory inside the same
+	// source, otherwise parentDir would happily create a stray path.
+	if dest != "" {
+		parentEntry, ok := r.lookup(e.Source, dest)
+		if !ok || !parentEntry.Dir {
+			return Entry{}, ErrNotFound
+		}
+	}
+
+	oldFull, err := r.diskPath(e.Source, e.Path)
+	if err != nil {
+		return Entry{}, ErrNotFound
+	}
+	newFull, _, err := r.parentDir(e.Source, rel)
+	if err != nil {
+		return Entry{}, err
+	}
+	if _, err := os.Lstat(newFull); err == nil {
+		return Entry{}, ErrExists
+	}
+	if err := os.Rename(oldFull, newFull); err != nil {
+		return Entry{}, storageError("move entry", err)
 	}
 	if err := r.Scan(); err != nil {
 		return Entry{}, err

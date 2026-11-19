@@ -44,8 +44,14 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 			s.uploadFile(w, r, identity, q)
 		case "mkdir":
 			s.mkdirFile(w, r, identity)
+		case "ensure-meeting-folder":
+			s.ensureMeetingFolder(w, r, identity)
 		case "rename":
 			s.renameFile(w, r, identity)
+		case "move":
+			s.moveFile(w, r, identity)
+		case "copy":
+			s.copyFile(w, r, identity)
 		case "trash/restore":
 			s.restoreTrash(w, r, identity)
 		case "shares":
@@ -53,6 +59,13 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 		default:
 			deny(w, 404, "route not found")
 		}
+		return
+	case http.MethodPut:
+		if !writable || identity.Email == "" {
+			deny(w, 403, "file writes require a user identity")
+			return
+		}
+		s.updateFileContent(w, r, identity, rest)
 		return
 	case http.MethodDelete:
 		if !writable || identity.Email == "" {
@@ -81,6 +94,17 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 		}
 		if rest == "" || strings.Contains(rest, "/") {
 			deny(w, 400, "a file id is required")
+			return
+		}
+		// ?permanent=1：直接删除，不进回收站（不可恢复）。
+		// 用于"确定不要了"的场景：误传大文件、涉密材料、批量清理。
+		if q.Get("permanent") == "1" || q.Get("permanent") == "true" {
+			item, err := s.Files.Destroy(identity, rest)
+			if err != nil {
+				fileError(w, err)
+				return
+			}
+			jsonResponse(w, 200, map[string]any{"ok": true, "destroyed": item})
 			return
 		}
 		item, err := s.Files.Trash(identity, rest)
@@ -118,6 +142,9 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 				"id": src.ID, "label": src.Label, "shared": src.Shared,
 				"listable": listable, "writable": s.Files.Writable(identity, src.ID),
 				"writePaths": s.Files.WritePaths(identity, src.ID),
+				// 「能传文件」与「能建目录」分开报：学生在共享目录里只准上传，
+				// 界面据此把「新建文件夹」藏起来（否则点了就是 403）。
+				"mkdirPaths": s.Files.MkdirPaths(identity, src.ID),
 			})
 		}
 		jsonResponse(w, 200, map[string]any{"sources": out})
@@ -162,7 +189,7 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 		jsonResponse(w, 200, map[string]any{
 			"events":        events,
 			"count":         len(events),
-			"retentionDays": 90,
+			"retentionDays": 7,
 		})
 		return
 	}
@@ -227,6 +254,9 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 			"sort":    sortKey,
 			"order":   order,
 			"usage":   s.Files.Usage(identity, source),
+			// 移动目标选择器需要一份可读目录清单：只返回调用方有权读取的目录，
+			// 不在前端做权限推断，也不额外暴露无权目录的存在。
+			"dirs": s.Files.VisibleDirs(identity, source),
 		}
 		if source == "users" {
 			home := identity.LocalPart()
@@ -283,6 +313,8 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 		}
 		s.recordFileEvent(a, entry, "preview", int64(len(data)))
 		jsonResponse(w, 200, result)
+	case len(parts) == 2 && parts[1] == "content":
+		s.readFileContent(w, identity, entry)
 	case len(parts) == 2 && parts[1] == "download":
 		if entry.Dir {
 			deny(w, 400, "cannot download a directory")
@@ -310,6 +342,92 @@ func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request, a actor, q u
 	default:
 		deny(w, 404, "route not found")
 	}
+}
+
+// fileContent 是在线编辑接口的载荷：文本内容与内容哈希（etag）。
+type fileContent struct {
+	Text string `json:"text"`
+	ETag string `json:"etag"`
+}
+
+// decodeContentBody 读取在线编辑的请求体。上限比普通 JSON 宽：文本内容
+// 本身可达 1 MiB（见 labfiles.MaxEditBytes）。
+func decodeContentBody(r *http.Request, v any) bool {
+	dec := json.NewDecoder(io.LimitReader(r.Body, labfiles.MaxEditBytes+(64<<10)))
+	dec.DisallowUnknownFields()
+	return dec.Decode(v) == nil
+}
+
+// readFileContent 返回一个可在线编辑文件的文本内容与 etag。
+// 读取权限由调用方（条目分发处）已经复核过的 read 判定保证。
+func (s *Server) readFileContent(w http.ResponseWriter, identity labfiles.Identity, entry labfiles.Entry) {
+	if !labfiles.Editable(entry.Name) {
+		deny(w, 400, "only text files can be edited online")
+		return
+	}
+	text, etag, err := s.Files.ReadContent(entry)
+	if err != nil {
+		fileError(w, err)
+		return
+	}
+	jsonResponse(w, 200, fileContent{Text: text, ETag: etag})
+}
+
+// updateFileContent 在线编辑一个文本文件。
+//
+// 并发保护：请求带 etag（调用方读到的内容哈希）。与当前文件不一致时返回
+// 409 并附上当前 etag，避免两个人同时编辑时互相覆盖。
+func (s *Server) updateFileContent(w http.ResponseWriter, r *http.Request, identity labfiles.Identity, rest string) {
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 || parts[1] != "content" || parts[0] == "" {
+		deny(w, 404, "route not found")
+		return
+	}
+	entry, ok := s.Files.Get(parts[0])
+	if !ok {
+		deny(w, 404, "resource not found")
+		return
+	}
+	// 看不到的资源连存在都不该泄露：先按 read 判定，无权读的一律 404。
+	if !s.Files.Can(identity, entry, "read") {
+		deny(w, 404, "resource not found")
+		return
+	}
+	if entry.Dir {
+		deny(w, 400, "cannot edit a directory")
+		return
+	}
+	if !labfiles.Editable(entry.Name) {
+		deny(w, 400, "only text files can be edited online")
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+		ETag string `json:"etag"`
+	}
+	if !decodeContentBody(r, &req) {
+		deny(w, 400, "invalid content request")
+		return
+	}
+	if len(req.Text) > labfiles.MaxEditBytes {
+		deny(w, 413, "text exceeds the 1 MiB limit")
+		return
+	}
+	entry, etag, err := s.Files.WriteContent(identity, entry, req.Text, req.ETag)
+	if err != nil {
+		var conflict *labfiles.ConflictError
+		if errors.As(err, &conflict) {
+			// 把当前 etag 一并返回：调用方重新拉取内容后可以继续编辑。
+			jsonResponse(w, 409, map[string]any{
+				"error": "content changed since it was read",
+				"etag":  conflict.Current,
+			})
+			return
+		}
+		fileError(w, err)
+		return
+	}
+	jsonResponse(w, 200, map[string]any{"entry": entry, "etag": etag})
 }
 
 // recordFileEvent appends one preview/download event without delaying the
@@ -363,8 +481,32 @@ func fileError(w http.ResponseWriter, err error) {
 		deny(w, 404, "resource not found")
 	case errors.Is(err, labfiles.ErrTooLarge):
 		deny(w, 413, "upload exceeds the size limit")
+	case errors.Is(err, labfiles.ErrConflict):
+		deny(w, 409, "content changed since it was read")
 	default:
 		deny(w, 400, "file operation failed")
+	}
+}
+
+// fileErrorText renders one move failure inside a batch response without
+// aborting the whole request: the caller keeps the succeeded entries and gets
+// a per-id reason for the rejected ones.
+func fileErrorText(err error) string {
+	switch {
+	case errors.Is(err, labfiles.ErrForbidden):
+		return "permission denied"
+	case errors.Is(err, labfiles.ErrExists):
+		return "resource already exists"
+	case errors.Is(err, labfiles.ErrInvalidPath):
+		return "invalid path or name"
+	case errors.Is(err, labfiles.ErrNotFound):
+		return "resource not found"
+	case errors.Is(err, labfiles.ErrTooLarge):
+		return "upload exceeds the size limit"
+	case errors.Is(err, labfiles.ErrStorage):
+		return "storage rejected the write"
+	default:
+		return "file operation failed"
 	}
 }
 
@@ -419,6 +561,31 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request, identity lab
 	deny(w, 400, "file field is required")
 }
 
+// ensureMeetingFolder 确保组会汇报的周目录存在（ISO 周目录）。
+//
+// 组会目录的授权是**目录级**的：文件核心写 ACL 时要求目标目录已经存在，
+// 否则会报 "unknown directory"。因此授权之前必须先把目录建出来。
+// 教师与管理员都能建；普通成员不行（他们只是被授权访问既有目录）。
+func (s *Server) ensureMeetingFolder(w http.ResponseWriter, r *http.Request, identity labfiles.Identity) {
+	var req struct {
+		YearWeek string `json:"yearWeek"`
+	}
+	if !decodeFileBody(r, &req) || req.YearWeek == "" {
+		deny(w, 400, "yearWeek is required")
+		return
+	}
+	if !identity.Teacher && !identity.Admin {
+		deny(w, 403, "only teachers may create meeting folders")
+		return
+	}
+	path, err := s.Files.EnsureMeetingFolder(req.YearWeek)
+	if err != nil {
+		fileError(w, err)
+		return
+	}
+	jsonResponse(w, 200, map[string]any{"ok": true, "path": path})
+}
+
 func (s *Server) mkdirFile(w http.ResponseWriter, r *http.Request, identity labfiles.Identity) {
 	var req struct {
 		Source string `json:"source"`
@@ -453,6 +620,78 @@ func (s *Server) renameFile(w http.ResponseWriter, r *http.Request, identity lab
 	jsonResponse(w, 200, map[string]any{"entry": entry})
 }
 
+// copyFile duplicates one entry into another directory of the same source.
+// name is optional; when omitted the original name is reused.
+func (s *Server) copyFile(w http.ResponseWriter, r *http.Request, identity labfiles.Identity) {
+	var req struct {
+		ID     string `json:"id"`
+		Target string `json:"target"`
+		Name   string `json:"name"`
+	}
+	if !decodeFileBody(r, &req) || req.ID == "" {
+		deny(w, 400, "id is required")
+		return
+	}
+	entry, err := s.Files.Copy(identity, req.ID, req.Target, req.Name)
+	if err != nil {
+		fileError(w, err)
+		return
+	}
+	jsonResponse(w, 200, map[string]any{"entry": entry})
+}
+
+// moveFile relocates one entry into another directory of the same source.
+// The destination is a source-relative path; "" means the source root.
+func (s *Server) moveFile(w http.ResponseWriter, r *http.Request, identity labfiles.Identity) {
+	var req struct {
+		ID      string `json:"id"`
+		Target  string `json:"target"`
+		Entries []struct {
+			ID string `json:"id"`
+		} `json:"entries"`
+	}
+	if !decodeFileBody(r, &req) {
+		deny(w, 400, "invalid move request")
+		return
+	}
+	ids := []string{}
+	if req.ID != "" {
+		ids = append(ids, req.ID)
+	}
+	for _, e := range req.Entries {
+		if e.ID != "" {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) == 0 {
+		deny(w, 400, "at least one entry id is required")
+		return
+	}
+	if len(ids) > 200 {
+		deny(w, 400, "too many entries in one move")
+		return
+	}
+	moved := make([]labfiles.Entry, 0, len(ids))
+	failed := make([]map[string]string, 0)
+	var firstErr error
+	for _, id := range ids {
+		entry, err := s.Files.Move(identity, id, req.Target)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			failed = append(failed, map[string]string{"id": id, "error": fileErrorText(err)})
+			continue
+		}
+		moved = append(moved, entry)
+	}
+	if len(moved) == 0 && firstErr != nil {
+		fileError(w, firstErr)
+		return
+	}
+	jsonResponse(w, 200, map[string]any{"moved": moved, "failed": failed})
+}
+
 func (s *Server) restoreTrash(w http.ResponseWriter, r *http.Request, identity labfiles.Identity) {
 	var req struct {
 		ID string `json:"id"`
@@ -471,16 +710,19 @@ func (s *Server) restoreTrash(w http.ResponseWriter, r *http.Request, identity l
 
 // sharePersonal replaces the reader list of one path inside the caller's own
 // personal space. The owner always comes from the session, never from the body.
+// writable is optional and defaults to false: sharing stays read-only unless
+// the owner explicitly grants edit rights.
 func (s *Server) sharePersonal(w http.ResponseWriter, r *http.Request, identity labfiles.Identity) {
 	var req struct {
 		Path       string   `json:"path"`
 		Recipients []string `json:"recipients"`
+		Writable   bool     `json:"writable"`
 	}
 	if !decodeFileBody(r, &req) || strings.TrimSpace(req.Path) == "" {
 		deny(w, 400, "path is required")
 		return
 	}
-	share, err := s.Files.SetPersonalShare(identity.LocalPart(), req.Path, req.Recipients)
+	share, err := s.Files.SetPersonalShare(identity, req.Path, req.Recipients, req.Writable)
 	if err != nil {
 		fileError(w, err)
 		return
