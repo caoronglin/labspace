@@ -124,6 +124,27 @@ export default function MeetingReports() {
     onError: (e) => message.error(`开通失败：${errText(e)}`),
   });
 
+  /**
+   * 沿用上一周的授权名单。
+   *
+   * 组会逐周授权，每周要开的人几乎都一样 —— 这是流程上最没价值的重复劳动，
+   * 也是「忘了给谁开」的事故来源。这里一键把上周名单搬过来（只加不减）。
+   */
+  const copyPrevMutation = useMutation({
+    mutationFn: (week: string) => meetingApi.copyPreviousGrants(week),
+    onSuccess: (r) => {
+      if (r.failed.length) {
+        message.warning(`已沿用 ${r.added.length} 人；${r.failed.length} 人失败：${r.failed[0]}`);
+      } else if (!r.added.length) {
+        message.info(`本周已包含 ${r.from} 的全部授权（跳过 ${r.skipped} 人）`);
+      } else {
+        message.success(`已沿用 ${r.from} 的授权：新增 ${r.added.length} 人，跳过 ${r.skipped} 人`);
+      }
+      invalidate();
+    },
+    onError: (e) => message.error(`沿用失败：${errText(e)}`),
+  });
+
   const revokeMutation = useMutation({
     mutationFn: ({ week, userId }: { week: string; userId: string }) =>
       meetingApi.revoke(week, userId),
@@ -462,6 +483,14 @@ export default function MeetingReports() {
             }}
           >
             开通访问权（{grantPicks.length}）
+          </Button>
+          <Button
+            disabled={!current}
+            loading={copyPrevMutation.isPending}
+            onClick={() => current && copyPrevMutation.mutate(current)}
+            title="把上一周的授权名单整套复制到本周（只加不减）"
+          >
+            沿用上周授权
           </Button>
         </Space>
 

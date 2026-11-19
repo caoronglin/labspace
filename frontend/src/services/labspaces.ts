@@ -211,6 +211,23 @@ export const meetingApi = {
       `/api/meetings/weeks/${encodeURIComponent(yearWeek)}/grant`,
       { method: 'POST', body: { userId } },
     ),
+  /**
+   * 沿用上一周的授权名单。
+   *
+   * 只做加法：本周已有的保持不动，不会因为上周没有某人就撤权
+   * （撤权是破坏性操作，必须由人显式决定）。
+   */
+  copyPreviousGrants: (yearWeek: string) =>
+    labFetch<{
+      ok: boolean;
+      from: string;
+      yearWeek: string;
+      added: string[];
+      skipped: number;
+      failed: string[];
+    }>(`/api/meetings/weeks/${encodeURIComponent(yearWeek)}/grant/copy-previous`, {
+      method: 'POST',
+    }),
   /** 收回某人的某周访问权。 */
   revoke: (yearWeek: string, userId: string) =>
     labFetch<{ ok: boolean }>(

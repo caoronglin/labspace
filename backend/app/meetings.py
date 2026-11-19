@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -380,6 +380,81 @@ async def grant_week(
             "name": str(account.get("display_name") or account.get("name") or ""),
             "account": str(account.get("name") or ""),
         },
+    }
+
+
+def _previous_week_label(week: str) -> str:
+    """上一周的周目录名（ISO-8601，跨年也正确）。
+
+    用 date 反算而不是字符串减一：``2026-W01`` 的上一周是 ``2025-W52/53``，
+    直接减数字会得到 ``2026-W00``。
+    """
+    year, num = (int(x) for x in week.replace("W", "w").upper().split("-W"))
+    monday = date.fromisocalendar(year, num, 1)
+    return iso_week_label(monday - timedelta(days=7))
+
+
+@router.post("/weeks/{year_week}/grant/copy-previous")
+async def copy_previous_grants(
+    year_week: str,
+    request: Request,
+    user: dict[str, Any] = Depends(require_user),
+    _csrf: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """把**上一周**的授权名单整套复制到本周。
+
+    为什么需要：组会按周开目录、逐周授权。每周都要把同样的人重新点一遍，
+    而这批人几乎每周都一样 —— 这是这条流程上最没价值的重复劳动，
+    也是"忘了给谁开"这种事故的来源。
+
+    只做**加法**：本周已有的授权保持不动，不会因为上周没有某人就把他撤掉
+    （撤权是破坏性操作，必须由人显式决定）。
+    """
+    week = await _require_week_manager(user, parse_year_week(year_week))
+    prev = _previous_week_label(week)
+
+    source = await asyncio.to_thread(_db_grants, prev)
+    if not source:
+        raise HTTPException(
+            status_code=404,
+            detail=f"上一周（{prev}）没有授权名单可沿用",
+        )
+
+    existing = {str(g.get("user_id") or "") for g in await asyncio.to_thread(_db_grants, week)}
+
+    ready, _, folder_detail = await _ensure_meeting_folder(request, week)
+    if not ready:
+        raise HTTPException(status_code=502, detail=f"组会目录准备失败：{folder_detail}")
+
+    added: list[str] = []
+    skipped: list[str] = []
+    failed: list[str] = []
+    for row in source:
+        uid = str(row.get("user_id") or "")
+        if not uid:
+            continue
+        if uid in existing:
+            skipped.append(uid)
+            continue
+        account = await asyncio.to_thread(_resolve_account, uid)
+        if not account:
+            # 账号已删除/改名：跳过并报出来，不要静默丢失
+            failed.append(uid)
+            continue
+        ok, detail = await _sync_week_grant(account, week, grant=True)
+        if not ok:
+            failed.append(f"{account.get('name') or uid}：{detail}")
+            continue
+        await asyncio.to_thread(_db_add_grant, week, uid, _actor(user))
+        added.append(str(account.get("display_name") or account.get("name") or uid))
+
+    return {
+        "ok": not failed,
+        "from": prev,
+        "yearWeek": week,
+        "added": added,
+        "skipped": len(skipped),
+        "failed": failed[:10],
     }
 
 
