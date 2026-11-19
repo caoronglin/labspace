@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   App,
@@ -30,7 +30,8 @@ import {
   SafetyCertificateOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 
 import PageShell from '../components/PageShell';
 
@@ -293,10 +294,61 @@ const OPS: Op[] = [
 
 export default function PdfTools() {
   const { message } = App.useApp();
+  const [searchParams] = useSearchParams();
+  /**
+   * 从文件存储带过来的文件（?source=&id=&name=）。
+   *
+   * 这是「文件存储 → PDF 工具箱」的联动：用户不必先下载到本地、
+   * 再从本地上传回来 —— 门户直接把那份 PDF 取过来放进待处理列表。
+   */
+  const incoming = useMemo(
+    () => ({
+      id: searchParams.get('id') ?? '',
+      name: searchParams.get('name') ?? '',
+    }),
+    [searchParams],
+  );
+
   const [group, setGroup] = useState<GroupKey>('organize');
   const [op, setOp] = useState<OpKey>('merge');
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [result, setResult] = useState<{ name: string; url: string; zip: boolean } | null>(null);
+
+  // 从文件存储自动带入的那份文件：取回来放进待处理列表。
+  const incomingFile = useQuery({
+    queryKey: ['pdf-incoming', incoming.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/files/${encodeURIComponent(incoming.id)}/download`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('取回文件失败');
+      const blob = await res.blob();
+      return new File([blob], incoming.name || 'document.pdf', {
+        type: blob.type || 'application/pdf',
+      });
+    },
+    enabled: Boolean(incoming.id),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  // 带入成功后放进列表（只在 id 变化时放一次，避免覆盖用户后续添加的文件）
+  const [incomingDone, setIncomingDone] = useState<string>('');
+  useEffect(() => {
+    if (!incoming.id || !incomingFile.data || incomingDone === incoming.id) return;
+    setIncomingDone(incoming.id);
+    setFiles((prev) => {
+      if (prev.some((f) => f.name === incomingFile.data?.name)) return prev;
+      // antd 的 UploadFile.originFileObj 类型是 RcFile（File + uid），
+      // 这里放的是普通 File —— 上传通道只用到 name/size/type，够用。
+      const item: UploadFile = {
+        uid: `incoming-${incoming.id}`,
+        name: incomingFile.data?.name || 'document.pdf',
+        originFileObj: incomingFile.data as UploadFile['originFileObj'],
+      };
+      return [...prev, item];
+    });
+  }, [incoming.id, incomingFile.data, incomingDone]);
 
   const visible = useMemo(() => OPS.filter((o) => o.group === group), [group]);
   const current = useMemo(

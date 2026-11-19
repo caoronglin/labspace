@@ -188,7 +188,33 @@ const QUICK_ENTRIES = [
     path: "/commands",
     color: "#12A594",
   },
+  {
+    key: "pdf",
+    label: "PDF 工具箱",
+    desc: "合并 · 拆分 · 压缩",
+    icon: <FilePdfOutlined />,
+    path: "/pdf",
+    color: "#EA580C",
+  },
+  {
+    key: "ssh",
+    label: "内网主机台",
+    desc: "连 HPC 与桌面",
+    icon: <CloudServerOutlined />,
+    path: "/ssh",
+    color: "#7C3AED",
+  },
 ];
+
+/**
+ * 已经在快捷入口里出现过的服务 id。
+ *
+ * 首页原来有「8 个快捷入口」+「12 张常用服务卡」两套入口，语义高度重叠
+ * （文献检索、命令速查两边都有），用户要判断"哪个才是入口"，一屏的信息
+ * 密度也翻倍。处理办法：**同��个服务只出现一次** —— 出现在快捷入口的
+ * 就不再占常用服务的位置，常用服务里的空位由其它服务自动补上。
+ */
+const SERVICES_ALREADY_IN_QUICK = new Set(['literature-search', 'linux-command']);
 
 /* ------------------------------------------------------------ 小组件 */
 
@@ -545,8 +571,11 @@ export default function Home() {
     .filter((s): s is (typeof services)[number] => Boolean(s));
 
   // 常用服务：置顶优先，补齐到 12 张，同一服务只出现一次
+  // 已经在快捷入口出现过的服务不再重复占位（见 SERVICES_ALREADY_IN_QUICK）。
   const homeServices = useMemo(() => {
-    const byId = new Map(services.map((s) => [s.id, s]));
+    const byId = new Map(
+      services.filter((s) => !SERVICES_ALREADY_IN_QUICK.has(s.id)).map((s) => [s.id, s]),
+    );
     const picked: ServiceItem[] = [];
     for (const id of PINNED) {
       const hit = byId.get(id);

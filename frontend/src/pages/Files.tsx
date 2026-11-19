@@ -54,6 +54,7 @@ import {
   StopOutlined,
   SwapOutlined,
   TeamOutlined,
+  ToolOutlined,
   UndoOutlined,
   UnorderedListOutlined,
   UploadOutlined,
@@ -1194,6 +1195,23 @@ export default function Files() {
       label: entry.dir ? '入库该目录的文档' : '入库知识库',
       onClick: () => ingestToKnowledge(entry),
     });
+    // PDF 联动：直接把这份 PDF 带进门户自绘的 PDF 工具箱
+    // （合并/拆分/压缩/加水印…），不用先下载到本地再传回去。
+    if (!entry.dir && entry.name.toLowerCase().endsWith('.pdf')) {
+      items.push({
+        key: 'pdf-tools',
+        icon: <ToolOutlined />,
+        label: '用 PDF 工具箱处理',
+        onClick: () => {
+          const q = new URLSearchParams({
+            source,
+            id: entry.id,
+            name: entry.name,
+          });
+          navigate(`/pdf?${q.toString()}`);
+        },
+      });
+    }
     if (!entry.dir && isOfficeEditable(entry.name)) {
       items.push({ type: 'divider' });
       if (canWrite(entry.path)) {
