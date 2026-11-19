@@ -196,14 +196,6 @@ const QUICK_ENTRIES = [
     path: "/pdf",
     color: "#EA580C",
   },
-  {
-    key: "ssh",
-    label: "内网主机台",
-    desc: "连 HPC 与桌面",
-    icon: <CloudServerOutlined />,
-    path: "/ssh",
-    color: "#7C3AED",
-  },
 ];
 
 /**

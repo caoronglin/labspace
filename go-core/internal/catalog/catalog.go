@@ -231,22 +231,6 @@ func Default() *Service {
 				Health: HealthSpec{URL: "http://127.0.0.1:8097/health", Kind: "http"},
 			},
 			{
-				ID: "webssh", Name: "内网终端（WebSSH）", Category: "research",
-				Description: "浏览器里的 SSH/SFTP：手机也能连内网 HPC 与桌面，不用装 SSH 客户端",
-				// 独立端口 + 绝对 URL：应用自己带 WebSocket 与静态资源，
-				// 挂子路径会 404（与 primer / draw.io 同样的做法）。
-				URL: "http://192.0.2.10:8105/", Icon: "CodeOutlined",
-				OpenMode: "link",
-				Tags:     []string{"SSH", "终端", "HPC", "远程", "运维"},
-				Guide: []string{
-					"入口由 nginx 用门户会话做 auth_request 校验；应用自己还有一层账号（首次需在该页面注册）。",
-					"SSH 目标被白名单限制在实验室的 HPC 与桌面，不能拿它当跳板扫内网。",
-					"会话数、传输量、连接速率都有配额（见 compose.yaml）。",
-				},
-				Enabled: true, Status: "new", Engine: "WebSSH 3 (Python)",
-				Health: HealthSpec{URL: "http://127.0.0.1:8105/ready", Kind: "http"},
-			},
-			{
 				ID: "stirling", Name: "PDF 工具箱", Category: "research",
 				Description: "论文 PDF 的合并、拆分、压缩、旋转、删页与重排；全部本机处理，文件不出内网",
 				// 指向**门户自绘**的页面（/pdf），不是 Stirling 自己的界面：

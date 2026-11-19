@@ -13,7 +13,6 @@ const SsoLogin = lazy(() => import('../pages/SsoLogin'));
 const SearchPage = lazy(() => import('../pages/SearchPage'));
 const Literature = lazy(() => import('../pages/Literature'));
 const PdfTools = lazy(() => import('../pages/PdfTools'));
-const WebSshConsole = lazy(() => import('../pages/WebSshConsole'));
 const DailyPapers = lazy(() => import('../pages/DailyPapers'));
 const Lab = lazy(() => import('../pages/Lab'));
 const Toolbox = lazy(() => import('../pages/Toolbox'));
@@ -107,7 +106,6 @@ export function AppRoutes() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/literature" element={<Literature />} />
             <Route path="/pdf" element={<PdfTools />} />
-            <Route path="/ssh" element={<WebSshConsole />} />
             <Route path="/papers" element={<DailyPapers />} />
             <Route path="/lab" element={<Lab />} />
             <Route path="/tools" element={<Toolbox />} />

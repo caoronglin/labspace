@@ -83,15 +83,15 @@ func TestHostAdaptationRejectsUntrustedNonIPHost(t *testing.T) {
 func TestLiveListMatchesPortalContract(t *testing.T) {
 	s := Default()
 	student := s.Live("192.0.2.10", []string{"lab-student", "bioinfo-student"})
-	// 13 = 原有 10 + 引物设计（primer）+ 内网终端（webssh）+ PDF 工具箱（stirling）。
+	// 12 = 原有 10 + 引物设计（primer）+ PDF 工具箱（stirling）。
 	// 这个数字只是"目录没被意外清空"的锚点，
 	// 新增服务时同步上调即可，不必为保持 10 而拒绝接入。
-	if len(student) != 13 {
-		t.Fatalf("student service count = %d, want 13", len(student))
+	if len(student) != 12 {
+		t.Fatalf("student service count = %d, want 12", len(student))
 	}
 	teacher := s.Live("192.0.2.10", []string{"lab-teacher"})
-	if len(teacher) != 13 {
-		t.Fatalf("teacher service count = %d, want 13", len(teacher))
+	if len(teacher) != 12 {
+		t.Fatalf("teacher service count = %d, want 12", len(teacher))
 	}
 }
 
@@ -129,8 +129,8 @@ func TestExportIsValidJSON(t *testing.T) {
 	if doc.Version != 2 {
 		t.Fatalf("unexpected export version %d", doc.Version)
 	}
-	if len(doc.Services) != 13 {
-		t.Fatalf("exported %d services, want 13", len(doc.Services))
+	if len(doc.Services) != 12 {
+		t.Fatalf("exported %d services, want 12", len(doc.Services))
 	}
 }
 

@@ -292,15 +292,6 @@ export const NAV_ITEMS: NavItem[] = [
     keywords: ['literature', 'pubmed', '文献', '检索', 'openalex', 'arxiv', 'crossref'],
   },
   {
-    path: '/ssh',
-    label: '内网主机台',
-    icon: <CloudServerOutlined />,
-    group: 'research',
-    sub: 'toolbox',
-    hint: '浏览器连 HPC 与桌面',
-    keywords: ['ssh', '终端', 'HPC', '主机', '远程', 'webssh'],
-  },
-  {
     path: '/pdf',
     label: 'PDF 工具箱',
     icon: <FilePdfOutlined />,

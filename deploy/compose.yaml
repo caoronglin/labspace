@@ -368,95 +368,6 @@ services:
         max-file: "3"
 
   # ────────────────────────────────────────────────────────────────
-  # WebSSH —— 浏览器里的 SSH/SFTP 工作台（连内网 HPC 与桌面）
-  #
-  # 为什么要自建：内网的 HPC 与桌面没有公网入口，实验室成员在手机上
-  # 没法直接 SSH；WebSSH 把 SSH 会话搬进浏览器，手机上也能操作。
-  #
-  # 安全边界（三个都要成立，缺一个就等于把内网敞开）：
-  #   1. 容器只绑 127.0.0.1:8105，对外只开 nginx 的 8105，且每个请求
-  #      先过门户会话鉴权（auth_request）—— WebSSH 自己的账号体系
-  #      只用于它内部的连接与密钥存储，不替代门户鉴权。
-  #   2. SSH 目标白名单：只允许实验室的 HPC 与桌面（Tailscale 网段 +
-  #      指定的机器 IP），连不到别的网段 —— 这是防"拿它当跳板扫内网"。
-  #   3. 配额与限流：会话数、传输量、连接速率都有上限，防止一个人占满。
-  webssh:
-    image: ghcr.io/bifrost0x/webssh@sha256:ac2ee696dd43946b9d30a3ec5086fbf5213f395f9f5220110b82c2e91e692e5f
-    container_name: lab-webssh
-    restart: unless-stopped
-    init: true
-    ports:
-      - "127.0.0.1:8115:5000"
-    environment:
-      - TZ=Asia/Shanghai
-      - DEPLOYMENT_PROFILE=homelab
-      - HOST=0.0.0.0
-      - PORT=5000
-      # 反代在前面（nginx），要读真实客户端 IP
-      - TRUSTED_PROXIES=1
-      # 子路径部署：门户把 WebSSH 挂在 /ssh-app/ 下。
-      # 它的模板里有大量**站内绝对路径**（form action="/login"、
-      # redirect("/")、静态资源等），不告诉它前缀的话，浏览器提交表单会
-      # 打回门户根路径 → 登录永远失败（表现为"点了登录还停在登录页"）。
-      # 配合 nginx 的 X-Forwarded-Prefix 使用。
-      - APPLICATION_ROOT=/ssh-app
-      # 内网没有 HTTPS，Cookie 不带 Secure；HTTPS 终止在 nginx 之后再改回来
-      - SESSION_COOKIE_SECURE=false
-      - CORS_ORIGINS=http://198.51.100.71:8105,http://192.0.2.10:8105
-      # —— 资源配额（进程内、原子、不会超发）——
-      # 全局 6 个 SSH 会话、单人 2 个：够一个人开几个标签，又不至于占满机器
-      - QUOTA_SSH_SESSION_GLOBAL=6
-      - QUOTA_SSH_SESSION_PER_USER=2
-      - QUOTA_QUICK_CONNECTION_GLOBAL=4
-      - QUOTA_QUICK_CONNECTION_PER_USER=2
-      # 传输/临时空间：单人 512MB、全局 1GB
-      - QUOTA_TRANSFER_GLOBAL=3
-      - QUOTA_TRANSFER_PER_USER=1
-      - QUOTA_TEMP_BYTES_GLOBAL=1073741824
-      - QUOTA_TEMP_BYTES_PER_USER=536870912
-      # 后台任务（转换、索引）：全局 4、单人 2
-      - QUOTA_BACKGROUND_JOB_GLOBAL=4
-      - QUOTA_BACKGROUND_JOB_PER_USER=2
-      # —— 限流 ——
-      - SSH_CONNECT_RATELIMIT=6 per minute
-      - RATELIMIT_LOGIN_LIMIT=10 per minute
-      - RATELIMIT_REAUTH=5 per minute
-      - RATELIMIT_DEFAULT=200 per hour
-      - RATELIMIT_ENABLED=True
-      # —— 目标白名单：只允许实验室的 HPC 与桌面 ——
-      # 100.77.182.76 = hpc20d509（HPC）
-      # 100.75.160.113 = rlcao-ubuntu（桌面）
-      # 100.81.178.13 = win-99hgg0bbe3f（Windows 桌面）
-      # 100.100.161.104 = wsd509（Windows 工作站）
-      - SSH_ALLOWED_TARGETS=100.77.182.76,100.75.160.113,100.81.178.13,100.100.161.104
-      # 允许的内网网段（HPC/桌面都在 Tailscale CGNAT 段与实验室 LAN）
-      - SSH_ALLOWED_INTERNAL_NETWORKS=100.64.0.0/10,192.0.2.0/24
-      - SSH_CONNECT_TIMEOUT=10
-      # 单文件下载上限 100MB、压缩包 512MB
-      - MAX_DOWNLOAD_SIZE=104857600
-      - MAX_ZIP_DOWNLOAD_SIZE=536870912
-      # 会话空闲超时
-      - SESSION_TIMEOUT=3600
-    volumes:
-      - webssh_data:/app/data
-    # —— 容器级资源限制 ——
-    pids_limit: 256
-    mem_limit: 768m
-    memswap_limit: 1536m
-    cpus: 1.0
-    healthcheck:
-      test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','5000')+'/ready',timeout=2).read(1)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ────────────────────────────────────────────────────────────────
   # Stirling PDF —— 自托管 PDF 工具箱（合并/拆分/转换/OCR）
   #
   # 资源限制的重点不在内存而在 **CPU**：它每个任务会拉起
@@ -574,8 +485,6 @@ services:
 
 volumes:
 
-  # WebSSH：账号、加密密钥、主机信任、审计记录、备份（敏感，单独备份）
-  webssh_data:
   # Stirling PDF：上传缓存、用户文件、审计
   stirling_data:
   # Mailbox：数据库（含加密后的账号凭据）；主密钥在 /etc/labspace，不放这里
