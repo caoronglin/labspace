@@ -103,6 +103,10 @@ export const NAV_SUBS: Record<string, NavSub> = {
   // 学习资源 + 小工具合并：两者都是"偶尔用一次"的辅助入口，
   // 拆成两个子菜单只会让侧栏更长得滚。
   more: { key: 'more', label: '学习与小工具', icon: <ToolOutlined /> },
+  // PDF 工具箱 + 内网主机台合并：两个都是"处理具体材料/具体机器"的工具，
+  // 平铺在科研组里各占一行、又不常用，收成一个子菜单更清爽
+  //（与"分析与写作""学习与小工具"同一套分组逻辑）。
+  toolbox: { key: 'toolbox', label: '实验工具', icon: <ToolOutlined /> },
   admin: { key: 'admin', label: '后台管理', icon: <CloudServerOutlined /> },
 };
 
@@ -292,6 +296,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '内网主机台',
     icon: <CloudServerOutlined />,
     group: 'research',
+    sub: 'toolbox',
     hint: '浏览器连 HPC 与桌面',
     keywords: ['ssh', '终端', 'HPC', '主机', '远程', 'webssh'],
   },
@@ -300,6 +305,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'PDF 工具箱',
     icon: <FilePdfOutlined />,
     group: 'research',
+    sub: 'toolbox',
     hint: '合并 · 拆分 · 压缩 · 旋转 · 删页',
     keywords: ['pdf', '合并', '拆分', '压缩', '水印', 'stirling', '论文'],
   },
