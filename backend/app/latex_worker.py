@@ -252,8 +252,15 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
+#: 监听地址。必须绑 0.0.0.0：这个 sidecar 与门户后端是两个容器，
+#: 按 compose 服务名互访；绑回环会让 `http://latex-compile:8131` 直接连不上。
+#: 容器端口**不发布到宿主**（compose 里没有 ports 映射），也 drop 了全部 capability，
+#: 因此这里不存在"对外暴露编译服务"的问题。
+BIND_ADDR = os.environ.get("LATEX_WORKER_BIND", "0.0.0.0")  # nosec B104 -- 容器内网专用，见上
+
+
 def main() -> None:
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    server = ThreadingHTTPServer((BIND_ADDR, PORT), Handler)
     server.daemon_threads = True
     server.serve_forever()
 

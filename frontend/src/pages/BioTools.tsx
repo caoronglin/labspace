@@ -522,7 +522,8 @@ export default function BioTools() {
         const res = await fetch(`${target}?format=png`, {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          // 代理层对 POST 做 CSRF 双提交校验（和门户其它写接口一致）
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': readCsrf() },
           body: JSON.stringify(body),
         });
         if (!res.ok) {
@@ -541,7 +542,10 @@ export default function BioTools() {
       const res = await fetch(query ? `${target}?${query}` : target, {
         method: tool.method,
         credentials: 'include',
-        headers: tool.method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+        headers:
+          tool.method === 'POST'
+            ? { 'Content-Type': 'application/json', 'X-CSRF-Token': readCsrf() }
+            : undefined,
         body: tool.method === 'POST' ? JSON.stringify(body) : undefined,
       });
       const payload = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));

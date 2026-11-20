@@ -1,5 +1,74 @@
 # CHANGELOG.md
 
+## 2026-11-20 晚 — 镜像拆分瘦身 / 台账写权限 / HITL 策略 / 前端清理
+
+### 3. 科学计算栈拆出独立镜像（后端 3.24 GB → 1.32 GB）
+
+| 镜像 | 之前 | 现在 | 说明 |
+|---|---|---|---|
+| `lab/labspace-backend` | 3.24 GB | **1.32 GB** | 只留门户需要的依赖 + LibreOffice/tesseract |
+| `lab/labspace-latex` | （复用后端镜像） | **1.54 GB** | 只有 TeX Live + 基础依赖 |
+| `lab/labspace-biotools` | （无） | **1.51 GB** | Biopython/scikit-bio/matplotlib 等 |
+
+- 依赖拆成两组：`requirements-lock.txt`（37 包，基础）与 `requirements-biotools-lock.txt`
+  （28 包，生信）；`pyproject.toml` 里生信三件套移到 `[project.optional-dependencies].biotools`。
+- `backend/Dockerfile` 改成 5 个 target：`wheels` / `python-deps` / `backend` / `latex` / `biotools`。
+- 生信成为独立服务 `lab-biotools`（8133，只连 compose 内网、**不发布宿主端口、不做鉴权**），
+  门户新增 `app/biotools_proxy.py`：`/api/biotools/*` 做「鉴权 → 原样转发 → 原样回传」，
+  支持 JSON / multipart / `image/png`，POST 走 CSRF 双提交。
+- 构建期冒烟两次救场：缺 `libhdf5_serial_hl.so.310`（h5py 高阶库）与 `libgomp.so.1`（OpenMP）
+  都会让 `import skbio` 在运行期才 500；现在构建阶段就 `import` 一次，装漏立刻停。
+- 顺手修 `require_csrf`：抽成纯函数 `verify_csrf()`，代理层在函数体里调用它时不会再把
+  FastAPI 的 `Header(...)`/`Cookie(...)` 哨兵当真实值（否则 `TypeError` → 500）。
+
+### 7. `api.ts` 清掉 50 个没有调用点的封装
+
+逐个复核（点取用 / 裸词取用 / `api[...]` 动态取用 / e2e 与 docs 引用）后删除 50 个方法与
+21 个因此变成孤儿的导出类型，并在原处留注释说明「能力没有 UI 入口、服务端接口仍在」。
+
+### 8. antd 6 弃用项全量替换
+
+`Spin tip` → `description`、`Space direction` → `orientation`、`Drawer width` → `size`，
+共 16 个文件 21 处；PlotStudio / BioTools 由拆分那条线一并处理。
+
+### 9. 组件拆分降复杂度
+
+`PlotStudio.tsx` 1067 → **622 行**（近似复杂度 78 → 53），抽出 `components/plot/`（参数面板、
+AntV 预览、CSV 解析、参数默认值）；`BioTools` 抽出 `components/bio/ToolFieldInput.tsx`。
+
+### 10. 小屏实测（390×844）
+
+新增 `e2e/_small_screen.mjs`：`/drawio` `/plot` `/bio-tools` `/files` `/seeds` `/genomes` `/latex`
+7 个页面**零横向溢出**、零 JS 异常、零 4xx（截图在 `/tmp/small-*.png`）。
+
+### 11. 种子台账改为「登录即可写」
+
+- 新增 `POST /api/baserow/seed/rows`、`PATCH /api/baserow/seed/rows/{row_id}`
+  （`require_user` + CSRF）；写操作经 `baserow.admin_row_create/update` 用管理员令牌落到
+  **服务端解析出来的**台账表（前端拿不到「写任意表」的入口），并记审计日志（含操作人）。
+- 删除单条/批量、Excel 导入导出、表与字段结构仍然只有管理员。
+- 前端种子页的「新建/编辑」改走新接口；`tests/test_seed_write.py` 4 条覆盖边界。
+
+### 13. HITL：确认/问答界面此前是「死代码」
+
+`LabToolMiddleware` 里 2026-11-10 写的 deny-shim（"门户没有确认入口，停在等确认会卡死"）会把
+所有 ASK 一律拒掉，所以 2.0.12 新加的确认面板与 AskUser 表单**根本触发不到**。
+现在：`AskUser`（纯问答、无副作用）放行 ASK；写文件 / Bash / 团队操作仍然拒绝（不给
+"一键批准任意命令"留口子）。新增 `tests/test_hitl.py` 5 条：服务端重建事件形状、
+不接受前端伪造 `rules`、`ask` 只认 `AskUser`。
+
+> 真实往返（让模型自己发一次提问）**未完成**：MiniMax key 回
+> `Rate limit or quota exceeded`，模型侧配额用尽，不是代码问题。
+
+### 12. 其他
+
+- 删除遗留目录 `/opt/lab-quantum`（先归档到 `/srv/labbackup/archives/retired-code/lab-quantum-20261120/`）。
+- `latex_worker` 绑定地址改可配置（`LATEX_WORKER_BIND`），并补文件末尾换行。
+
+**验证**：`pytest` **290 passed**；`tsc -b` 干净；`vite build` ✓；巡检 38 路由 0 问题；
+`/api/biotools/*` 经代理实测（JSON / PNG / multipart / CSRF 403 / 未登录 401）；
+学位论文模板经新 latex 镜像编译成功（46 KB PDF）。
+
 ## 2026-11-20 — 统一生信入口 + 导航重构 + 学位论文模板可编译
 
 ### A. 生信工具 `/bio-tools`（Biopython + scikit-bio，取代 CropGenome）
@@ -60,7 +129,7 @@
 
 ## 2026-11-20 — 下架文档解析页 + 垃圾清理
 
-**下架 `/docparse`（文档解析页）**
+### 下架 `/docparse`（文档解析页）
 
 它只是「上传 PDF → 看 Markdown」的一层壳，同样的能力已经由**知识库入库**在用
 （PDF/图片 → Markdown 走 MinerU / OXR / Docling）。保留两个入口只会让人问
@@ -77,7 +146,7 @@
 - e2e：`/docparse` 从路由清单移除，专门测该页的断言改成「已下架（404）」；
   新增 `e2e/_docparse_gone.mjs` 验证 404 + 首页无残留入口。
 
-**数据表令牌刷新的真实故障（顺手修复）**
+### 数据表令牌刷新的真实故障（顺手修复）
 
 `/lab`（多维表格）停留约 20 分钟后所有请求开始 401（`ERROR_INVALID_ACCESS_TOKEN`），
 刷新页面也没用：`_token(force=True)` 按**门户邮箱**（`x@local`）清缓存，而
@@ -85,7 +154,7 @@
 还是那个过期令牌。修复缓存键并让 TTL（18 分钟）短于 Baserow 的 JWT 有效期；
 新增 `backend/tests/test_baserow_token_refresh.py`（去掉修复即 FAIL，已实证）。
 
-**垃圾清理**
+### 垃圾清理
 
 - 删除两个从未被引用的组件：`components/charts/DatabaseCategoryBar.tsx`（126 行）、
   `TaskStatusDonut.tsx`（152 行）。

@@ -15,8 +15,15 @@ dependencies = [
   "python-pptx==1.0.2",
   # 标准库 crypt 自 Python 3.13 移除，口令哈希改用 bcrypt（$2b$ 与既有数据兼容）
   "bcrypt==5.0.0",
-  # 统一生信工具后端（app/biotools.py）：序列/比对/建树用 Biopython + scikit-bio，
-  # 质粒图谱用 dna-features-viewer。版本锁定与容器镜像保持一致。
+]
+
+[project.optional-dependencies]
+# 生信依赖单独成组：它们会带进 numpy/scipy/pandas/matplotlib/h5py，
+# 而 Python 3.15 上这些没有 manylinux 轮子、必须源码编译。放进主依赖会让
+# 门户后端镜像白白胖 +1.1 GB，也会把编译工具链拖进运行时镜像。
+# 因此拆成 lab/labspace-biotools 独立镜像（见 backend/Dockerfile 的 biotools target），
+# 门户后端只做反向代理。
+biotools = [
   "biopython==1.88",
   "scikit-bio==0.7.4",
   "dna-features-viewer==3.1.5",

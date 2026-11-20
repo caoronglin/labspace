@@ -3,7 +3,10 @@ name: labspace
 services:
   # ---------------------------------------------------------------- LabSpace 后端
   backend:
-    build: ../backend
+    # 只构建 backend target：科学计算栈在 biotools 镜像里，LaTeX 在 latex 镜像里
+    build:
+      context: ../backend
+      target: backend
     image: lab/labspace-backend:1.0.0
     container_name: lab-labspace-backend
     restart: unless-stopped
@@ -20,6 +23,8 @@ services:
       LABSPACE_DB_DSN: "postgresql://labspace:labspace-local-dev-pw@lab-postgres:5432/labspace"
       # AgentScope 服务在同一个 compose 网络里，用服务名访问（容器到容器不走宿主机回环）
       LABSPACE_AGENTSCOPE_BASE: "http://agentscope:8100"
+      # 生信工具独立服务（科学计算依赖太重，不塞进本镜像；/api/biotools 是代理）
+      LABSPACE_BIOTOOLS_URL: "http://biotools:8133"
     volumes:
       # 受控保存个人绘图：只挂载用户目录根，后端再做路径与内容校验
       - /srv/lab/users:/srv/lab/users
@@ -41,6 +46,8 @@ services:
     ports:
       # 仅回环，统一由宿主机 Nginx 内网入口对外
       - "127.0.0.1:8088:8080"
+    depends_on:
+      - biotools
     networks:
       - labspace
       # 接入既有 lab-tools 网络，按容器名探测其它组件健康状态
@@ -136,9 +143,53 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ---------------------------------------------------------------- 生信工具
+  # Biopython / scikit-bio / dna-features-viewer 会带进 numpy/scipy/pandas/matplotlib/h5py，
+  # 它们在 Python 3.15 上只能源码编译。单独成容器后，门户后端镜像回到 2.2 GB 左右，
+  # LaTeX sidecar 也不再白背这一 GB。本服务**不发布宿主端口**、不做鉴权：
+  # 浏览器只经门户的 /api/biotools（代理层做会话校验）访问。
+  biotools:
+    build:
+      context: ../backend
+      target: biotools
+    image: lab/labspace-biotools:1.0.0
+    container_name: lab-biotools
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    command: ["uvicorn", "app.biotools_service:app", "--host", "0.0.0.0", "--port", "8133"]
+    environment:
+      TZ: Asia/Shanghai
+      HOME: "/tmp"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    networks:
+      - labspace
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8133/health',timeout=4)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   latex-compile:
-    build: ../backend
-    image: lab/labspace-backend:1.0.0
+    build:
+      context: ../backend
+      target: latex
+    image: lab/labspace-latex:1.0.0
     container_name: lab-latex-compile
     restart: unless-stopped
     init: true

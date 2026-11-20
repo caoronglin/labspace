@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import biotools as biotools_mod
-from app import main
+from app import biotools_service
 from app.config import settings
 
 # 39 bp，含一个完整的 CDS（ATG…TAA）与一个 EcoRI 位点
@@ -67,7 +67,9 @@ def _synth_ab1(sequence: str, qualities: list[int]) -> bytes:
 
 @pytest.fixture()
 def client() -> TestClient:
-    return TestClient(main.app)
+    # 端点现在跑在独立的 biotools 服务里（biotools_service），不是门户后端的 router：
+    # 门户侧只剩一个代理，代理层的鉴权与转发在 tests/test_biotools_proxy.py 里测。
+    return TestClient(biotools_service.app)
 
 
 @pytest.fixture()
@@ -109,8 +111,15 @@ def test_meta_lists_capabilities(client: TestClient, auth: dict[str, str]) -> No
     assert body["external"]["ncbi"] is False
 
 
-def test_requires_login(client: TestClient) -> None:
-    assert client.get("/api/biotools/meta").status_code == 401
+def test_service_is_internal_only(client: TestClient) -> None:
+    """本服务不自己做鉴权（它只在内网，由门户代理校验会话）。
+
+    鉴权/CSRF 的断言在 `tests/test_biotools_proxy.py`：那里才是浏览器能到达的一层。
+    这里只确认「服务本身不挡内部调用」——否则代理转发过去会被上游回 401，
+    真实故障就是「未登录或会话已过期」。
+    """
+    assert client.get("/health").status_code == 200
+    assert client.get("/api/biotools/meta").status_code == 200
 
 
 # ---------------------------------------------------------------- 序列分析

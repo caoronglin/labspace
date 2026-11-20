@@ -59,7 +59,7 @@ from . import (
     baserow as baserow_mod,
 )
 from . import (
-    biotools as biotools_mod,
+    biotools_proxy as biotools_proxy_mod,
 )
 from . import (
     casdoor,
@@ -213,7 +213,8 @@ app.include_router(wecom_mod.router)
 app.include_router(debug_api_mod.router)
 app.include_router(baserow_mod.router)
 # 统一生信工具（Biopython + scikit-bio）：取代已废弃的 CropGenome 序列工具，纯计算只读
-app.include_router(biotools_mod.router)
+# 生信工具跑在独立的 biotools 容器里，这里只挂代理（鉴权在代理层）
+app.include_router(biotools_proxy_mod.router)
 app.include_router(office_mod.router)
 app.include_router(genomes_mod.router)
 app.include_router(labops_mod.router)

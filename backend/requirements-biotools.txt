@@ -1,0 +1,7 @@
+# 生信依赖（biotools 镜像专用）。
+# 真源: backend/pyproject.toml 的 [project.optional-dependencies].biotools。
+# lab-pyproject-sync 只同步 [project].dependencies，因此这里手工镜像一份，
+# 供 lab/labspace-biotools 镜像的构建阶段生成 wheel；版本必须与真源保持一致。
+biopython==1.88
+scikit-bio==0.7.4
+dna-features-viewer==3.1.5

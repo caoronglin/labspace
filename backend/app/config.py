@@ -89,6 +89,8 @@ class Settings:
 
     # LaTeX 编译（独立 sidecar，接收源码、返回 PDF，不接触门户数据卷）
     latex_worker: str = os.getenv("LABSPACE_LATEX_WORKER", "http://latex-compile:8131").rstrip("/")
+    # 生信工具独立服务：科学计算依赖太重，单独成容器，门户只做代理
+    biotools_url: str = os.getenv("LABSPACE_BIOTOOLS_URL", "http://biotools:8133").rstrip("/")
     latex_root: str = os.getenv("LABSPACE_LATEX_ROOT", "/srv/labdata/latex")
     latex_timeout: int = int(os.getenv("LABSPACE_LATEX_TIMEOUT", "120"))
 

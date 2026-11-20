@@ -4,7 +4,11 @@ import { chromium } from 'playwright';
 const BASE = 'http://198.51.100.71';
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 1000 }, locale: 'zh-CN' });
-await ctx.addCookies([{ name: 'labspace_session', value: process.env.TOK, domain: '198.51.100.71', path: '/' }]);
+await ctx.addCookies([
+  { name: 'labspace_session', value: process.env.TOK, domain: '198.51.100.71', path: '/' },
+  // 门户登录时会一并种下 CSRF cookie；代理层对 POST 做双提交校验，测试也要带上
+  { name: 'labspace_csrf', value: 'e2e-csrf', domain: '198.51.100.71', path: '/' },
+]);
 const page = await ctx.newPage();
 const problems = [];
 page.on('response', (r) => {

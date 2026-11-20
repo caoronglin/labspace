@@ -233,15 +233,14 @@ async def require_superadmin(
     return user
 
 
-async def require_csrf(
-    request: Request,
-    x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
-    labspace_csrf: str | None = Cookie(default=None, alias="labspace_csrf"),
-) -> None:
-    """双提交 CSRF 校验：Header 必须等于 Cookie。
+def verify_csrf(request: Request, x_csrf_token: str | None, csrf_cookie: str | None) -> None:
+    """双提交 CSRF 校验的**纯函数**版本。
 
-    内部服务使用 Bearer 令牌（用户自身会话 JWT）调用时不做双提交校验——
-    浏览器无法从跨站表单携带该头，攻击面与 Cookie 会话相同。
+    抽出来的原因：代理类路由（例如 `/api/biotools/*` 转发到独立服务）需要在函数体里
+    主动校验，而不能把它当 `Depends` 用；直接调用 `require_csrf(request)` 会把
+    FastAPI 的 `Header(...)`/`Cookie(...)` 哨兵对象当成真实值传进去，报
+    `TypeError: unsupported operand types for compare_digest`（实测踩过）。
+    这样两边共用一套判定，不会出现"代理层少校验一次"的口子。
     """
     origin = request.headers.get("origin")
     if origin and origin not in settings.allowed_origins:
@@ -251,5 +250,14 @@ async def require_csrf(
     # 内部服务令牌：非浏览器调用，同样豁免双提交 CSRF
     if service_token_valid(request):
         return
-    if not labspace_csrf or not x_csrf_token or not secrets.compare_digest(labspace_csrf, x_csrf_token):
+    if not csrf_cookie or not x_csrf_token or not secrets.compare_digest(csrf_cookie, x_csrf_token):
         raise HTTPException(status_code=403, detail="CSRF 校验失败")
+
+
+async def require_csrf(
+    request: Request,
+    x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+    labspace_csrf: str | None = Cookie(default=None, alias="labspace_csrf"),
+) -> None:
+    """FastAPI 依赖形态：参数由框架注入，判定逻辑在 `verify_csrf`。"""
+    verify_csrf(request, x_csrf_token, labspace_csrf)

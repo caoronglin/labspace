@@ -7,6 +7,25 @@
 
 ---
 
+## 镜像拆分（2026-11）
+
+一个 `backend/Dockerfile` 出四个运行 target，避免"一个镜像背所有东西"：
+
+| target | 镜像 | 带什么 | 干什么 |
+|---|---|---|---|
+| `backend` | `lab/labspace-backend:1.0.0` | 基础依赖 + LibreOffice + tesseract | 门户 API（含 Office 转换、种子 OCR） |
+| `latex` | `lab/labspace-latex:1.0.0` | 基础依赖 + TeX Live | 只跑 `app.latex_worker`（8131） |
+| `biotools` | `lab/labspace-biotools:1.0.0` | 基础依赖 + 科学计算栈 + HDF5 | 只跑 `app.biotools_service`（8133，仅内网） |
+
+为什么要拆：Biopython / scikit-bio / dna-features-viewer 会带进 numpy / scipy / pandas /
+matplotlib / h5py，而 Python 3.15 上这些**没有 manylinux 轮子**，必须源码编译（gcc + HDF5 头文件）。
+放在门户镜像里会让它从 1.3 GB 涨到 3.2 GB，而门户本身不需要它们；LaTeX sidecar 更不需要
+LibreOffice。拆分后三个镜像分别是 1.32 / 1.54 / 1.51 GB，且各自的可写面更小。
+
+生信服务的鉴权在门户侧：浏览器只访问 `http://<门户>/api/biotools/*`，
+`app/biotools_proxy.py` 校验会话（写操作还校验 CSRF）后原样转发给 `biotools:8133`。
+那个容器不发布宿主端口、不做鉴权、`cap_drop: ALL`。
+
 ## 目录
 
 1. [一句话概览](#1-一句话概览)
