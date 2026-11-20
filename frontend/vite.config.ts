@@ -1,8 +1,13 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type PluginOption } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// 显式声明插件数组类型：Vite 8 + plugin-react 6 的联合类型在
+// tsconfig.node.json 的 strict 模式下会触发 TS2321「Excessive stack depth」。
+// 这里把数组提成常量并标注类型，让类型检查止步于此。
+const plugins: PluginOption[] = [react()];
+
 export default defineConfig({
-  plugins: [react()],
+  plugins,
   server: {
     host: '0.0.0.0',
     port: 5173,

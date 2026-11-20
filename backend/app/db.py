@@ -659,7 +659,9 @@ def query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
     conn = pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(statement, params)
+            # SAFETY: statement 是字面量或 psycopg2.sql.Composed（编译期常量），
+            # 值一律在 params 里由驱动转义；分析器只看到变量就报注入，是误报。
+            cur.execute(statement, params)  # noqa: S608, python-sql-injection
             rows = cur.fetchall()
             conn.commit()
             return [dict(r) for r in rows]

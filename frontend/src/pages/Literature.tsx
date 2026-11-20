@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Card, Empty, Flex, Input, Listy, Select, Spin, Tabs, Tag, Typography } from 'antd';
-import { BookOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { BookOutlined, RobotOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import SaveKnowledgeModal from '../components/SaveKnowledgeModal';
+import { handoffToAgent } from '../utils/agentHandoff';
 import LiteratureLibrary from './lab/LiteratureLibrary';
 import DailyPapers from './DailyPapers';
 
@@ -45,6 +47,7 @@ function itemBody(it: any, sourceLabel: string): string {
 }
 
 function LiteratureSearch() {
+  const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
   const [source, setSource] = useState('pubmed');
   const [q, setQ] = useState('');
@@ -117,6 +120,13 @@ function LiteratureSearch() {
                     {it.doi && <Tag variant="filled">DOI {it.doi}</Tag>}
                     {it.accession && <Tag variant="filled">{it.accession}</Tag>}
                     {it.gene_id && <Tag variant="filled">Gene {it.gene_id}</Tag>}
+                    <Button
+                      size="small"
+                      icon={<RobotOutlined />}
+                      onClick={() => navigate(handoffToAgent(agentPromptFor(it, labelOf(source))))}
+                    >
+                      AI 解读
+                    </Button>
                     <Button size="small" icon={<BookOutlined />} onClick={() => setSaveItem(it)}>
                       存入知识库
                     </Button>
@@ -139,6 +149,28 @@ function LiteratureSearch() {
     </Flex>
   );
 }
+/** 把一条检索结果拼成"交给 Agent 精读/解读"的提示。 */
+function agentPromptFor(it: any, sourceLabel: string): string {
+  const lines = [
+    `请解读下面这条来自 ${sourceLabel} 的检索结果，中文作答；重点说明它解决什么问题、关键结论是什么、与我可能的育种/组学课题有什么关系。不要编造未给出的结果。`,
+    '',
+    `标题：${itemTitle(it)}`,
+  ];
+  const authors = Array.isArray(it.authors) ? it.authors.join(', ') : it.authorString;
+  if (authors) lines.push(`作者：${authors}`);
+  if (it.journal || it.journalTitle || it.container) {
+    lines.push(`期刊/来源：${it.journal || it.journalTitle || it.container}`);
+  }
+  if (it.pubdate || it.pubYear || it.year) lines.push(`日期：${it.pubdate || it.pubYear || it.year}`);
+  if (it.doi) lines.push(`DOI：${it.doi}`);
+  if (it.pmid) lines.push(`PMID：${it.pmid}`);
+  if (it.url) lines.push(`原文：${it.url}`);
+  if (it.abstract) lines.push('', `摘要：${it.abstract}`);
+  else if (it.description) lines.push('', `描述：${it.description}`);
+  lines.push('', '如果知识库里有相关材料，请检索并标出来源；资料不足时明确说明缺什么。');
+  return lines.join('\n');
+}
+
 export default function Literature() {
   return (
     <Tabs

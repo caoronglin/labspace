@@ -18,9 +18,9 @@ from collections.abc import Iterable
 from typing import Any
 
 from .catalog import load_catalog
+from .databases import PLANT_DATABASES
 
 log = logging.getLogger("labspace.corpus")
-from .databases import PLANT_DATABASES
 
 # --------------------------------------------------------------------- 工具清单
 

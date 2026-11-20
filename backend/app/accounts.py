@@ -105,7 +105,9 @@ def _query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
     conn = pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(statement, params)
+            # SAFETY: 同 _execute —— statement 只来自本文件字面量或
+            # sql.Composed；值全走 params。分析器对变量的告警是误报。
+            cur.execute(statement, params)  # noqa: S608, python-sql-injection
             rows = cur.fetchall()
             conn.commit()
             return [dict(r) for r in rows]
@@ -123,7 +125,7 @@ def _execute(statement: Any, params: tuple = ()) -> int:
     conn = pool.getconn()
     try:
         with conn.cursor() as cur:
-            cur.execute(statement, params)
+            cur.execute(statement, params)  # noqa: S608, python-sql-injection —— 见 docstring
             n = cur.rowcount
         conn.commit()
         return n

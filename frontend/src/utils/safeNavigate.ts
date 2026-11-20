@@ -22,6 +22,24 @@ export function safeExternalUrl(candidate: string | undefined, fallback: string)
   }
 }
 
+/**
+ * 同主机 URL 白名单（允许不同端口）。
+ *
+ * 用于「从配置/目录数据里取 URL 然后打开」的场景：只允许当前主机名，
+ * 防止外部链接变成开放重定向。返回 null 表示拒绝。
+ */
+export function sameHostUrl(candidate: string | undefined): string | null {
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate, window.location.origin);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (url.hostname !== window.location.hostname) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /** 受控跳转（同标签页）。 */
 export function redirectSafely(candidate: string | undefined, fallback: string): void {
   window.location.replace(safeExternalUrl(candidate, fallback));

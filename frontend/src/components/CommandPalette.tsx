@@ -21,6 +21,7 @@ import { requestTour } from './onboardingState';
 import { useAuth } from '../app/AuthContext';
 import { useNavCommands } from '../app/useNavCommands';
 import { nativeRouteOf } from '../utils/serviceRoute';
+import { sameHostUrl } from '../utils/safeNavigate';
 
 const TYPE_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   service: { label: '服务', icon: <AppstoreOutlined />, color: '#2B5CE6' },
@@ -110,7 +111,9 @@ export default function CommandPalette({
     } else if (it.path.startsWith('/')) {
       navigate(it.path);
     } else if (it.url) {
-      window.open(it.url, '_blank', 'noreferrer');
+      // 目录里的外部链接不能变成开放重定向：只放行当前主机（含其它端口的服务）。
+      const safe = sameHostUrl(it.url);
+      if (safe) window.open(safe, '_blank', 'noreferrer');
     }
   };
 

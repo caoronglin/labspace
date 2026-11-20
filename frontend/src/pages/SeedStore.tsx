@@ -11,6 +11,7 @@
  * 模板接口未就绪时只显示提示，不造假数据。
  */
 import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from 'react-router-dom';
 import dayjs from "dayjs";
 import {
   Alert,
@@ -37,6 +38,7 @@ import {
   DownloadOutlined,
   PlusOutlined,
   ReloadOutlined,
+  RobotOutlined,
   ScanOutlined,
   SearchOutlined,
   UploadOutlined,
@@ -50,6 +52,7 @@ import {
   type BaserowSeedTemplate,
 } from "../services/api";
 import { errText } from "../utils/err";
+import { handoffToAgent } from '../utils/agentHandoff';
 import PageShell from "../components/PageShell";
 import SeedTable, {
   SeedStatsBar,
@@ -84,7 +87,39 @@ function readColumnPref(): string[] {
   }
 }
 
+/**
+ * 把当前筛选结果交给 Agent：
+ * 台账本身适合查"这一条在哪"，但"这批材料有什么规律、哪些该补种、哪些该备份"
+ * 是自然语言问题。把它交给 Agent 比在表格里逐列扫更快。
+ *
+ * 只带当前页（最多 30 条）：避免把整库塞进提示词，也和页面上的统计口径一致。
+ */
+function buildSeedAnalysisPrompt(rows: BaserowRow[], tagFilter: string[]): string {
+  const keys = ['名称', '编号', '物种', '突变类型', '突变基因', '数量', '单位', '存放位置', '标签', '备注'];
+  const lines = [
+    '请分析下面这批种子台账记录，用中文回答：总体构成、值得关注的材料、可能的风险或待办（如备份、活力、存放）。不要编造未给出的字段。',
+    '',
+    `当前筛选标签：${tagFilter.length ? tagFilter.join('、') : '无'}`,
+    `记录数：${rows.length}（当前页）`,
+    '',
+  ];
+  for (const row of rows.slice(0, 30)) {
+    const parts: string[] = [];
+    for (const k of keys) {
+      const v = row[k];
+      if (v === null || v === undefined || v === '') continue;
+      const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      parts.push(`${k}=${text}`);
+    }
+    lines.push(`- ${parts.join('；')}`);
+  }
+  if (rows.length > 30) lines.push('', `（仅列出前 30 条，共 ${rows.length} 条）`);
+  lines.push('', '如果知识库里有相关的论文或实验记录，请检索并在回答中标出来源。');
+  return lines.join('\n');
+}
+
 export default function SeedStore() {
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const qc = useQueryClient();
   const screens = Grid.useBreakpoint();
@@ -567,6 +602,17 @@ export default function SeedStore() {
                     icon: x.icon,
                   }))}
                 />
+                <Tooltip title="把当前筛选结果交给 Agent 分析（不会修改台账）">
+                  <Button
+                    icon={<RobotOutlined />}
+                    disabled={!shownRows.length}
+                    onClick={() =>
+                      navigate(handoffToAgent(buildSeedAnalysisPrompt(shownRows, tagFilter)))
+                    }
+                  >
+                    让 Agent 分析
+                  </Button>
+                </Tooltip>
                 <Button
                   icon={<ReloadOutlined />}
                   loading={rowsQuery.isFetching}
