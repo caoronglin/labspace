@@ -1,11 +1,11 @@
 # SERVICE_INTEGRATION.md — 各服务集成方式与限制
 
-所有集成均为**链接/内嵌到统一入口**，不复制、不重写第三方功能。
+集成原则：**能自绘的用门户原生 Ant Design 页面**（Baserow 多维表格、PDF 工具箱、邮件列表、内网主机台；WebSSH 因无法与门户无缝登录已下架）；不能自绘的走链接或受控 iframe，并统一由 nginx 做 auth_request 会话鉴权。
 
 | 服务 | 集成方式 | 入口 | 验证 |
 | --- | --- | --- | --- |
 | 文件管理（门户原生网盘） | 门户内原生页面（Go 核心 `labfiles` 索引 + 按用户 ACL 授权） | 门户 `/files` | ✅ Go 核心实现，含单元测试 |
-| Agent 助手 | 门户内 IM 页 → pi RPC 网关 | 门户 `/agent` | ✅ SSE 流式回复、工具调用、消息落库 |
+| Agent 助手 | 门户内 IM 页 → AgentScope 2.0.11（独立容器） | 门户 `/agent` | ✅ SSE 流式回复、12 个 `lab_*` MCP 工具、知识库 RAG、会话落库 |
 | draw.io | 独立页面 + 门户受控保存/导出 | `http://192.0.2.10/draw/` | ✅ 绘图页可打开、可另存 XML 到个人目录 |
 | Linux Command | 官方仓库静态构建，Nginx 直接托管 | `http://192.0.2.10:8086/` | ✅ 页面加载，标题“Linux命令搜索引擎” |
 | IT-Tools | 官方镜像，独立页面 | `http://192.0.2.10:8084/` | ✅ 页面加载，标题“IT Tools - Handy online tools” |
@@ -13,12 +13,15 @@
 | 统一搜索 | 门户内页面 → 后端代理 SearXNG | 门户 `/search` | ✅ 中文/学术/视频分类切换 |
 | 文档解析 | 门户内页面 → OXR-1.0（Docling 回退） | 门户 `/docparse` | ✅ OXR 官方免费实例可用，PDF 真实解析出 Markdown |
 | 个人工作台 | 门户内原生页面（AntD） | 门户 `/workbench` | ✅ 捕获→分类→确认写入、计划与方向、简报 |
-| Agent 助手 | 门户内 IM 页 → pi RPC 网关 | 门户 `/agent` | ✅ SSE 流式回复、工具调用、消息落库 |
+| Agent 助手 | 门户内 IM 页 → AgentScope 2.0.11（独立容器） | 门户 `/agent` | ✅ SSE 流式回复、12 个 `lab_*` MCP 工具、知识库 RAG、会话落库 |
 | 论文翻译（文本） | 门户内页面 → Hy-MT2（本地引擎回退） | 门户 `/translation` | ✅ Hy-MT2 未部署时自动回退到本地引擎并标注来源 |
 | 天气预测 | 门户内页面 → Open-Meteo | 门户 `/weather` | ✅ 实时天气 + 5~7 日预报 |
 | 数据库速查 + API | 门户内页面 → 32 个真实适配器 | 门户 `/databases` | ✅ 107 个资源、32 个适配器实测返回真实结果 |
 | PDF 论文翻译（整篇 PDF） | 门户内页面 → PDFMathTranslate 工作进程 | 门户 `/translate` | ✅ 队列 + 双语/纯译产物 |
-| Open Terminal | 仅导师/管理员可见（角色过滤） | `http://192.0.2.10:8090/`（统一认证） | ✅ 角色过滤生效，学生不可见 |
+| 引物设计 Primer3 | Apptainer 承载 FastAPI，nginx 反向代理 + 门户会话鉴权 | 门户 `/genomes` 服务目录 → `:8097` | ✅ 13 条路由全通过、FASTA 索引与批量设计实测 |
+| PDF 工具箱 | 门户 **antd 自绘** → 同源 `/pdf-api/` → Stirling PDF 3.3 | 门户 `/pdf` | ✅ 合并/拆分/压缩/密码等 14 项实测，文件不出内网 |
+| 邮件（只收不发） | Mailbox 0.7.5（容器内加密凭据），门户自绘前端 + 同源 `/mail/` 代理 | 门户 `/mail/` | ✅ 服务 healthy、`/mail/health` 200；具体邮箱账号待配置 |
+| 组员共享与课题资料 | 门户原生页面 + Go 核心 ACL | 门户 `/shared`、`/research`、`/meetings` | ✅ 仅教师可见课题资料；逐周授权、沿用上周、48h 删除窗回归通过 |
 
 ## draw.io 的集成（与官方建议的差异及原因）
 

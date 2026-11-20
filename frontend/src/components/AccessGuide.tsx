@@ -7,6 +7,9 @@ const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '统一认证', url: hostUrl('/', 8090) },
   { name: '统一搜索', url: '/search' },
   { name: '文件存储', url: '/files' },
+  { name: '种子管理', url: '/seeds' },
+  { name: 'PDF 工具箱', url: '/pdf' },
+  { name: '邮件（只收不发）', url: '/mail/' },
   { name: '公共基因组', url: '/genomes' },
   { name: '生信实训', url: '/bioinfo' },
   { name: '文件工坊', url: '/snapotter' },
@@ -14,6 +17,7 @@ const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '图纸平台', url: hostUrl('/', 8093) },
   { name: 'Linux 命令', url: '/commands' },
   { name: '植物数据库', url: '/databases' },
+  { name: '引物设计', url: hostUrl('/', 8097) },
 ];
 
 /** 两个入口主机：内网 LAN 与 Tailscale，端口完全一致。 */

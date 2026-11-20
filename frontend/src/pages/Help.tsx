@@ -42,23 +42,24 @@ const { Text, Paragraph, Link } = Typography;
 
 const QUICK_START = [
   {
-    title: '统一身份登录',
-    description: '一次 SSO，自动进入工作台，无需在各服务重复注册。',
+    title: '一次登录，全站可用',
+    description: 'Casdoor 是唯一身份源；首次登录按提示改完初始口令即可使用所有已授权服务。',
     icon: <SafetyCertificateOutlined />,
   },
   {
-    title: '从工作台出发',
-    description: '左侧导航或用 ⌘K 命令面板，直达任意服务与页面。',
+    title: '三种方式找到入口',
+    description: '首页快捷入口、左侧分组导航、⌘K 命令面板。记不住菜单也没关系，搜页面名就行。',
     icon: <CompassOutlined />,
   },
   {
-    title: '文件与数据',
-    description: '公共文件、公共质粒、公共基因组与个人文件按 ACL 隔离。',
+    title: '文件按权限隔离',
+    description: '个人文件、课题资料、组会周目录、组员共享树各有 ACL；老师看全部、学生只看自己。',
     icon: <FolderOpenOutlined />,
   },
   {
-    title: '跨服务联动',
-    description: '例如在公共基因组中打开 FASTA，再交给 rust-bio 做序列分析、成对比对或 BLAST。',
+    title: '结果可以接着用',
+    description:
+      '文献可「AI 解读」、种子可「让 Agent 分析」、PDF 文件可一键进 PDF 工具箱、待办可跳回文件位置 —— 不用下载再上传。',
     icon: <ExperimentOutlined />,
   },
 ];
@@ -80,7 +81,8 @@ const ROLE_STARTS = [
       { label: '文件空间', hint: '个人目录与共享文件', path: '/files' },
       { label: '组会汇报', hint: '按周提交材料', path: '/meetings' },
       { label: 'Agent 助手', hint: '检索、写作与代码', path: '/agent' },
-      { label: '文献检索', hint: '统一检索与每日论文', path: '/literature' },
+      { label: '文献检索', hint: '统一检索 · 每日论文 · AI 解读', path: '/literature' },
+      { label: 'PDF 工具箱', hint: '本机合并 · 拆分 · 压缩', path: '/pdf' },
     ],
   },
   {
@@ -89,8 +91,9 @@ const ROLE_STARTS = [
     items: [
       { label: '组员名册', hint: '账号、目录与授权', path: '/admin/users' },
       { label: '课题资料', hint: '逐生的资料目录', path: '/research' },
-      { label: '种子管理', hint: '入库与备份台账', path: '/seeds' },
-      { label: '文献检索', hint: '统一检索与每日论文', path: '/literature' },
+      { label: '种子管理', hint: '突变台账 · Excel · AI 分析', path: '/seeds' },
+      { label: '组会汇报', hint: '按周授权 · 沿用上周', path: '/meetings' },
+      { label: 'PDF 工具箱', hint: '本机合并 · 拆分 · 压缩', path: '/pdf' },
     ],
   },
   {
