@@ -18,6 +18,12 @@ import (
 // DefaultHost is the LAN address used as the placeholder host in service URLs.
 const DefaultHost = "192.0.2.10"
 
+// 注意区分两种用途：
+//   * 面向用户的 URL（URL / EmbedURL / SSOURL）用 DefaultHost 作占位，
+//     返回前由 adaptHost 换成用户当前访问的主机；
+//   * 健康探针在本进程（宿主机）里跑，必须用 127.0.0.1:<port>，
+//     否则换个网卡访问就会把「服务在线」误判成离线。
+
 // Item is one catalog entry. The JSON shape matches the portal contract so the
 // existing frontend needs no change.
 type Item struct {
@@ -97,7 +103,7 @@ func Default() *Service {
 				Tags:     []string{"Linux", "命令", "教程"},
 				Guide:    []string{"grep / awk / sed / find / sort / xargs / rsync / tar 等常用命令。"},
 				Enabled:  true, Status: "preserved", Engine: "static command catalog",
-				Health: HealthSpec{URL: "http://192.0.2.10:8086/", Kind: "http"},
+				Health: HealthSpec{URL: "http://127.0.0.1:8086/", Kind: "http"},
 			},
 			{
 				ID: "literature-search", Name: "科研文献搜索", Category: "research",
@@ -167,7 +173,7 @@ func Default() *Service {
 					"每个会话分配独立 cgroup（standard：1 核 / 1.5GiB / 256 进程），用完自动回收。",
 				},
 				Enabled: true, Status: "preserved", Engine: "bioinfo-training",
-				Health: HealthSpec{URL: "http://192.0.2.10:8102/api/v1/health", Kind: "http"},
+				Health: HealthSpec{URL: "http://127.0.0.1:8102/api/v1/health", Kind: "http"},
 			},
 			{
 				ID: "drawing-board", Name: "图纸平台", Category: "draw",
@@ -183,7 +189,7 @@ func Default() *Service {
 					"与 LabSpace 共用 Casdoor 账号体系（如该平台已接入）。",
 				},
 				Enabled: true, Status: "external", Engine: "external drawing platform",
-				Health: HealthSpec{URL: "http://192.0.2.10:8093/", Kind: "http"},
+				Health: HealthSpec{URL: "http://127.0.0.1:8093/", Kind: "http"},
 			},
 			{
 				ID: "jbrowse", Name: "公共基因组", Category: "research",
@@ -199,7 +205,7 @@ func Default() *Service {
 					"JBrowse 2 负责轨道浏览；序列层面的分析（CDS 提取、酶切、ORF、比对、进化树、质粒图谱等）由门户内置生信工具（Biopython + scikit-bio）完成。",
 				},
 				Enabled: true, Status: "preserved", Engine: "JBrowse 2 + Biopython / scikit-bio",
-				Health: HealthSpec{URL: "http://192.0.2.10:8091/index.html", Kind: "host", Host: "192.0.2.10:8091"},
+				Health: HealthSpec{URL: "http://127.0.0.1:8091/index.html", Kind: "host", Host: "127.0.0.1:8091"},
 			},
 			{
 				ID: "snapotter", Name: "文件工坊（SnapOtter）", Category: "files",
