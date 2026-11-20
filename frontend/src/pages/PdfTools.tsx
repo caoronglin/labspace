@@ -545,7 +545,7 @@ export default function PdfTools() {
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description="选好操作与文件后点「执行」，结果会出现在这里"
               >
-                <Space direction="vertical" size={4} align="center">
+                <Space orientation="vertical" size={4} align="center">
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     转换由 Stirling PDF 在本机执行：子进程并发数、单任务超时与上传体积都已设上限。
                   </Typography.Text>

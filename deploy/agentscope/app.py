@@ -319,11 +319,15 @@ class LabKnowledgeBaseManager(CollectionPerKbManager):
 class LabToolMiddleware(MiddlewareBase):
     """门户的权限策略：放行该放行的，**绝不停在「等确认」**。
 
-    AgentScope 对「会改东西」的工具默认要用户点确认，而门户助手没有这个 UI：
-    不处理的话，工作台捕获 / 绘图提交 / 长期记忆写文件都会一直停在
-    「等确认」，助手看起来像坏了（2026-11-10 实测：助手停在等确认时，
-    ``REPLY_END`` 永远不发，前端一直转圈；数据库里能看到 tool_call 的
-    state 卡在 ``asking``）。
+    AgentScope 对「会改东西」的工具默认要用户点确认。门户在 2.0.12 升级后
+    **有了** HITL 界面（``Agent.tsx`` 的确认面板 + ``AskUser`` 表单，后端
+    ``POST /api/agent/sessions/{id}/hitl``），但确认面板只适合"人来做决定"的
+    动作，不适合"顺手执行一段 shell"——那等于给任意代码执行留一个一键批准的
+    入口。所以策略是：
+      * ``AskUser``（纯问答）→ 照常 ASK，由前端弹表单；
+      * 其余会停在「等确认」的工具（写文件、Bash、团队操作）→ 仍然拒绝，
+        模型收到报错后自己换条路；这样即便前端漏渲染事件，对话也不会卡死
+        （2026-11-10 实测过：停在等确认时 ``REPLY_END`` 永不发，前端一直转圈）。
 
     这里的三条规则：
 
@@ -339,6 +343,11 @@ class LabToolMiddleware(MiddlewareBase):
 
     #: 允许写入长期记忆目录的文件工具（官方中间件靠它们落盘记忆）。
     MEMORY_WRITE_TOOLS = frozenset({"Write", "Edit"})
+
+    #: 允许停在「等确认／等回答」的工具：只有纯问答类。
+    #: 它们没有副作用，前端会渲染成表单（单选/多选/其他），用户答完
+    #: ``POST /hitl`` 把答案交回模型；没有这一步模型只能自己猜。
+    ASKABLE_TOOLS = frozenset({"AskUser"})
 
     def __init__(
         self,
@@ -387,11 +396,17 @@ class LabToolMiddleware(MiddlewareBase):
                 message="长期记忆文件：允许写入本轮会话的记忆目录。",
             )
         decision = await next_handler(**input_kwargs)
+        if name in self.ASKABLE_TOOLS and decision.behavior in (
+            PermissionBehavior.ASK,
+            PermissionBehavior.PASSTHROUGH,
+        ):
+            # 纯问答类：让它停在"等回答"，前端弹表单，答案经 /hitl 回传。
+            return decision
         if decision.behavior in (
             PermissionBehavior.ASK,
             PermissionBehavior.PASSTHROUGH,
         ):
-            # 门户没有确认入口：停在「等确认」等于整轮对话卡死。
+            # 会改东西的工具不放进确认流程：一键批准任意命令不值得。
             # 改成拒绝，模型会拿到报错并自己换条路走。
             return PermissionDecision(
                 behavior=PermissionBehavior.DENY,

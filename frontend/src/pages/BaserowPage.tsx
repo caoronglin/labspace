@@ -3422,7 +3422,7 @@ export default function BaserowPage({
         title="字段管理"
         open={fieldOpen}
         onClose={() => setFieldOpen(false)}
-        width={narrow ? "100%" : 460}
+        size={narrow ? "100%" : 460}
       >
         <Flex vertical gap={12}>
           {fields.map((f) => (
@@ -3535,7 +3535,7 @@ export default function BaserowPage({
         }
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        width={narrow ? "100%" : 520}
+        size={narrow ? "100%" : 520}
       >
         <Flex vertical gap={16}>
           <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
@@ -3833,7 +3833,7 @@ export default function BaserowPage({
         title="最近删除"
         open={trashOpen}
         onClose={() => setTrashOpen(false)}
-        width={narrow ? "100%" : 520}
+        size={narrow ? "100%" : 520}
       >
         <Spin spinning={trashQuery.isFetching}>
           {trashItems.length ? (

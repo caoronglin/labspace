@@ -2,18 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Badge, Button, Collapse, Descriptions, Drawer, Empty, Flex, Image, Input, InputNumber,
+  Alert, Badge, Button, Descriptions, Drawer, Empty, Flex, Image, Input,
   Modal, Segmented, Select, Space, Spin, Table, Tag, Typography, Upload, message,
 } from 'antd';
 import {
-  BarChartOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined,
+  CopyOutlined, DeleteOutlined, DownloadOutlined,
   FileTextOutlined, FolderOpenOutlined, PlayCircleOutlined, ReloadOutlined, StopOutlined,
   CodeOutlined, BgColorsOutlined, DatabaseOutlined,
 } from '@ant-design/icons';
-import { Box, Column, Heatmap, Line, Scatter } from '@ant-design/plots';
 import PageShell from '../components/PageShell';
+import ParamPanel from '../components/plot/ParamPanel';
+import PreviewChart from '../components/plot/PreviewChart';
+import { parseTable } from '../components/plot/plotTable';
+import { defaultParams, payloadParams } from '../components/plot/plotParams';
 import {
-  plotApi, type PlotChart, type PlotJob, type PlotParamSpec, type PlotSample,
+  plotApi, type PlotChart, type PlotJob, type PlotSample,
 } from '../services/api';
 
 const STATUS_META: Record<PlotJob['status'], { color: string; text: string }> = {
@@ -24,51 +27,9 @@ const STATUS_META: Record<PlotJob['status'], { color: string; text: string }> = 
   cancelled: { color: 'warning', text: '已取消' },
 };
 
-function parseTable(text: string): { headers: string[]; rows: Record<string, string>[] } {
-  const raw = text.replace(/^\uFEFF/, '');
-  if (!raw.trim()) return { headers: [], rows: [] };
-  const first = raw.split(/\r?\n/, 1)[0] ?? '';
-  const delimiter = first.includes('\t') && !first.includes(',') ? '\t' : ',';
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let quoted = false;
-  for (let i = 0; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (quoted) {
-      if (ch === '"' && raw[i + 1] === '"') { cell += '"'; i += 1; }
-      else if (ch === '"') quoted = false;
-      else cell += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === delimiter) { row.push(cell); cell = ''; }
-    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-    else if (ch !== '\r') cell += ch;
-  }
-  if (cell || row.length) { row.push(cell); rows.push(row); }
-  const headers = (rows.shift() ?? []).map((h) => h.trim());
-  const objects = rows
-    .filter((r) => r.some((v) => v.trim() !== ''))
-    .map((r) => Object.fromEntries(headers.map((h, idx) => [h, (r[idx] ?? '').trim()])));
-  return { headers, rows: objects };
-}
-
-function toNumber(value: unknown): number {
-  const n = Number(String(value ?? '').replace(/,/g, ''));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function formatTime(value: number): string {
   if (!value) return '—';
   return new Date(value).toLocaleString('zh-CN', { hour12: false });
-}
-
-type ParsedTable = ReturnType<typeof parseTable>;
-
-/** 数值列：整列都能解析成数字才算，避免混进带单位的列名。 */
-function numericColumnsOf(table: ParsedTable): string[] {
-  return table.headers.filter(
-    (h) => table.rows.length > 0 && table.rows.every((r) => r[h] !== '' && Number.isFinite(Number(r[h]))),
-  );
 }
 
 /**
@@ -84,55 +45,6 @@ const PRESETS: { key: string; label: string; chart: string; sample: string }[] =
   { key: 'volcano', label: '火山图', chart: 'volcano', sample: 'volcano-deg' },
   { key: 'heatmap', label: '热图', chart: 'heatmap', sample: 'heatmap-matrix' },
 ];
-
-/**
- * 模板的「基础参数」：只留出图真正必填的列映射，其余（聚合、阈值、色带、尺寸）进高级区。
- * 没有列映射概念的模板（维恩图、系统发育树）退回「前 3 个非标题参数」，
- * 保证基础区永远不超过 3~4 项。
- */
-const BASIC_PARAM_KEYS: Record<string, string[]> = {
-  bar: ['x', 'y', 'group'],
-  line: ['x', 'y', 'group'],
-  scatter: ['x', 'y', 'group'],
-  box: ['x', 'y', 'group'],
-  violin: ['x', 'y', 'group'],
-  heatmap: ['x', 'y', 'value'],
-  volcano: ['gene', 'x', 'y'],
-};
-
-function basicParamKeys(chart?: PlotChart): string[] {
-  if (!chart) return [];
-  const preferred = BASIC_PARAM_KEYS[chart.id] ?? ['x', 'y', 'group'];
-  const hit = chart.params.filter((p) => preferred.includes(p.key)).map((p) => p.key);
-  if (hit.length) return hit;
-  return chart.params.filter((p) => p.key !== 'title').slice(0, 3).map((p) => p.key);
-}
-
-/**
- * 列名联动：按参数语义收窄候选。
- *
- * 选了分类列之后，Y 列还列出所有文本列的话，用户得自己在 30 个选项里
- * 辨认哪个是数值 —— 直接只给数值列，选错的机会就没了。
- */
-function columnCandidates(
-  spec: PlotParamSpec,
-  chartId: string,
-  table: ParsedTable,
-  numeric: string[],
-): string[] | undefined {
-  if (spec.type !== 'text') return undefined;
-  const numericKeys = ['y', 'value', 'score', 'pos', 'start', 'end'];
-  const categoricalKeys = ['group', 'gene', 'chr'];
-  const numericOnly = (chartId === 'line' || chartId === 'scatter' || chartId === 'pca') && spec.key === 'x';
-  if (numericKeys.includes(spec.key) || numericOnly) {
-    return numeric.length ? numeric : table.headers;
-  }
-  if (categoricalKeys.includes(spec.key)) {
-    const categorical = table.headers.filter((h) => !numeric.includes(h));
-    return categorical.length ? categorical : table.headers;
-  }
-  return table.headers;
-}
 
 export default function PlotStudio() {
   const navigate = useNavigate();
@@ -193,23 +105,10 @@ export default function PlotStudio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [samples.length]);
 
-  function defaultParams(next?: PlotChart) {
-    if (!next) return {};
-    const table = parseTable(dataText);
-    const init: Record<string, unknown> = {};
-    next.params.forEach((spec) => {
-      if (spec.type === 'checkbox') init[spec.key] = false;
-      else if (spec.type === 'number') init[spec.key] = undefined;
-      else if (spec.type === 'select') init[spec.key] = spec.options?.[0];
-      else init[spec.key] = table.headers.includes(spec.key) ? spec.key : undefined;
-    });
-    return init;
-  }
-
   function pickChart(id: string) {
     setChartId(id);
     const next = charts.find((c) => c.id === id);
-    setValues(defaultParams(next));
+    setValues(defaultParams(next, dataText));
     setSampleId(undefined);
     setActivePreset(undefined);
   }
@@ -236,13 +135,7 @@ export default function PlotStudio() {
     setTitle(sample.name);
     setDataText(sample.data ?? '');
     const next = charts.find((c) => c.id === sample.chart);
-    const init: Record<string, unknown> = {};
-    next?.params.forEach((spec) => {
-      if (spec.type === 'checkbox') init[spec.key] = false;
-      else if (spec.type === 'number') init[spec.key] = undefined;
-      else if (spec.type === 'select') init[spec.key] = spec.options?.[0];
-    });
-    setValues({ ...init, ...(sample.params ?? {}) });
+    setValues({ ...defaultParams(next), ...(sample.params ?? {}) });
     setTab('preview');
   }
 
@@ -251,17 +144,8 @@ export default function PlotStudio() {
     setActivePreset(undefined);
   }
 
-  function payloadParams() {
-    const clean: Record<string, unknown> = {};
-    Object.entries(values).forEach(([k, v]) => {
-      if (v === undefined || v === '' || v === null) return;
-      clean[k] = v;
-    });
-    clean.palette = palette;
-    clean.width = width;
-    clean.height = height;
-    if (customColors.length) clean.colors = customColors;
-    return clean;
+  function payloadParamsOf() {
+    return payloadParams(values, { palette, width, height, customColors });
   }
 
   const createM = useMutation({
@@ -271,7 +155,7 @@ export default function PlotStudio() {
         chart: chartId,
         data: dataText,
         sample: sampleId,
-        params: payloadParams(),
+        params: payloadParamsOf(),
       }),
     onSuccess: (job) => {
       setJobId(job.id);
@@ -302,17 +186,6 @@ export default function PlotStudio() {
   });
 
   const table = useMemo(() => parseTable(dataText), [dataText]);
-  const numericColumns = useMemo(() => numericColumnsOf(table), [table]);
-  const preview = useMemo(() => buildPreview(chartId, table, values), [chartId, table, values]);
-  const basicKeys = useMemo(() => basicParamKeys(chart), [chart]);
-  const basicSpecs = useMemo(
-    () => (chart?.params ?? []).filter((spec) => basicKeys.includes(spec.key)),
-    [chart, basicKeys],
-  );
-  const advancedSpecs = useMemo(
-    () => (chart?.params ?? []).filter((spec) => !basicKeys.includes(spec.key)),
-    [chart, basicKeys],
-  );
   const busy = currentJob?.status === 'queued' || currentJob?.status === 'running';
   const png = currentJob?.outputs.find((o) => o.path.endsWith('.png'));
 
@@ -455,89 +328,19 @@ export default function PlotStudio() {
           ) : null}
         </div>
 
-        {/* 参数分两级：基础区只留列映射（不改也能出图，最多 3 项），
-            聚合方式 / 阈值 / 色带 / 尺寸这些一次调好就不再动的收进「高级」，
-            默认折起——列表全展开正是用户说的「太麻烦」。 */}
-        <Collapse
-          size="small"
-          defaultActiveKey={['basic']}
-          items={[
-            {
-              key: 'basic',
-              label: '基础参数',
-              children: basicSpecs.length ? (
-                <Flex gap={12} wrap>
-                  {basicSpecs.map((spec) => (
-                    <div key={spec.key} style={{ width: 220 }}>
-                      <ParamField
-                        spec={spec}
-                        value={values[spec.key]}
-                        columns={columnCandidates(spec, chartId, table, numericColumns)}
-                        onChange={(v) => setValue(spec.key, v)}
-                      />
-                    </div>
-                  ))}
-                </Flex>
-              ) : (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  这个模板不需要列映射，参数都在「高级参数与样式」里。
-                </Typography.Text>
-              ),
-            },
-            {
-              key: 'advanced',
-              label: '高级参数与样式',
-              children: (
-                <Flex vertical gap={12}>
-                  {advancedSpecs.length ? (
-                    <Flex gap={12} wrap>
-                      {advancedSpecs.map((spec) => (
-                        <div key={spec.key} style={{ width: spec.type === 'textarea' ? '100%' : 220 }}>
-                          <ParamField
-                            spec={spec}
-                            value={values[spec.key]}
-                            columns={spec.type === 'text' ? table.headers : undefined}
-                            onChange={(v) => setValue(spec.key, v)}
-                          />
-                        </div>
-                      ))}
-                    </Flex>
-                  ) : null}
-                  <Flex gap={8} wrap>
-                    <div style={{ width: 160 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>色板</Typography.Text>
-                      <Select
-                        value={palette}
-                        onChange={(v) => { setPalette(v); setActivePreset(undefined); }}
-                        style={{ width: '100%' }}
-                        options={(metaQ.data?.palettes ?? ['npg']).map((p) => ({ value: p, label: p.toUpperCase() }))}
-                      />
-                    </div>
-                    <div style={{ width: 88 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>宽 (in)</Typography.Text>
-                      <InputNumber min={2} max={20} step={0.5} value={width} onChange={(v) => setWidth(Number(v) || 7.2)} style={{ width: '100%' }} />
-                    </div>
-                    <div style={{ width: 88 }}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>高 (in)</Typography.Text>
-                      <InputNumber min={2} max={20} step={0.5} value={height} onChange={(v) => setHeight(Number(v) || 4.8)} style={{ width: '100%' }} />
-                    </div>
-                  </Flex>
-                  {customColors.length > 0 && (
-                    <Space wrap size={4}>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>配色搭配：</Typography.Text>
-                      {customColors.map((c) => (
-                        <Tag key={c} color={c} style={{ color: '#fff', border: 'none' }}>{c}</Tag>
-                      ))}
-                      <Button size="small" type="link" onClick={() => setCustomColors([])}>清除</Button>
-                    </Space>
-                  )}
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    输出 300 dpi · PNG / SVG / PDF
-                  </Typography.Text>
-                </Flex>
-              ),
-            },
-          ]}
+        <ParamPanel
+          chart={chart}
+          chartId={chartId}
+          table={table}
+          values={values}
+          onValueChange={setValue}
+          palette={palette}
+          palettes={metaQ.data?.palettes ?? ['npg']}
+          onPaletteChange={(next) => { setPalette(next); setActivePreset(undefined); }}
+          size={{ width, height }}
+          onSizeChange={(next) => { setWidth(next.width); setHeight(next.height); }}
+          customColors={customColors}
+          onClearCustomColors={() => setCustomColors([])}
         />
 
         <Flex
@@ -589,7 +392,7 @@ export default function PlotStudio() {
           <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
             {tab === 'preview' && (
               <Flex vertical gap={8} style={{ height: '100%' }}>
-                {preview}
+                <PreviewChart chartId={chartId} table={table} values={values} />
                 <Typography.Text type="secondary" style={{ fontSize: 12, textAlign: 'center' }}>
                   AntV 实时预览用于快速校对数据结构；出版级细节以「成品」中的服务端渲染为准。
                 </Typography.Text>
@@ -613,7 +416,7 @@ export default function PlotStudio() {
                     ]} />
                     {busy && (
                       <Flex justify="center" style={{ padding: 24 }}>
-                        <Spin tip="Python 正在渲染…">
+                        <Spin description="Python 正在渲染…">
                           <div style={{ width: 180, height: 60 }} />
                         </Spin>
                       </Flex>
@@ -664,7 +467,7 @@ export default function PlotStudio() {
                   {
                     title: '任务', dataIndex: 'title',
                     render: (text: string, row) => (
-                      <Space direction="vertical" size={0}>
+                      <Space orientation="vertical" size={0}>
                         <Typography.Link onClick={() => useJob(row)}>{text}</Typography.Link>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>{chartName(charts, row.chart)} · {formatTime(row.created_at)}</Typography.Text>
                       </Space>
@@ -703,7 +506,7 @@ export default function PlotStudio() {
 
       <Drawer
         title="数据源"
-        width={460}
+        size={460}
         open={dataOpen}
         onClose={() => setDataOpen(false)}
         extra={<Button type="primary" onClick={() => setDataOpen(false)}>完成</Button>}
@@ -763,7 +566,7 @@ export default function PlotStudio() {
 
       <Drawer
         title="运行日志"
-        width={640}
+        size={640}
         open={logOpen}
         onClose={() => setLogOpen(false)}
         extra={<Button size="small" icon={<ReloadOutlined />} onClick={() => jobId && openLog(jobId)} disabled={!jobId}>刷新</Button>}
@@ -816,253 +619,4 @@ async function copyShareLink(job: PlotJob) {
   } catch {
     message.error('复制失败');
   }
-}
-
-/**
- * 单个参数控件。
- *
- * `columns` 有值时，文本类参数渲染成「列名下拉」而不是自由输入框：
- * 手打列名很容易拼错一个字符、渲染时才报错，下拉里只列真实存在的列就不会错。
- */
-function ParamField({
-  spec,
-  value,
-  columns,
-  onChange,
-}: {
-  spec: PlotParamSpec;
-  value: unknown;
-  columns?: string[];
-  onChange: (v: unknown) => void;
-}) {
-  const label = (
-    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-      {spec.label}{spec.help ? `（${spec.help}）` : ''}
-    </Typography.Text>
-  );
-  if (spec.type === 'checkbox') {
-    return (
-      <Flex justify="space-between" align="center" style={{ paddingTop: 20 }}>
-        {label}
-        <Segmented
-          size="small"
-          value={value ? 'on' : 'off'}
-          onChange={(v) => onChange(v === 'on')}
-          options={[{ label: '关', value: 'off' }, { label: '开', value: 'on' }]}
-        />
-      </Flex>
-    );
-  }
-  if (spec.type === 'select') {
-    return (
-      <Flex vertical gap={2}>
-        {label}
-        <Select
-          size="small"
-          value={value as string | undefined}
-          onChange={onChange}
-          allowClear
-          style={{ width: '100%' }}
-          options={(spec.options ?? []).map((o) => ({ value: o, label: o }))}
-        />
-      </Flex>
-    );
-  }
-  if (spec.type === 'number') {
-    return (
-      <Flex vertical gap={2}>
-        {label}
-        <InputNumber
-          size="small"
-          value={value as number | undefined}
-          onChange={(v) => onChange(v ?? undefined)}
-          style={{ width: '100%' }}
-        />
-      </Flex>
-    );
-  }
-  if (spec.type === 'textarea') {
-    return (
-      <Flex vertical gap={2}>
-        {label}
-        <Input.TextArea
-          rows={4}
-          value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}
-        />
-      </Flex>
-    );
-  }
-  return (
-    <Flex vertical gap={2}>
-      {label}
-      {columns ? (
-        <Select
-          size="small"
-          value={(value as string | undefined) ?? undefined}
-          onChange={onChange}
-          allowClear
-          style={{ width: '100%' }}
-          placeholder="选择列"
-          options={columns.map((c) => ({ value: c, label: c }))}
-        />
-      ) : (
-        <Input
-          size="small"
-          value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="列名"
-        />
-      )}
-    </Flex>
-  );
-}
-
-function buildPreview(
-  chartId: string,
-  table: { headers: string[]; rows: Record<string, string>[] },
-  values: Record<string, unknown>,
-) {
-  if (!table.rows.length) {
-    return <Empty description="粘贴或上传数据后显示实时预览" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-  }
-  const { headers, rows } = table;
-  const pick = (key: string, fallback?: string) => {
-    const v = values[key];
-    return typeof v === 'string' && v ? v : fallback;
-  };
-  const x = pick('x', headers[0]);
-  const y = pick('y', headers[1]);
-  const group = pick('group');
-
-  if (chartId === 'tree') {
-    return <Empty description="树图需服务端渲染，点击「渲染并保存」" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-  }
-  if (chartId === 'bar' && x && y) {
-    const grouped = new Map<string, { x: string; y: number; group?: string; sum: number; n: number }>();
-    rows.forEach((r) => {
-      const key = `${r[x]}|${group ? r[group] : ''}`;
-      const item = grouped.get(key) ?? { x: r[x], y: 0, group: group ? r[group] : undefined, sum: 0, n: 0 };
-      item.sum += toNumber(r[y]);
-      item.n += 1;
-      grouped.set(key, item);
-    });
-    const data = [...grouped.values()].map((i) => ({ ...i, y: i.sum / i.n }));
-    return (
-      <Column
-        data={data}
-        xField="x"
-        yField="y"
-        colorField={group ? 'group' : undefined}
-        group={Boolean(group)}
-        height={420}
-        axis={{ y: { title: y } }}
-      />
-    );
-  }
-  if (chartId === 'line' && x && y) {
-    return (
-      <Line
-        data={rows.map((r) => ({ x: r[x], y: toNumber(r[y]), group: group ? r[group] : '' }))}
-        xField="x"
-        yField="y"
-        colorField={group ? 'group' : undefined}
-        height={420}
-      />
-    );
-  }
-  if (chartId === 'scatter' && x && y) {
-    return (
-      <Scatter
-        data={rows.map((r) => ({ x: toNumber(r[x]), y: toNumber(r[y]), group: group ? r[group] : '' }))}
-        xField="x"
-        yField="y"
-        colorField={group ? 'group' : undefined}
-        height={420}
-      />
-    );
-  }
-  if ((chartId === 'box' || chartId === 'violin') && x && y) {
-    return (
-      <Box
-        data={rows.map((r) => ({ x: r[x], y: toNumber(r[y]), group: group ? r[group] : '' }))}
-        xField="x"
-        yField="y"
-        colorField={group ? 'group' : undefined}
-        height={420}
-      />
-    );
-  }
-  if (chartId === 'heatmap') {
-    const lx = pick('x');
-    const ly = pick('y');
-    const lv = pick('value');
-    let data: { x: string; y: string; value: number }[] = [];
-    if (lx && ly && lv) {
-      data = rows.map((r) => ({ x: r[lx], y: r[ly], value: toNumber(r[lv]) }));
-    } else {
-      const cols = headers.slice(1);
-      data = rows.flatMap((r) => cols.map((c) => ({ x: c, y: r[headers[0]], value: toNumber(r[c]) })));
-    }
-    return (
-      <Heatmap
-        data={data}
-        xField="x"
-        yField="y"
-        colorField="value"
-        height={420}
-        style={{ stroke: '#fff', lineWidth: 1 }}
-      />
-    );
-  }
-  if (chartId === 'volcano' && rows.length) {
-    const gx = pick('x', 'log2fc');
-    const gy = pick('y', 'padj');
-    if (gx && gy) {
-      return (
-        <Scatter
-          data={rows.map((r) => ({ x: toNumber(r[gx]), y: -Math.log10(Math.max(toNumber(r[gy]), 1e-300)) }))}
-          xField="x"
-          yField="y"
-          height={420}
-          axis={{ x: { title: 'log2FC' }, y: { title: '-log10(p)' } }}
-        />
-      );
-    }
-  }
-  if (chartId === 'pca') {
-    const numeric = headers.filter((h) => rows.every((r) => r[h] !== '' && Number.isFinite(Number(r[h]))));
-    if (numeric.length >= 2) {
-      return (
-        <Scatter
-          data={rows.map((r) => ({
-            x: toNumber(r[numeric[0]]),
-            y: toNumber(r[numeric[1]]),
-            group: values.group ? r[String(values.group)] : '',
-          }))}
-          xField="x"
-          yField="y"
-          colorField="group"
-          height={420}
-          axis={{ x: { title: numeric[0] }, y: { title: numeric[1] } }}
-        />
-      );
-    }
-  }
-  return (
-    <Empty
-      image={Empty.PRESENTED_IMAGE_SIMPLE}
-      description={(
-        <Space direction="vertical" size={2}>
-          <span>{chartId} 模板暂不支持浏览器内预览</span>
-          <Typography.Text type="secondary">提交后可在「服务端成品」查看出版级图像</Typography.Text>
-        </Space>
-      )}
-    >
-      <Button type="primary" icon={<BarChartOutlined />} onClick={() => window.scrollTo({ top: 0 })}>
-        查看服务端结果
-      </Button>
-    </Empty>
-  );
 }

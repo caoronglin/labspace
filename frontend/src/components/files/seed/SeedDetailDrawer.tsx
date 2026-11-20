@@ -54,7 +54,7 @@ export default function SeedDetailDrawer({
     <Drawer
       open={open}
       title={title}
-      width={narrow ? '100%' : 560}
+      size={narrow ? '100%' : 560}
       onClose={onClose}
       destroyOnHidden
       extra={
@@ -94,7 +94,7 @@ export default function SeedDetailDrawer({
         {fileFields.length ? (
           <div>
             <Typography.Title level={5}>附件</Typography.Title>
-            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <Space orientation="vertical" size={10} style={{ width: '100%' }}>
               {fileFields.map((f) => (
                 <div key={String(f.id)}>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>

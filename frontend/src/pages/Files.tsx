@@ -2359,7 +2359,7 @@ export default function Files() {
         destroyOnHidden
         width={560}
       >
-        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={10} style={{ width: '100%' }}>
           <Input
             autoFocus
             value={newFileName}

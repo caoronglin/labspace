@@ -216,10 +216,10 @@ export default function SeedFormDrawer({
     setSaving(true);
     try {
       if (row) {
-        await baserowApi.updateRow(tableId, row.id, payload);
+        await baserowApi.seedUpdateRow(row.id, payload);
         message.success('已保存');
       } else {
-        await baserowApi.createRow(tableId, payload);
+        await baserowApi.seedCreateRow(payload);
         message.success('已新建记录');
       }
       onSaved();
@@ -237,7 +237,7 @@ export default function SeedFormDrawer({
     <Drawer
       open={open}
       title={row ? '编辑种子记录' : '新建种子记录'}
-      width={narrow ? '100%' : 640}
+      size={narrow ? '100%' : 640}
       onClose={onClose}
       destroyOnHidden
       extra={

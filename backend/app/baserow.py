@@ -335,6 +335,43 @@ async def call_as_admin(
     return await _http(method, path, await _admin_token(), json_body=json_body, params=params)
 
 
+async def admin_row_create(table_id: int, values: dict[str, Any]) -> dict[str, Any]:
+    """以数据表管理员身份新增一行（**仅**给全实验室共享的种子台账用）。
+
+    为什么需要这条：种子台账建在管理员账号的工作区里，普通账号的 Baserow 令牌
+    连表都看不到，更写不进去；而「谁都可以录入种子」是业务要求。
+    为了不把它变成"任何人都能写任何表"的通用后门，这里**不接受路径参数**：
+    路径由同样是管理员身份解析出来的 table_id 拼成（seed_tables._shared_seed_table），
+    调用方拿不到写别的表的入口。
+
+    代价：Baserow 侧的作者是管理员账号，不是实际操作人；调用方负责记录审计日志。
+    """
+    if table_id <= 0:
+        raise HTTPException(status_code=400, detail="表 id 无效")
+    payload = await _http(
+        "POST",
+        f"/api/database/rows/table/{int(table_id)}/",
+        await _admin_token(),
+        json_body=values,
+        params={"user_field_names": "true"},
+    )
+    return payload if isinstance(payload, dict) else {}
+
+
+async def admin_row_update(table_id: int, row_id: int, values: dict[str, Any]) -> dict[str, Any]:
+    """以数据表管理员身份更新一行。限制同 `admin_row_create`。"""
+    if table_id <= 0 or row_id <= 0:
+        raise HTTPException(status_code=400, detail="表 id 或行 id 无效")
+    payload = await _http(
+        "PATCH",
+        f"/api/database/rows/table/{int(table_id)}/{int(row_id)}/",
+        await _admin_token(),
+        json_body=values,
+        params={"user_field_names": "true"},
+    )
+    return payload if isinstance(payload, dict) else {}
+
+
 async def _call_lock_retry(method: str, path: str, user: dict[str, Any], *, json_body: Any = None, attempts: int = 6) -> Any:
     """新建表/导入后 Baserow 会对字段短暂加锁并返回 409，稍后重试即可。
 

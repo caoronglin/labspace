@@ -133,7 +133,7 @@ export default function ResearchFolders() {
       dataIndex: 'displayName',
       key: 'displayName',
       render: (v: string, row) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text strong>{v || '（未知）'}</Text>
           {row.owned ? null : <Tag color="warning">历史目录</Tag>}
         </Space>

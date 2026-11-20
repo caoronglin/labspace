@@ -843,60 +843,11 @@ export interface WorkbenchCapture {
   extracted: { due_date?: string | null; tags: string[]; priority: string };
 }
 
-// ---------------- 导师指派 ----------------
-
-export interface AssignmentFile {
-  id: string;
-  assignment_id: string;
-  submission_id?: string | null;
-  uploader_id: string;
-  purpose: 'brief' | 'delivery' | string;
-  filename: string;
-  content_type?: string;
-  size?: number;
-  created_at?: string | null;
-  url: string;
-}
-
-export interface AssignmentSubmission {
-  id: string;
-  assignment_id: string;
-  author_id: string;
-  content: string;
-  created_at?: string | null;
-  files: AssignmentFile[];
-}
-
-export interface WorkbenchAssignment {
-  id: string;
-  creator_id: string;
-  creator_name?: string;
-  assignee_id: string;
-  assignee_name?: string;
-  kind: 'task' | 'project' | string;
-  title: string;
-  content?: string;
-  status: 'assigned' | 'in_progress' | 'submitted' | 'accepted' | 'returned' | string;
-  priority: 'low' | 'normal' | 'high' | string;
-  due_date?: string | null;
-  feedback?: string;
-  submitted_at?: string | null;
-  reviewed_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  brief_files: AssignmentFile[];
-  submissions: AssignmentSubmission[];
-}
-
-export interface AssignmentPerson {
-  id: string;
-  name: string;
-  displayName: string;
-  email: string;
-  groups: string[];
-  rank?: number;
-  rankLabel?: string;
-}
+// ---------------- 导师绑定 ----------------
+//
+// 旧的「指派任务」（AssignmentFile / WorkbenchAssignment / AssignmentPerson 等，
+// 对应 /api/workbench/assignments*）当前没有 UI 入口，封装与类型已删除；
+// 后端路由仍在，需要恢复功能时按路由重新封装即可。
 
 export interface MentorBindingRow {
   userId: string;
@@ -1147,14 +1098,6 @@ export interface ColorPalette {
   colors: string[];
 }
 
-export interface ColorSwatch {
-  hex: string;
-  rgb: string;
-  r: number;
-  g: number;
-  b: number;
-}
-
 export interface ColorPaletteList {
   items: ColorPalette[];
   total: number;
@@ -1177,24 +1120,11 @@ export interface ColorMatchItem extends ColorPalette {
   nearest: { seed: string; hex: string; distance: number }[];
 }
 
-export interface ColorPaletteDetail {
-  palette: ColorPalette;
-  colors: string[];
-  swatches: ColorSwatch[];
-}
-
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 export function readCookie(name: string): string | undefined {
   const hit = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`));
   return hit ? decodeURIComponent(hit.split('=').slice(1).join('=')) : undefined;
-}
-
-export interface LabopsStatus {
-  ok: boolean;
-  pipelines: Record<string, string>;
-  worker: { at?: string; tools?: Record<string, string> };
-  user: string;
 }
 
 export interface LabopsField {
@@ -1224,22 +1154,6 @@ export interface LabopsEntry {
   updated_at: string;
 }
 
-export interface LabopsInventoryItem {
-  id: string;
-  owner: string;
-  kind: string;
-  name: string;
-  code: string;
-  location: string;
-  quantity: number;
-  unit: string;
-  low_threshold: number;
-  metadata: Record<string, unknown>;
-  notes: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface LabopsPublishResult {
   workspaceId: number;
   workspaceName: string;
@@ -1249,50 +1163,6 @@ export interface LabopsPublishResult {
   tables: { id: number; name: string; rows: number; inserted: number }[];
   /** 本次是否新建了工作区/数据库/表 */
   created: boolean;
-}
-
-export interface LabopsTx {
-  id: number;
-  delta: number;
-  kind: string;
-  reason: string;
-  operator: string;
-  created_at: string;
-}
-
-export interface LabopsPipeline {
-  id: string;
-  name: string;
-  tool: string;
-  description: string;
-  needs_reference: boolean;
-  inputs: string;
-  params: Record<string, string | number>;
-}
-
-export interface LabopsFileRef {
-  path: string;
-  name: string;
-  size: number;
-}
-
-export interface LabopsDemo {
-  name: string;
-  files: LabopsFileRef[];
-}
-
-export interface LabopsJob {
-  id: string;
-  pipeline: string;
-  name: string;
-  params: Record<string, unknown>;
-  status: string;
-  progress: number;
-  message: string;
-  outputs: Array<{ path: string; size?: number }>;
-  created_at: string;
-  started_at?: string | null;
-  finished_at?: string | null;
 }
 
 export interface LabopsLiterature {
@@ -1336,47 +1206,6 @@ export interface LabopsLibraryFolder {
   item_count: number;
   created_at: string;
   updated_at: string;
-}
-
-export interface LabopsResource {
-  id: string;
-  kind: string;
-  name: string;
-  description: string;
-  location: string;
-  capacity: number;
-  upcoming: number;
-}
-
-export interface LabopsBooking {
-  id: string;
-  resource_id: string;
-  resource_name: string;
-  location: string;
-  owner: string;
-  start_at: string;
-  end_at: string;
-  purpose: string;
-  status: string;
-  approver: string | null;
-  feedback: string;
-  created_at: string;
-}
-
-export interface LabopsSupply {
-  id: string;
-  item_id: string;
-  item_name: string | null;
-  code: string | null;
-  unit: string | null;
-  stock: number | null;
-  owner: string;
-  quantity: number;
-  reason: string;
-  status: string;
-  approver: string | null;
-  feedback: string;
-  created_at: string;
 }
 
 /** 会话失效时统一抛错，页面据此跳转登录 */
@@ -1506,38 +1335,6 @@ async function requestFileContentPut(
   }
 }
 
-/** 组会汇报：按自然周（yearWeek）归集的文件。 */
-export interface MeetingWeekGrant {
-  userId: string;
-  displayName: string;
-}
-
-export interface MeetingWeek {
-  /** 形如 2026-W07 的自然周标识。 */
-  yearWeek: string;
-  files: string[];
-  size: number;
-  /** 该周有权限查看的成员。 */
-  grants: MeetingWeekGrant[];
-  /** 是否已压缩归档。 */
-  compressed: boolean;
-}
-
-export interface MeetingWeekFiles {
-  yearWeek: string;
-  files: string[];
-  size: number;
-}
-
-/** 课题资料目录：管理员视角的每位成员资料夹。 */
-export interface ResearchFolder {
-  name: string;
-  folder: string;
-  joinDate: string;
-  displayName: string;
-  size: number;
-}
-
 export const api = {
   me: () => request<Me>('/api/me'),
   /** 每日诗词（今日诗词 jinrishici.com）：诗句 + 作者 + 出处，按自然日缓存。 */
@@ -1547,10 +1344,7 @@ export const api = {
   servicesHealth: () => request<{ services: ServiceItem[] }>('/api/services/health'),
   serviceHealth: (id: string) => request<{ status: string; latency_ms?: number; detail?: string }>(`/api/services/${id}/health`),
   serviceEmbed: (id: string) => request<EmbedInfo>(`/api/services/${id}/embed`),
-  ssoStatus: () =>
-    request<{ host: string; syncAvailable: boolean; items: { id: string; loginUrl: string }[] }>(
-      '/api/sso/status',
-    ),
+  /* SSO 状态清单（GET /api/sso/status）服务端仍提供，但当前没有 UI 入口，故不在客户端封装。 */
   ssoPrepare: (serviceId: string) =>
     request<{
       ready: boolean;
@@ -1566,10 +1360,7 @@ export const api = {
       `/api/databases?q=${encodeURIComponent(q)}${category ? `&category=${encodeURIComponent(category)}` : ''}`,
     ),
   databaseApis: () => request<DatabaseApiIndex>('/api/databases/apis'),
-  databaseProbe: (id: string) =>
-    request<{ id: string; ok: boolean; detail: string; api: DatabaseApi | null }>(
-      `/api/databases/${encodeURIComponent(id)}/probe`,
-    ),
+  /* 单库探测（GET /api/databases/{id}/probe）没有 UI 入口，服务端接口保留。 */
   databaseQuery: (id: string, query: string, limit = 5, params: Record<string, string> = {}) =>
     request<DatabaseQueryResult>(`/api/databases/${encodeURIComponent(id)}/query`, {
       method: 'POST',
@@ -1607,7 +1398,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path, recipients, writable }),
     }),
-  fileDetail: (id: string) => request<FileEntry>(`/api/files/${encodeURIComponent(id)}`),
+  /* 单文件元信息（GET /api/files/{id}）没有 UI 入口（页面用 files / filePreview），服务端接口保留。 */
   filePreview: (id: string) => request<FilePreview>(`/api/files/${encodeURIComponent(id)}/preview`),
   fileUpload: (source: string, dir: string, file: File, overwrite = false) => {
     const fd = new FormData();
@@ -1684,12 +1475,8 @@ export const api = {
       `/api/files/access-log?${q.toString()}`,
     );
   },
-  /** 下载接口是二进制流，绕过 JSON 解析直接取文本（用于 FASTA 等）。 */
-  fileText: async (id: string) => {
-    const res = await fetch(`/api/files/${encodeURIComponent(id)}/download`, { credentials: 'include' });
-    if (!res.ok) throw new Error(`读取文件失败（${res.status}）`);
-    return res.text();
-  },
+  /* 原文下载（GET /api/files/{id}/download，二进制流，原先用于 FASTA 等）当前没有调用点，
+     封装已删除；服务端接口保留。 */
   /** 读取文本文件正文（带 etag，供在线编辑做乐观并发）。 */
   fileContent: (id: string) =>
     request<FileContent>(`/api/files/${encodeURIComponent(id)}/content`),
@@ -1698,27 +1485,16 @@ export const api = {
     requestFileContentPut(`/api/files/${encodeURIComponent(id)}/content`, { text, etag }),
 
   // ---- 组会汇报（按自然周归集） ----
-  /** 组会周列表：每个自然周的文件、体积、可见成员。 */
-  meetingWeeks: () => request<{ weeks: MeetingWeek[] }>('/api/meetings/weeks'),
-  /** 某个自然周内的文件明细。 */
-  meetingWeekFiles: (yearWeek: string) =>
-    request<MeetingWeekFiles>(`/api/meetings/weeks/${encodeURIComponent(yearWeek)}/files`),
-  /** 上传组会材料；yearWeek 省略时由服务端归档到当前周。 */
-  meetingUpload: (file: File, yearWeek?: string) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    if (yearWeek) fd.append('yearWeek', yearWeek);
-    return request<{ ok?: boolean; yearWeek?: string; files?: string[] }>('/api/meetings/upload', {
-      method: 'POST',
-      body: fd,
-    });
-  },
+  //
+  // 组会周列表 / 周内文件 / 上传（/api/meetings/weeks、/api/meetings/upload）
+  // 当前没有 UI 入口（组会汇报页改用 services/labspaces 的 meetingApi），
+  // 服务端接口保留，故此处不封装。
 
   // ---- 课题资料（个人资料目录） ----
-  /** 管理员视角：所有成员的课题资料目录与加入时间。 */
-  adminResearchFolders: () => request<{ folders: ResearchFolder[] }>('/api/admin/research/folders'),
-  /** 当前用户自己的课题资料目录。 */
-  researchMine: () => request<{ folder: string; path: string }>('/api/research/mine'),
+  //
+  // 管理员成员文件夹列表（/api/admin/research/folders）与本人目录（/api/research/mine）
+  // 当前没有 UI 入口（课题资料页改用 services/labspaces 的 researchApi），
+  // 服务端接口保留，故此处不封装。
   officeContent: (id: string) =>
     request<OfficeContent>(`/api/office/files/${encodeURIComponent(id)}/content`),
   officeSave: (id: string, payload: OfficeSavePayload) =>
@@ -1850,16 +1626,21 @@ export const api = {
   literature: (q: string, source = 'pubmed') =>
     request<Record<string, unknown>>(`/api/literature?q=${encodeURIComponent(q)}&source=${source}`),
 
-  // ---- 实验室中心（ELN / 库存 / 流水线 / 文献 / 预约）----
-  labopsStatus: () => request<LabopsStatus>('/api/labops/status'),
+  // ---- 实验室中心（ELN / 文献 / 库存发布）----
+  //
+  // 服务端仍保留、但当前没有任何 UI 入口因而未在客户端封装的实验室中心能力：
+  //   · ELN 状态（/api/labops/status）、新建 ELN 模板、单条记录详情（/api/labops/eln/entries/{id}）
+  //   · 库存台账（/api/labops/inventory/items*、low-count、label、transactions）
+  //     —— 库存已并入多维表格，只在 Lab 页留了「发布到多维表格」一条
+  //   · 生信流水线（/api/labops/pipelines/*）—— 流水线页已下线
+  //   · 资源与预约（/api/labops/resources、/api/labops/bookings*）—— 预约已改走 Agent 模式
+  //   · 领用申请（/api/labops/supplies*）
+  // 需要恢复功能时按上述路由重新封装，不必去 git 历史里翻。
   labopsTemplates: () => request<{ items: LabopsTemplate[] }>('/api/labops/eln/templates'),
-  labopsCreateTemplate: (body: { name: string; description?: string; fields: LabopsField[] }) =>
-    request<{ id: string }>('/api/labops/eln/templates', { method: 'POST', body: JSON.stringify(body) }),
   labopsEntries: (q = '', template = '', limit = 50) =>
     request<{ items: LabopsEntry[] }>(
       `/api/labops/eln/entries?q=${encodeURIComponent(q)}&template=${encodeURIComponent(template)}&limit=${limit}`,
     ),
-  labopsEntry: (id: string) => request<LabopsEntry>(`/api/labops/eln/entries/${encodeURIComponent(id)}`),
   labopsCreateEntry: (body: Partial<LabopsEntry>) =>
     request<LabopsEntry>('/api/labops/eln/entries', { method: 'POST', body: JSON.stringify(body) }),
   labopsUpdateEntry: (id: string, body: Partial<LabopsEntry>) =>
@@ -1871,60 +1652,9 @@ export const api = {
   labopsEntryToKnowledge: (id: string) =>
     request<{ docId: number }>(`/api/labops/eln/entries/${encodeURIComponent(id)}/to-knowledge`, { method: 'POST' }),
 
-  labopsInventory: (params: { kind?: string; q?: string; low?: boolean } = {}) => {
-    const query = new URLSearchParams();
-    if (params.kind) query.set('kind', params.kind);
-    if (params.q) query.set('q', params.q);
-    if (params.low) query.set('low', 'true');
-    return request<{ items: LabopsInventoryItem[] }>(`/api/labops/inventory/items?${query.toString()}`);
-  },
-  labopsCreateInventory: (body: Partial<LabopsInventoryItem>) =>
-    request<LabopsInventoryItem>('/api/labops/inventory/items', { method: 'POST', body: JSON.stringify(body) }),
-  labopsUpdateInventory: (id: string, body: Partial<LabopsInventoryItem>) =>
-    request<LabopsInventoryItem>(`/api/labops/inventory/items/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    }),
-  labopsInventoryTx: (id: string, body: { kind: string; delta: number; reason?: string }) =>
-    request<LabopsInventoryItem>(`/api/labops/inventory/items/${encodeURIComponent(id)}/transactions`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  labopsInventoryTxs: (id: string) =>
-    request<{ items: LabopsTx[] }>(`/api/labops/inventory/items/${encodeURIComponent(id)}/transactions`),
-  labopsInventoryLabel: (id: string) =>
-    request<{ code: string; name: string; kind: string; location: string; payload: string }>(
-      `/api/labops/inventory/items/${encodeURIComponent(id)}/label`,
-    ),
-  labopsLowStock: () => request<{ items: LabopsInventoryItem[]; count: number }>('/api/labops/inventory/low-count'),
-
   /** 把本地库存发布到多维表格工作区（幂等；后端只读本地库存表）。 */
   labopsPublishInventory: () =>
     request<LabopsPublishResult>('/api/labops/inventory/publish', { method: 'POST' }),
-
-  labopsPipelineMeta: () =>
-    request<{
-      catalog: LabopsPipeline[];
-      tools: Record<string, string>;
-      worker: { last_seen?: string; started_at?: string; pid?: number } | null;
-      tools_checked_at?: string | null;
-      references: LabopsFileRef[];
-      demos: LabopsDemo[];
-    }>(
-      '/api/labops/pipelines/meta',
-    ),
-  labopsJobs: () => request<{ items: LabopsJob[] }>('/api/labops/pipelines/jobs'),
-  labopsJob: (id: string) => request<LabopsJob>(`/api/labops/pipelines/jobs/${encodeURIComponent(id)}`),
-  labopsCreateJob: (form: FormData) =>
-    request<LabopsJob>('/api/labops/pipelines/jobs', { method: 'POST', body: form }),
-  labopsCancelJob: (id: string) =>
-    request<{ ok: boolean }>(`/api/labops/pipelines/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
-  labopsJobLog: (id: string) =>
-    fetch(`/api/labops/pipelines/jobs/${encodeURIComponent(id)}/log`, { credentials: 'include' }).then((r) =>
-      r.ok ? r.text() : Promise.reject(new Error(String(r.status))),
-    ),
-  labopsJobFileUrl: (id: string, path: string) =>
-    `/api/labops/pipelines/jobs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`,
 
   labopsLiterature: (q = '', status = '', libraryId = '', folderId?: string) => {
     const query = new URLSearchParams();
@@ -1994,34 +1724,8 @@ export const api = {
       body: JSON.stringify({ ids, libraryId, folderId }),
     }),
 
-  labopsResources: () => request<{ items: LabopsResource[] }>('/api/labops/resources'),
-  labopsCreateResource: (body: Partial<LabopsResource>) =>
-    request<{ id: string }>('/api/labops/resources', { method: 'POST', body: JSON.stringify(body) }),
-  labopsBookings: (params: { resource?: string; start?: string; end?: string } = {}) => {
-    const query = new URLSearchParams();
-    if (params.resource) query.set('resource', params.resource);
-    if (params.start) query.set('start', params.start);
-    if (params.end) query.set('end', params.end);
-    return request<{ items: LabopsBooking[]; canApprove: boolean }>(`/api/labops/bookings?${query.toString()}`);
-  },
-  labopsCreateBooking: (body: { resource_id: string; start_at: string; end_at: string; purpose?: string }) =>
-    request<{ id: string; status: string }>('/api/labops/bookings', { method: 'POST', body: JSON.stringify(body) }),
-  labopsDecideBooking: (id: string, decision: 'approved' | 'rejected', feedback = '') =>
-    request<{ ok: boolean; status: string }>(`/api/labops/bookings/${encodeURIComponent(id)}/decide`, {
-      method: 'POST',
-      body: JSON.stringify({ decision, feedback }),
-    }),
-  labopsCancelBooking: (id: string) =>
-    request<{ ok: boolean }>(`/api/labops/bookings/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
-  labopsSupplies: () =>
-    request<{ items: LabopsSupply[]; canApprove: boolean }>('/api/labops/supplies'),
-  labopsCreateSupply: (body: { item_id: string; quantity: number; reason?: string }) =>
-    request<{ id: string; status: string }>('/api/labops/supplies', { method: 'POST', body: JSON.stringify(body) }),
-  labopsDecideSupply: (id: string, decision: 'approved' | 'rejected', feedback = '') =>
-    request<{ ok: boolean; status: string }>(`/api/labops/supplies/${encodeURIComponent(id)}/decide`, {
-      method: 'POST',
-      body: JSON.stringify({ decision, feedback }),
-    }),
+  /* 资源、预约、领用申请（/api/labops/resources、/bookings、/supplies）目前没有 UI 入口，
+     服务端仍保留；见本节开头的清单。 */
   drawings: () => request<{ drawings: { id: string; name: string; size: number; updated_at: string }[] }>('/api/drawings'),
   drawing: (id: string) =>
     request<{ id: string; name: string; content: string; size: number; updated_at: string }>(
@@ -2204,9 +1908,10 @@ export const api = {
     request<{ ok: boolean }>(`/api/workbench/plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   workbenchBriefs: () => request<{ briefs: WorkbenchBrief[] }>('/api/workbench/briefs'),
 
-  // ---- 导师指派 ----
-  workbenchAssignmentPeople: () =>
-    request<{ people: AssignmentPerson[] }>('/api/workbench/assignment-people'),
+  // ---- 导师绑定 ----
+  //
+  // 指派人名单（/api/workbench/assignment-people）与指派增删改、提交、审阅、附件
+  // （/api/workbench/assignments*）当前没有 UI 入口，服务端路由保留，此处不封装。
   workbenchMentorBindings: () => request<MentorBindings>('/api/workbench/mentor-bindings'),
   workbenchBindMentor: (userId: string, mentorId: string) =>
     request<{ ok: boolean }>(`/api/workbench/mentor-bindings/${encodeURIComponent(userId)}`, {
@@ -2215,52 +1920,6 @@ export const api = {
     }),
   workbenchUnbindMentor: (userId: string) =>
     request<{ ok: boolean }>(`/api/workbench/mentor-bindings/${encodeURIComponent(userId)}`, {
-      method: 'DELETE',
-    }),
-  workbenchCreateAssignment: (body: {
-    assignee_id: string;
-    kind: string;
-    title: string;
-    content?: string;
-    priority?: string;
-    due_date?: string | null;
-  }) =>
-    request<{ assignment: WorkbenchAssignment }>('/api/workbench/assignments', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  workbenchUpdateAssignment: (
-    id: string,
-    body: Partial<Pick<WorkbenchAssignment, 'assignee_id' | 'kind' | 'title' | 'content' | 'priority' | 'due_date' | 'status'>>,
-  ) =>
-    request<{ assignment: WorkbenchAssignment }>(
-      `/api/workbench/assignments/${encodeURIComponent(id)}`,
-      { method: 'PATCH', body: JSON.stringify(body) },
-    ),
-  workbenchDeleteAssignment: (id: string) =>
-    request<{ ok: boolean }>(`/api/workbench/assignments/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
-  workbenchSubmitAssignment: (id: string, content: string) =>
-    request<{ assignment: WorkbenchAssignment }>(
-      `/api/workbench/assignments/${encodeURIComponent(id)}/submit`,
-      { method: 'POST', body: JSON.stringify({ content }) },
-    ),
-  workbenchReviewAssignment: (id: string, decision: 'accept' | 'return', feedback = '') =>
-    request<{ assignment: WorkbenchAssignment }>(
-      `/api/workbench/assignments/${encodeURIComponent(id)}/review`,
-      { method: 'POST', body: JSON.stringify({ decision, feedback }) },
-    ),
-  workbenchUploadAssignmentFile: (id: string, file: File, purpose: 'brief' | 'delivery') => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return request<{ file: AssignmentFile }>(
-      `/api/workbench/assignments/${encodeURIComponent(id)}/files?purpose=${purpose}`,
-      { method: 'POST', body: fd },
-    );
-  },
-  workbenchDeleteAssignmentFile: (fileId: string) =>
-    request<{ ok: boolean }>(`/api/workbench/assignment-files/${encodeURIComponent(fileId)}`, {
       method: 'DELETE',
     }),
 
@@ -2321,13 +1980,8 @@ export const api = {
       `/api/latex/documents/${encodeURIComponent(id)}/compile`,
       { method: 'POST' },
     ),
-  latexEvents: (id: string) =>
-    request<{ events: LatexEvent[] }>(`/api/latex/documents/${encodeURIComponent(id)}/events`),
-  latexAddEvent: (id: string, note: string, kind = 'note') =>
-    request<{ ok: boolean }>(`/api/latex/documents/${encodeURIComponent(id)}/events`, {
-      method: 'POST',
-      body: JSON.stringify({ kind, note }),
-    }),
+  /* 投稿事件时间线（GET/POST /api/latex/documents/{id}/events）没有 UI 入口，
+     服务端仍写入 latex_events 表，只是页面暂不展示。 */
   latexPdfUrl: (id: string, download = false) =>
     `/api/latex/documents/${encodeURIComponent(id)}/pdf${download ? '?download=1' : ''}`,
   /** 单个模板（含源码）：新建文稿时「预览源码」用。 */
@@ -2427,11 +2081,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  agentMemoryUpdate: (id: string, body: { kind?: string; title?: string; content?: string; pinned?: boolean }) =>
-    request<{ memory: AgentMemory }>(`/api/agent/memories/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
+  /* 修改记忆（PUT /api/agent/memories/{id}）服务端仍提供，但页面只用到新增/删除，故不封装。 */
   agentMemoryDelete: (id: string) =>
     request<{ ok: boolean }>(`/api/agent/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
@@ -2493,17 +2143,12 @@ export const api = {
     });
     return request<ColorPaletteList>(`/api/next/v1/colors/palettes?${sp.toString()}`);
   },
-  colorPalette: (id: number, opacity = 0) =>
-    request<ColorPaletteDetail>(`/api/next/v1/colors/palettes/${id}?opacity=${opacity}`),
   colorMatch: (colors: string[], limit = 8) =>
     request<{ seeds: string[]; items: ColorMatchItem[] }>(
       `/api/next/v1/colors/match?colors=${encodeURIComponent(colors.join(','))}&limit=${limit}`,
     ),
-  colorParse: (colors: string, opacity = 0) =>
-    request<{ colors: string[]; swatches: ColorSwatch[]; count: number; truncated: boolean }>(
-      '/api/next/v1/colors/parse',
-      { method: 'POST', body: JSON.stringify({ colors, opacity }) },
-    ),
+  /* 配色详情（/colors/palettes/{id}）与颜色解析（POST /colors/parse）没有 UI 入口，
+     Go 核心仍提供，故不在客户端封装。 */
 };
 
 
@@ -2700,6 +2345,23 @@ export const baserowApi = {
    * 不能直接用 `/tables/{id}/rows`：那条路径以**调用者自己的**数据表令牌
    * 访问，而台账在管理员账号的工作区里，非管理员一律 404。
    */
+  /**
+   * 新增一条种子记录（登录即可）。
+   *
+   * 台账只有一份、建在管理员工作区，所以由后端用管理员令牌写；
+   * 前端**不传表 id**（服务端自己解析），避免变成"随便写任何表"的入口。
+   */
+  seedCreateRow: (values: Record<string, unknown>) =>
+    request<Record<string, unknown>>('/api/baserow/seed/rows', {
+      method: 'POST',
+      body: JSON.stringify(values),
+    }),
+  /** 修改一条种子记录（登录即可；删除与结构变更仍只有管理员）。 */
+  seedUpdateRow: (rowId: number, values: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/baserow/seed/rows/${rowId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(values),
+    }),
   seedRows: (p: { page?: number; size?: number; search?: string; order_by?: string }) => {
     const sp = new URLSearchParams();
     if (p.page) sp.set('page', String(p.page));
@@ -2825,15 +2487,8 @@ export const baserowApi = {
     }),
   deleteViewSort: (tableId: number, viewId: number, sortId: number) =>
     request<{ ok: boolean }>(`/api/baserow/tables/${tableId}/views/${viewId}/sortings/${sortId}`, { method: 'DELETE' }),
-  createViewFilterGroup: (tableId: number, viewId: number, filterType: 'AND' | 'OR') =>
-    request<unknown>(`/api/baserow/tables/${tableId}/views/${viewId}/filter-groups`, {
-      method: 'POST',
-      body: JSON.stringify({ filter_type: filterType }),
-    }),
-  deleteViewFilterGroup: (tableId: number, viewId: number, groupId: number) =>
-    request<{ ok: boolean }>(`/api/baserow/tables/${tableId}/views/${viewId}/filter-groups/${groupId}`, {
-      method: 'DELETE',
-    }),
+  /* 视图筛选分组的增删（POST/DELETE .../views/{id}/filter-groups）没有 UI 入口，
+     服务端仍支持（Baserow 自身能力），前端只读视图详情里的 filter_groups。 */
   /** 批量删除记录。 */
   batchDeleteRows: (tableId: number, ids: number[]) =>
     request<{ deleted: number }>(`/api/baserow/tables/${tableId}/rows/batch-delete`, {
@@ -3104,12 +2759,6 @@ export interface LatexVersion {
   note: string;
   createdAt?: string | null;
   hasContent: boolean;
-}
-
-export interface LatexEvent {
-  kind: string;
-  note: string;
-  createdAt?: string | null;
 }
 
 /** 编译素材（.cls / .sty / 图片等）：编译时与源码一起进沙箱 */

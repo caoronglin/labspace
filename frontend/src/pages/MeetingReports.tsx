@@ -482,13 +482,13 @@ export default function MeetingReports() {
         title="管理访问授权"
         open={grantOpen}
         onClose={() => setGrantOpen(false)}
-        width={screens.md ? 460 : '100%'}
+        size={screens.md ? 460 : '100%'}
         extra={<Text type="secondary">{current}</Text>}
       >
         <Paragraph type="secondary">
           组会目录不继承实验室组权限：只有在这里单独授权的人能看到这一周的材料。
         </Paragraph>
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           <Select
             style={{ width: '100%' }}
             showSearch

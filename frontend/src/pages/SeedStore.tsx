@@ -330,7 +330,7 @@ export default function SeedStore() {
         if (v === null || v === undefined || v === "") continue;
         values[f.name] = v;
       }
-      return baserowApi.createRow(tableId, values);
+      return baserowApi.seedCreateRow(values);
     },
     onSuccess: async () => {
       message.success("已恢复该条记录");
@@ -345,7 +345,7 @@ export default function SeedStore() {
       field: BaserowField;
       value: SeedCellValue;
     }) =>
-      baserowApi.updateRow(tableId as number, vars.row.id, {
+      baserowApi.seedUpdateRow(vars.row.id, {
         [vars.field.name]: vars.value,
       }),
     onSuccess: async () => {

@@ -78,7 +78,7 @@ export default function OfficeWorkspace({ entry, open, mode, onClose, onSaved }:
     >
       {loading ? (
         <div style={{ padding: 48, textAlign: 'center' }}>
-          <Spin tip="正在读取文档内容…">
+          <Spin description="正在读取文档内容…">
             <div style={{ height: 80 }} />
           </Spin>
         </div>

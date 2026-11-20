@@ -1162,7 +1162,7 @@ export default function LatexStudio() {
       <Drawer
         open={Boolean(tplPreview)}
         title={tplPreview ? `模板源码 · ${tplPreview.name}` : '模板源码'}
-        width={720}
+        size={720}
         onClose={() => setTplPreview(null)}
       >
         {tplPreviewLoading ? (
@@ -1224,7 +1224,7 @@ export default function LatexStudio() {
       </Modal>
 
       {/* 审稿抽屉：批注列表 + 接受 / 拒绝 / 回复 / 删除 */}
-      <Drawer open={reviewOpen} title="审稿意见" width={520} onClose={() => setReviewOpen(false)}>
+      <Drawer open={reviewOpen} title="审稿意见" size={520} onClose={() => setReviewOpen(false)}>
         {reviewsQuery.isLoading ? (
           <Skeleton active paragraph={{ rows: 6 }} />
         ) : reviews.length === 0 ? (

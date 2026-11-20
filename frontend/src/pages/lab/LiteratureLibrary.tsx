@@ -710,7 +710,7 @@ export default function LiteratureLibrary() {
         title="阅读笔记"
         open={Boolean(editItem)}
         onClose={() => setEditItem(null)}
-        width={560}
+        size={560}
         extra={
           <Button type="primary" loading={update.isPending} onClick={() => editForm.submit()}>
             保存

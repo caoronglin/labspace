@@ -464,7 +464,7 @@ export default function Drawio() {
   const drawingListPanel = (
     <Drawer
       title="我的图形"
-      width={520}
+      size={520}
       open={listOpen}
       onClose={() => setListOpen(false)}
       extra={<Button type="primary" onClick={() => void openDrawing()}>新建图形</Button>}

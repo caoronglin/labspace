@@ -16,7 +16,7 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from . import baserow, db, seed_ocr
 from .config import settings
@@ -524,6 +524,45 @@ async def _shared_fields(table_id: int) -> list[dict[str, Any]]:
         }
         for f in fields
     ]
+
+
+@router.post("/seed/rows", dependencies=[Depends(require_csrf)])
+async def create_seed_row(
+    values: dict[str, Any] = Body(...),
+    user: dict[str, Any] = Depends(require_user),
+) -> dict[str, Any]:
+    """新增一条种子记录（登录即可，用于学生/老师日常入库）。
+
+    台账只有一份、在管理员工作区，所以写入走管理员令牌；实际操作人记到日志里，
+    便于事后追溯（Baserow 侧作者固定显示为管理员账号）。
+    """
+    table_id, _ = await _shared_seed_table()
+    created = await baserow.admin_row_create(table_id, values)
+    log.info(
+        "seed row created: table=%s row=%s by=%s",
+        table_id,
+        created.get("id"),
+        str(user.get("email") or user.get("name") or user.get("sub") or ""),
+    )
+    return created
+
+
+@router.patch("/seed/rows/{row_id}", dependencies=[Depends(require_csrf)])
+async def update_seed_row(
+    row_id: int,
+    values: dict[str, Any] = Body(...),
+    user: dict[str, Any] = Depends(require_user),
+) -> dict[str, Any]:
+    """修改一条种子记录（登录即可）。删除与结构变更仍然只有管理员能做。"""
+    table_id, _ = await _shared_seed_table()
+    updated = await baserow.admin_row_update(table_id, row_id, values)
+    log.info(
+        "seed row updated: table=%s row=%s by=%s",
+        table_id,
+        row_id,
+        str(user.get("email") or user.get("name") or user.get("sub") or ""),
+    )
+    return updated
 
 
 async def ensure_seed_template(user: dict[str, Any]) -> dict[str, Any]:

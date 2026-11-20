@@ -192,7 +192,7 @@ export default function ChannelsTab() {
         title={`绑定会话 · ${sessionOf?.name || sessionOf?.id || ''}`}
         open={sessionChannelId !== ''}
         onClose={() => setSessionOf(null)}
-        width={520}
+        size={520}
       >
         {sessions.isLoading ? (
           <AsLoading rows={3} />

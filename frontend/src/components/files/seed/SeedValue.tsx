@@ -77,7 +77,7 @@ export function FileCell({ files }: { files: BaserowFile[] }) {
 export function FileList({ files }: { files: BaserowFile[] }) {
   if (!files.length) return <Typography.Text type="secondary">暂无附件</Typography.Text>;
   return (
-    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={6} style={{ width: '100%' }}>
       {files.map((f, i) => (
         <Space key={`${f.name}-${i}`} size={8} align="center">
           <a href={f.url} target="_blank" rel="noreferrer noopener" download>

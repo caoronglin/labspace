@@ -354,7 +354,7 @@ export default function KnowledgeTab() {
         title={`文档 · ${docsOf?.name ?? ''}`}
         open={kbId !== ''}
         onClose={() => setDocsOf(null)}
-        width={narrow ? '100%' : 720}
+        size={narrow ? '100%' : 720}
       >
         <Flex vertical gap={12}>
           <Upload

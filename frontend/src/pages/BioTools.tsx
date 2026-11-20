@@ -8,14 +8,10 @@ import {
   Flex,
   Form,
   Image,
-  Input,
-  InputNumber,
   Menu,
   Row,
   Segmented,
-  Select,
   Spin,
-  Switch,
   Table,
   Tag,
   Typography,
@@ -30,6 +26,7 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import PageShell from '../components/PageShell';
+import ToolFieldInput, { type ToolField } from '../components/bio/ToolFieldInput';
 
 /**
  * 生信工具：一个入口装下序列、克隆、引物、比对建树、测序批处理。
@@ -39,24 +36,6 @@ import PageShell from '../components/PageShell';
  * 会让侧栏爆炸、也让「做完 A 想接着做 B」变成反复跳转。
  * 工具定义集中在 `TOOLS` 里，加一个能力只需要加一条配置。
  */
-
-type FieldKind = 'textarea' | 'text' | 'number' | 'select' | 'switch' | 'list';
-
-type ToolField = {
-  name: string;
-  label: string;
-  kind: FieldKind;
-  /** 默认值：新建表单时预填，减少"从空表格开始"的负担 */
-  value?: string | number | boolean;
-  options?: { label: string; value: string | number }[];
-  placeholder?: string;
-  hint?: string;
-  /** 数字字段的取值范围（后端也有校验，这里只是提前拦住手滑） */
-  min?: number;
-  max?: number;
-  /** 只在指定条件下显示（例如「按坐标提取」才需要 start/end） */
-  showWhen?: (values: Record<string, unknown>) => boolean;
-};
 
 type Tool = {
   id: string;
@@ -675,47 +654,11 @@ export default function BioTools() {
                   .filter((f) => !f.showWhen || f.showWhen(values))
                   .map((f) => (
                     <Form.Item key={f.name} label={f.label} extra={f.hint} style={{ marginBottom: 12 }}>
-                      {f.kind === 'textarea' ? (
-                        <Input.TextArea
-                          rows={6}
-                          value={String(values[f.name] ?? '')}
-                          placeholder={f.placeholder}
-                          onChange={(e) => setField(f.name, e.target.value)}
-                          style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12 }}
-                        />
-                      ) : f.kind === 'number' ? (
-                        <InputNumber
-                          value={values[f.name] as number | undefined}
-                          min={f.min}
-                          max={f.max}
-                          placeholder={f.placeholder}
-                          onChange={(v) => setField(f.name, v ?? undefined)}
-                          style={{ width: 200 }}
-                        />
-                      ) : f.kind === 'select' ? (
-                        <Select
-                          value={values[f.name] as string | number | undefined}
-                          options={f.options}
-                          onChange={(v) => setField(f.name, v)}
-                          style={{ width: 240 }}
-                        />
-                      ) : f.kind === 'switch' ? (
-                        <Switch checked={Boolean(values[f.name])} onChange={(v) => setField(f.name, v)} />
-                      ) : f.kind === 'list' ? (
-                        <Input
-                          value={String(values[f.name] ?? '')}
-                          placeholder={f.placeholder}
-                          onChange={(e) => setField(f.name, e.target.value)}
-                          style={{ maxWidth: 420 }}
-                        />
-                      ) : (
-                        <Input
-                          value={String(values[f.name] ?? '')}
-                          placeholder={f.placeholder}
-                          onChange={(e) => setField(f.name, e.target.value)}
-                          style={{ maxWidth: 420 }}
-                        />
-                      )}
+                      <ToolFieldInput
+                        field={f}
+                        value={values[f.name]}
+                        onChange={(v) => setField(f.name, v)}
+                      />
                     </Form.Item>
                   ))}
               </Form>

@@ -1708,7 +1708,7 @@ export default function Agent() {
 
       <Drawer
         title="长期记忆"
-        width={narrow ? '100%' : 420}
+        size={narrow ? '100%' : 420}
         open={memoryOpen}
         onClose={() => setMemoryOpen(false)}
         styles={{ body: { display: 'flex', flexDirection: 'column', gap: 12 } }}

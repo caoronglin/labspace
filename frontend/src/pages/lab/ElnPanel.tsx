@@ -210,7 +210,7 @@ export default function ElnPanel() {
 
       <Drawer
         title={editing ? '编辑实验记录' : '新建实验记录'}
-        width={720}
+        size={720}
         open={open}
         onClose={() => {
           setOpen(false);
