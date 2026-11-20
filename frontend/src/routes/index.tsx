@@ -70,6 +70,22 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * 教师视角页面（课题资料、组会汇报）的路由守卫。
+ *
+ * 侧栏已经按 `teacherOnly` 隐藏了入口，但**直接粘链接**（收藏、分享、命令面板
+ * 之外的旧地址）仍会进来：页面先渲出来，接口再 403，控制台一片红。
+ * 这里提前拦住，给一个明确的"无访问权限"。
+ */
+function RequireTeacher({ children }: { children: React.ReactNode }) {
+  const { isTeacher, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!isTeacher) {
+    return <Result403 what="lab-teacher 教师" />;
+  }
+  return <>{children}</>;
+}
+
 function ToolRedirect({ tool }: { tool: string }) {
   const location = useLocation();
   const query = new URLSearchParams(location.search);
@@ -77,13 +93,15 @@ function ToolRedirect({ tool }: { tool: string }) {
   return <Navigate to={`/tools?${query.toString()}`} replace />;
 }
 
-function Result403() {
+function Result403({ what = 'lab-admin 管理员' }: { what?: string }) {
   return (
     <div style={{ padding: 24 }}>
       <Typography.Title level={3} style={{ fontSize: 20 }}>
         无访问权限
       </Typography.Title>
-      <Typography.Text type="secondary">该页面仅限 lab-admin 访问。</Typography.Text>
+      <Typography.Text type="secondary">
+        该页面仅限 {what} 访问；需要的话请管理员给你加上对应用户组。
+      </Typography.Text>
     </div>
   );
 }
@@ -133,8 +151,22 @@ export function AppRoutes() {
             <Route path="/files" element={<Files />} />
             <Route path="/seeds" element={<SeedStore />} />
             <Route path="/shared" element={<SharedMembers />} />
-            <Route path="/research" element={<ResearchFolders />} />
-            <Route path="/meetings" element={<MeetingReports />} />
+            <Route
+              path="/research"
+              element={
+                <RequireTeacher>
+                  <ResearchFolders />
+                </RequireTeacher>
+              }
+            />
+            <Route
+              path="/meetings"
+              element={
+                <RequireTeacher>
+                  <MeetingReports />
+                </RequireTeacher>
+              }
+            />
             <Route path="/knowledge" element={<Knowledge />} />
             <Route path="/network" element={<Network />} />
             <Route path="/snapotter" element={<SnapOtter />} />
