@@ -241,3 +241,208 @@ func TestDestroyRemovesImmediately(t *testing.T) {
 		t.Fatal("expected the second destroy to fail: file already gone")
 	}
 }
+
+// ---------------------------------------------------------------- 教师策略
+
+// teacherTree 造一棵带「共享文件-组员」的树：导师家目录下每个组员一套目录，
+// 另有一位组员的个人文件（教师不该看见）。
+func teacherTree(t *testing.T) string {
+	t.Helper()
+	root := writeTree(t)
+	mk := func(rel string) {
+		if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("users/advisor01/共享文件-组员/2506_赵同学/01_组会汇报")
+	mk("users/advisor01/共享文件-组员/2605_钱同学/02_论文")
+	mk("research/2026-11-10-钱同学")
+	mk("meeting/2026-W48")
+	if err := os.WriteFile(filepath.Join(root, "users/advisor01/共享文件-组员/2506_赵同学/01_组会汇报/w48.pdf"), []byte("pdf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "research/2026-11-10-钱同学/plan.md"), []byte("plan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// teacherIdentity 是**别人家**的老师（advisor02）：真正的使用场景就是
+// 陈老师看 admin01 家目录下那棵共享树，而不是看自己家。
+func teacherIdentity() Identity {
+	return Identity{UserID: "advisor02", Email: "advisor02@local", Roles: []string{"lab-teacher"}, Teacher: true}
+}
+
+// TestTeacherSeesEverySharedMemberTree：老师对**所有**「共享文件-组员」子树全权，
+// 而学生只能看自己被授权的那一棵。
+func TestTeacherSeesEverySharedMemberTree(t *testing.T) {
+	reg := New(teacherTree(t), ACL{Identities: map[string][]Scope{}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	teacher := teacherIdentity()
+	zhangjie := "advisor01/共享文件-组员/2506_赵同学"
+	yangzhining := "advisor01/共享文件-组员/2605_钱同学"
+	for _, p := range []string{zhangjie, yangzhining} {
+		// "list" 只在源根上判定（见 decide）；目录本身用 read。
+		for _, action := range []string{"read", "download", "create", "mkdir", "modify", "delete"} {
+			if !reg.CanPath(teacher, "users", p, action) {
+				t.Fatalf("teacher lost %s on %s", action, p)
+			}
+		}
+	}
+	// 共享树里的具体文件同样可读
+	if !reg.Can(teacher, Entry{Source: "users", Path: zhangjie + "/01_组会汇报/w48.pdf"}, "read") {
+		t.Fatal("teacher cannot read a file inside the member tree")
+	}
+	// 但教师的读写权限**不**扩散到组员的个人目录
+	if reg.CanPath(teacher, "users", "student01/maize.fa", "read") {
+		t.Fatal("teacher gained access to a personal home")
+	}
+	// 「共享给我」必须把这棵树列出来，否则界面里根本看不到入口
+	found := false
+	for _, s := range reg.SharedWith(teacher) {
+		if s.Path == zhangjie || s.Path == yangzhining {
+			found = true
+			if !s.Writable {
+				t.Fatalf("teacher tree %s reported read-only", s.Path)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("teacher's shared-member trees are missing from SharedWith")
+	}
+	// 上传/建目录按钮依赖这两份清单
+	if !containsPath(reg.WritePaths(teacher, "users"), zhangjie) {
+		t.Fatal("WritePaths omitted the member tree")
+	}
+	if !containsPath(reg.MkdirPaths(teacher, "users"), zhangjie) {
+		t.Fatal("MkdirPaths omitted the member tree")
+	}
+}
+
+// TestStudentOnlySeesOwnSharedMemberTree：学生只在自己那棵目录里有权限，
+// 别人的共享树与自己无关。
+func TestStudentOnlySeesOwnSharedMemberTree(t *testing.T) {
+	reg := New(teacherTree(t), ACL{Identities: map[string][]Scope{
+		"student01@local": {
+			{Source: "users", Path: "student01", View: true, Create: true, Modify: true, Delete: true},
+			{Source: "users", Path: "advisor01/共享文件-组员/2506_赵同学", View: true, Create: true, NoDirs: true},
+		},
+	}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	student := Identity{UserID: "student01@local", Email: "student01@local", Roles: []string{"lab-student"}}
+	own := "advisor01/共享文件-组员/2506_赵同学"
+	if !reg.CanPath(student, "users", own, "read") {
+		t.Fatal("student lost access to their own member tree")
+	}
+	if reg.CanPath(student, "users", own, "mkdir") {
+		t.Fatal("student obtained folder creation inside the member tree")
+	}
+	other := "advisor01/共享文件-组员/2605_钱同学"
+	if reg.CanPath(student, "users", other, "read") {
+		t.Fatal("student can read another member's tree")
+	}
+}
+
+// TestTeacherPolicyCoversResearchAndMeeting：整源授权来自代码策略，
+// 不依赖 ACL 文件里预先写好的条目（老配置里就没有这两条）。
+func TestTeacherPolicyCoversResearchAndMeeting(t *testing.T) {
+	reg := New(teacherTree(t), ACL{Identities: map[string][]Scope{}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	teacher := teacherIdentity()
+	for _, source := range []string{"research", "meeting"} {
+		if !reg.CanPath(teacher, source, "", "list") {
+			t.Fatalf("teacher cannot list the %s source", source)
+		}
+	}
+	if !reg.CanPath(teacher, "research", "2026-11-10-钱同学", "read") {
+		t.Fatal("teacher cannot read a student's research folder")
+	}
+	if !reg.Writable(teacher, "research") {
+		t.Fatal("teacher should be able to maintain research folders")
+	}
+	if !containsPath(reg.WritePaths(teacher, "research"), "") && !hasScope(reg.Scopes(teacher), "research", "") {
+		t.Fatal("teacher research scope missing from Scopes()")
+	}
+}
+
+// TestAdminDoesNotPenetrateResearchOrMeeting：管理员职责是平台运维，
+// 课题资料与组会汇报属于教师业务数据，不接受管理员绕过。
+func TestAdminDoesNotPenetrateResearchOrMeeting(t *testing.T) {
+	reg := New(teacherTree(t), ACL{Identities: map[string][]Scope{}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	admin := Identity{UserID: "admin01", Email: "admin01@local", Roles: []string{"lab-admin"}, Admin: true}
+	for _, source := range []string{"research", "meeting"} {
+		if reg.CanPath(admin, source, "", "list") {
+			t.Fatalf("admin bypassed %s", source)
+		}
+	}
+	if reg.CanPath(admin, "research", "2026-11-10-钱同学", "read") {
+		t.Fatal("admin read a student's research folder")
+	}
+	// 管理员对普通共享源仍然全权，这是职责内的运维能力
+	if !reg.CanPath(admin, "public", "readme.md", "modify") {
+		t.Fatal("admin lost the ordinary shared-source bypass")
+	}
+}
+
+// TestExplicitDenyBeatsTeacherPolicy：收回某个人的权限必须仍然可表达。
+func TestExplicitDenyBeatsTeacherPolicy(t *testing.T) {
+	reg := New(teacherTree(t), ACL{Identities: map[string][]Scope{
+		"advisor02@local": {{Source: "research", Path: "2026-11-10-钱同学", Deny: true}},
+	}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	teacher := Identity{
+		UserID: "advisor02@local", Email: "advisor02@local",
+		Roles: []string{"lab-teacher"}, Teacher: true,
+	}
+	if reg.CanPath(teacher, "research", "2026-11-10-钱同学", "read") {
+		t.Fatal("explicit deny lost to the teacher policy")
+	}
+	if !reg.CanPath(teacher, "research", "2026-11-10-钱同学-b", "read") {
+		t.Fatal("deny leaked to a sibling folder")
+	}
+}
+
+func containsPath(paths []string, want string) bool {
+	for _, p := range paths {
+		if p == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasScope(scopes []Scope, source, path string) bool {
+	for _, s := range scopes {
+		if s.Source == source && s.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTeacherKeepsOwnHomeWithoutProvisionedScope：老师能维护自己的家目录
+// （组员目录同步就是用他自己身份建目录），不依赖开户时是否发过 users 授权。
+func TestTeacherKeepsOwnHomeWithoutProvisionedScope(t *testing.T) {
+	reg := New(teacherTree(t), ACL{Identities: map[string][]Scope{}})
+	if err := reg.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	teacher := teacherIdentity()
+	if !reg.CanPath(teacher, "users", "advisor02/共享文件-组员", "mkdir") {
+		t.Fatal("teacher cannot create the shared tree inside their own home")
+	}
+	if !reg.CanPath(teacher, "users", "advisor02/共享文件-组员/2605_郑同学/01_组会汇报", "create") {
+		t.Fatal("teacher cannot upload inside the tree they just created")
+	}
+}

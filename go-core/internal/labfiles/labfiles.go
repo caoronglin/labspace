@@ -482,7 +482,8 @@ func (r *Registry) userScopes(identity Identity) []Scope {
 	return nil
 }
 
-// rulesFor 展开「预配置组 + 用户单独权限」两层授权。调用方必须持有锁。
+// rulesFor 展开「预配置组 + 用户单独权限 + 代码级策略」三层授权。
+// 调用方必须持有锁。
 func (r *Registry) rulesFor(identity Identity) []rule {
 	out := []rule{}
 	for _, s := range r.userScopes(identity) {
@@ -501,7 +502,78 @@ func (r *Registry) rulesFor(identity Identity) []rule {
 			}
 		}
 	}
+	out = append(out, r.policyRules(identity)...)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Origin < out[j].Origin })
+	return out
+}
+
+// SharedMembersDirName 是导师家目录下的「组员共享」目录名。
+//
+// 门户的组员名册把每人一套固定目录建在
+// users/<导师账号>/共享文件-组员/<学号>_<姓名>/{01_组会汇报,02_论文,03_其他}。
+const SharedMembersDirName = "共享文件-组员"
+
+// teacherSharedMemberPath 报告 rel 是否落在某位导师的「共享文件-组员」子树里。
+// 只有 users/<某人>/共享文件-组员/… 这一种形态算，避免同名目录被误认。
+func teacherSharedMemberPath(rel string) bool {
+	parts := strings.Split(rel, "/")
+	return len(parts) >= 2 && parts[0] != "" && parts[1] == SharedMembersDirName
+}
+
+// protectedSource 报告该来源是否**禁止管理员绕过** ACL。
+//
+// 课题资料与组会汇报是教师业务数据（谁带学生、谁看谁的组会）。管理员的职责
+// 是平台运维，一旦管理员能看全部，两类职责就互相穿透了；需要兼看的账号
+// 同时加 lab-teacher 组即可，不需要开口子。
+func protectedSource(source string) bool {
+	return source == "research" || source == "meeting"
+}
+
+// policyRules 返回由代码策略直接产生的授权（**不写入** ACL 文件）。
+//
+// 为什么需要这一层：组员名册随时会加人、课题资料随时会建目录，如果每次都去
+// ACL 里增量补条目，就会出现「新来的学生导师看不见」「老师压根没被授权过整源」
+// 这类要靠人工补配置才正常的故障。教师的职责因此固化成规则：
+//   - 课题资料 / 组会汇报：整源可读写（学生仍按逐目录授权，只见自己那份）；
+//   - 每位导师家目录下的「共享文件-组员」：全权，新增成员目录自动覆盖。
+//
+// 显式拒绝（Scope.Deny）依然优先于这里的授权，见 decide()。
+func (r *Registry) policyRules(identity Identity) []rule {
+	if !identity.Teacher {
+		return nil
+	}
+	full := func(source, path string) rule {
+		return rule{Scope: Scope{
+			Source: source, Path: path,
+			View: true, Download: true, Create: true, Modify: true, Delete: true,
+		}, Origin: "policy"}
+	}
+	out := []rule{full("research", ""), full("meeting", "")}
+	// 教师自己的家目录：开户时一般会有一条 users 授权，但老账号/手工建的账号
+	// 未必有。少了这条，老师连「同步组员目录」都做不到（建目录要被 CanPath 拒），
+	// 而报错又只在组员页面上显示成一个「文件核心返回 403」。
+	if home := identity.LocalPart(); home != "" && !strings.Contains(home, "/") {
+		out = append(out, full("users", home))
+	}
+	// r.entries 是 Scan() 得到并常驻内存的文件系统快照，这里只是挑出共享树的
+	// 目录层级（go-core 的文件模块不访问数据库，ACL 存在 JSON 文件里）。
+	for _, e := range r.entries {
+		if e.Source != "users" || !e.Dir || !teacherSharedMemberPath(e.Path) {
+			continue
+		}
+		// 2 段 = 树根（owner/共享文件-组员），3 段 = 成员目录。
+		switch len(strings.Split(e.Path, "/")) {
+		case 2:
+			// 共享树根（owner/共享文件-组员）：只给读，保证面包屑能向上走到这里
+			// 又不至于把整棵树当成“可写目录”在界面上亮出来。
+			out = append(out, rule{Scope: Scope{
+				Source: "users", Path: e.Path, View: true, Download: true,
+			}, Origin: "policy"})
+		case 3:
+			// 成员目录（owner/共享文件-组员/2506_赵同学）：导师全权，名册加人自动生效。
+			out = append(out, full("users", e.Path))
+		}
+	}
 	return out
 }
 
@@ -531,12 +603,13 @@ func decide(rules []rule, source, path, action string, admin bool) (bool, string
 			groupAllow = ru.Origin
 		}
 	}
+	// deny > 用户 allow > 组/策略 allow > 管理员绕过。
 	switch {
 	case userAllow:
 		return true, "user"
 	case groupAllow != "":
 		return true, groupAllow
-	case admin:
+	case admin && !protectedSource(source):
 		return true, "admin"
 	}
 	return false, ""
@@ -700,14 +773,17 @@ func personalPathAllowed(identity Identity, path string) bool {
 }
 
 // personalAccessLocked 判定个人文件上的动作：自己的家目录直接放行，他人的
-// 家目录只接受"收件人本人单独权限"里的显式共享。组授权与管理员绕过都不能
-// 打开别人的家目录，这是个人空间与共享盘的分界。调用方必须持有锁。
+// 家目录只接受「收件人本人的单独权限」或「教师策略」里的显式共享。组授权
+// 与管理员绕过都不能打开别人的家目录，这是个人空间与共享盘的分界。
+// 调用方必须持有锁。
 func (r *Registry) personalAccessLocked(identity Identity, rel, action string) bool {
 	if personalPathAllowed(identity, rel) {
 		return true
 	}
 	for _, ru := range r.rulesFor(identity) {
-		if ru.Origin != "user" || ru.Scope.Source != "users" || ru.Scope.Deny {
+		// policy 也允许：teacherSharedMemberPath 的授权不写进 ACL 文件（名册
+		// 随时加人），但它同样只是**别人家目录里的那棵共享树**，不是整个家目录。
+		if (ru.Origin != "user" && ru.Origin != "policy") || ru.Scope.Source != "users" || ru.Scope.Deny {
 			continue
 		}
 		if !scopeCovers(ru.Scope, rel) {
@@ -1045,7 +1121,9 @@ func (r *Registry) SharedWith(identity Identity) []SharedEntry {
 	out := []SharedEntry{}
 	seen := map[string]bool{}
 	for _, ru := range r.rulesFor(identity) {
-		if ru.Origin != "user" || ru.Scope.Source != "users" || ru.Scope.Deny {
+		// policy 也要算：「共享文件-组员」的教师授权按名册动态生成，
+		// 不落 ACL 文件，但它同样属于"别人共享给我的目录"。
+		if (ru.Origin != "user" && ru.Origin != "policy") || ru.Scope.Source != "users" || ru.Scope.Deny {
 			continue
 		}
 		p := ru.Scope.Path

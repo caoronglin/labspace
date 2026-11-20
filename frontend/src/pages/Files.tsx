@@ -457,6 +457,28 @@ export default function Files() {
 
   const sources = useQuery({ queryKey: ['file-sources'], queryFn: api.fileSources, staleTime: 60_000 });
   /**
+   * 只展示**真正能打开**的分类。
+   *
+   * 后端会把六个来源全报回来（哪怕调用者一条权限也没有），之前的做法是
+   * 把没权限的置灰 —— 界面上就成了一排点不动的页签（学生看到「课题资料」
+   * 「组会汇报」却永远打不开）。权限口径是「老师看到全部，其他人只看到
+   * 自己那份」，所以无权的分类直接不渲染，而不是画一个死按钮。
+   */
+  const listableSources = useMemo(
+    () => (sources.data?.sources ?? []).filter((s) => s.listable),
+    [sources.data],
+  );
+  // 当前来源被收回权限（或从旧链接进来）时，回退到第一个可打开的分类，
+  // 否则页面会停在空列表上，用户以为“文件没了”。
+  useEffect(() => {
+    if (!sources.data) return;
+    if (listableSources.some((s) => s.id === source)) return;
+    const fallback = listableSources[0];
+    if (!fallback) return;
+    setSource(fallback.id);
+    setDir('');
+  }, [sources.data, listableSources, source]);
+  /**
    * 文件列表要**看得见别人的改动**：别人删了共享给我的文件，
    * 我的页面不能还留着那条（点开才发现是 404）。
    * 因此这里开窗口聚焦刷新 + 30 秒轮询（后台标签页会自动暂停），
@@ -542,10 +564,14 @@ export default function Files() {
   const canMoveEntry = (p: string) => (isSharedView ? sharedWritableOf(p) : canWrite(p));
 
   const baseDir = isPersonal ? (isSharedView ? dir : dir || homePath) : dir;
-  const writable = !isSharedView && canWrite(baseDir);
-  // 可写共享的目录同样允许上传/新建：写权限来自共享 scope，而不是自己的家目录。
-  const writableHere = writable || (isSharedView && sharedWritableOf(baseDir));
-  const mkdirHere = canMkdir(baseDir) || (isSharedView && sharedWritableOf(baseDir));
+  // 写权限统一看服务端返回的 writePaths（源级清单）：自己的家目录、导师给的
+  // 「只能上传」的组员目录、老师对整棵共享树的写权，都在这份清单里，
+  // 前端不再按「是不是共享视图」分两套判断 —— 那样学生一进「共享给我」
+  // 上传按钮就消失了（服务端其实允许上传）。
+  const writable = canWrite(baseDir);
+  const writableHere = writable;
+  // 建目录与传文件分开：共享树里的学生只能上传，不能改结构。
+  const mkdirHere = canMkdir(baseDir);
 
   /**
    * 上传逻辑（单文件 / 批量 / 文件夹树 / 拖拽目录）整体在 hook 里，
@@ -1518,10 +1544,9 @@ export default function Files() {
                   setQ('');
                   setPersonalScope('mine');
                 }}
-                options={(sources.data?.sources ?? []).map((s) => ({
+                options={listableSources.map((s) => ({
                   value: s.id,
                   label: s.label,
-                  disabled: !s.listable,
                 }))}
               />
               {isPersonal ? (
@@ -1563,7 +1588,13 @@ export default function Files() {
               {activeSource?.shared ? <Tag color="green">共享空间</Tag> : <Tag>私人空间</Tag>}
               {isSharedView ? (
                 <Tag color="blue">
-                  他人共享{sharedWith.some((s) => s.writable) ? ' · 部分可编辑' : ' · 只读'}
+                  {/* 「只能上传」也是可写：不区分的话，学生明明能传材料却被标成只读 */}
+                  他人共享
+                  {sharedWith.some((s) => s.writable)
+                    ? ' · 部分可编辑'
+                    : sharedRoots.some((r) => canWrite(r))
+                      ? ' · 可上传'
+                      : ' · 只读'}
                 </Tag>
               ) : null}
               {!isSharedView && activeSource && activeSource.listable && !writable ? (

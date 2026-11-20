@@ -1,5 +1,53 @@
 # CHANGELOG.md
 
+## 2026-11-20 — 文件分类可见性按角色重写（老师看全部 / 其他人只看自己那份）
+
+**问题**：`/files` 里「课题资料」「组会汇报」老师打不开（后端 `listable:false`），
+而学生只要名册里有授权就能看到这两个分类；`共享文件-组员` 整棵树物理上挂在
+**学生**（`admin01`）家目录下，于是该学生即使不是教师也能看到全部 13 位组员的目录，
+真正的导师（`teacher01`）反而看不到。
+
+**根因**：
+1. `LoadACL` 只在 ACL 文件**缺少** `groups` 键时才用 `DefaultGroups()`。线上
+   `/etc/lab-go/acl/labgo-acl.json` 里 `lab-teacher` 只有 public/plasmids/genomes，
+   老师的整源权限完全依赖这份**陈旧**配置，而不是代码。
+2. `decide()` 的管理员绕过对 `research` / `meeting` 同样生效，与「管理员不穿透」的
+   既定口径矛盾。
+3. 共享树建在导师家目录下这一前提没有落实（实际建在了一位学生家目录里）。
+
+**改动**：
+- `go-core/internal/labfiles/labfiles.go`
+  - 新增 `policyRules()`：`lab-teacher` 的**整源**权限由代码保证 —— 课题资料 /
+    组会汇报可读写，另加每位导师家目录下的「共享文件-组员」成员目录全权
+    （名册加人、加目录自动生效，不必补 ACL）。教师自己的家目录也补一条，
+    避免老账号没有 `users` 授权时连「同步组员目录」都被 403。
+  - 新增 `protectedSource()`：`research` / `meeting` **不接受**管理员绕过。
+  - `personalAccessLocked()` / `SharedWith()` 接受 `Origin: "policy"`，教师因此能在
+    「共享给我」里看到别人的共享树，也能上传（`WritePaths` / `MkdirPaths` 同步生效）。
+- `go-core/internal/labfiles/shared_test.go`：新增 5 条回归（老师看全部成员树、
+  学生只看自己那棵、老师整源课题资料/组会、管理员不穿透、显式拒绝优先、老师自建树）。
+- `frontend/src/pages/Files.tsx`
+  - 无权限的分类**不渲染**（原来渲染成点不动的灰页签）；当前分类被收回权限时回退到
+    第一个可打开的分类。
+  - 写权限统一看服务端 `writePaths`：学生进「共享给我」上传按钮不再消失
+    （之前 `writable` 在共享视图被强制 false）。
+  - 顶部标签按实际权限显示「部分可编辑 / 可上传 / 只读」，不再把「只能上传」错标成只读。
+- `backend/app/lab_shared.py`：`_advisor_of` 的 `SELECT DISTINCT advisor` 加 `ORDER BY`
+  （两个导师并存时同一学生可能看到两棵不同的树）。
+
+**数据迁移（一次性，已执行并验证）**：
+- `/srv/lab/users/admin01/共享文件-组员` → `/srv/lab/users/teacher01/共享文件-组员`
+  （先备份到 `/srv/labbackup/archives/pre-move/`）。
+- `labspace.lab_roster` 的 20 行合并为 13 行，`advisor` 统一为 `teacher01`。
+- 12 个组员账号的 `users` 授权改指新路径（旧的按前缀剔除，保留各自家目录）。
+
+**实测**：
+- 老师（`teacher01`）：六个分类全开，课题资料 3 个目录、「共享文件-组员」13 位组员。
+- 学生（`student02`）：「共享给我」只有 `2605_钱同学`；上传 200、建子目录 403。
+- 管理员+学生（`admin01`）：课题资料 / 组会汇报**不出现**，个人文件只有自己家目录。
+- 无课题资料授权的学生（`student01`）：分类不渲染。
+- `go test ./...` 全过；`pytest` 222 passed；`tsc` 0 错；`vite build` ✓。
+
 ## 2026-11-20 — 使用说明与互动引导同步
 
 - 新增 [docs/USER_GUIDE.md](docs/USER_GUIDE.md)：面向实验室成员的完整使用说明，

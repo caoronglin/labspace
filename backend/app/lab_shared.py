@@ -215,7 +215,9 @@ def _advisor_of(user: dict[str, Any]) -> str:
     """
     if has_role(user, settings.teacher_roles):
         return account_key(user)
-    rows = db.query("SELECT DISTINCT advisor FROM labspace.lab_roster LIMIT 5")
+    # 组员登录时只能“猜”导师：名册里按 advisor 取一个（加 ORDER BY 是为了
+    # 结果稳定 —— 之前没有排序，两个导师并存时同一个学生可能看到两棵不同的树）。
+    rows = db.query("SELECT DISTINCT advisor FROM labspace.lab_roster ORDER BY advisor LIMIT 5")
     if rows:
         advisor = str(rows[0].get("advisor") or "")
         if advisor:
