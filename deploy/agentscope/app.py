@@ -39,6 +39,7 @@
 向量模型**不是** manager 的构造参数，而是每个知识库创建时从 storage 里的
 凭据解析出来的；长期记忆**没有** app 级开关，只能走中间件工厂。
 """
+
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 # 上面这条只关「模块找不到」这一类诊断：agentscope 装在**本目录自己的镜像**里
 # （见 Dockerfile / requirements.txt），不在仓库根环境的 Python 里。文件内部的
@@ -352,9 +353,7 @@ class LabToolMiddleware(MiddlewareBase):
         """
         self._workdir = os.path.abspath(workdir) if workdir else None
         self._memory_dir = (
-            os.path.realpath(os.path.join(self._workdir, memory_dir))
-            if self._workdir
-            else None
+            os.path.realpath(os.path.join(self._workdir, memory_dir)) if self._workdir else None
         )
 
     async def on_check_permission(

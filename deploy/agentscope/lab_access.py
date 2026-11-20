@@ -38,9 +38,7 @@ from lab_portal import PortalClient
 log = logging.getLogger("labspace.access")
 
 # 能跨用户读取的角色。普通成员保持严格隔离。
-_SHARED_READER_ROLES = frozenset(
-    {"lab-teacher", "lab-admin", "lab-superadmin"}
-)
+_SHARED_READER_ROLES = frozenset({"lab-teacher", "lab-admin", "lab-superadmin"})
 
 # 角色 / 用户目录的缓存时间（秒）。权限变更最多 60 秒后生效，
 # 避免每次 list_accessible 都打两次门户请求拖慢对话。
