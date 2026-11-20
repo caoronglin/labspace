@@ -502,7 +502,9 @@ services:
     memswap_limit: 3072m
     cpus: 2.0
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/actuator/health"]
+      # 镜像里没有 wget（锁 digest 后基础镜像变了，健康检查脚本直接 exec 失败，
+      # 容器明明在正常服务却一直报 unhealthy）。改用镜像自带的 curl。
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
       timeout: 5s
       retries: 3
