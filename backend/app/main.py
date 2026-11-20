@@ -816,10 +816,21 @@ def _casdoor_issuer(request: Request) -> str:
 
 
 def _request_base(request: Request) -> str:
-    """按用户实际访问的主机名生成基址（IP 直连或域名皆可）。"""
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    """按用户实际访问的主机名生成基址（IP 直连或域名皆可）。
+
+    Host 头受白名单约束：伪造 Host 不但会把服务地址指错，还能把 OIDC
+    ``redirect_uri`` 带向外部地址，所以这里跟 ``_client_host`` 用同一套判定。
+    """
+    raw = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    host = _client_host(request)
+    if not host:
+        return settings.public_url
+    # 端口保留（平台多个服务靠端口区分），但主机名必须来自白名单
+    port = ""
+    if ":" in raw and "[" not in raw:  # 简单 hostname:port，不处理 IPv6 字面量
+        port = ":" + raw.split(":")[-1]
     proto = request.headers.get("x-forwarded-proto", "http")
-    return f"{proto}://{host}" if host else settings.public_url
+    return f"{proto}://{host}{port}"
 
 
 def _display_name_of(user: dict[str, Any]) -> str:
@@ -876,14 +887,38 @@ def _safe_back(raw: str, request: Request | None = None) -> str:
     return ""
 
 
+def _host_allowed(host: str) -> bool:
+    """入口主机是否在白名单内。
+
+    只采信 ``LABSPACE_ALLOWED_HOSTS`` 里的主机名：门户坚持 IP + 端口直连，
+    合法入口就那几个 IP / localhost，没必要把任意 Host 当成可拼接入站地址的输入。
+    白名单为空（未配置）时退回“只认默认入口主机”，宁严不宽。
+    """
+    h = (host or "").lower().strip().strip(".")
+    if not h:
+        return False
+    allowed = tuple(x.lower().strip() for x in settings.allowed_hosts) or (
+        settings.default_entry_host.lower(),
+    )
+    return h in allowed
+
+
 def _client_host(request: Request) -> str:
     """用户当前实际访问的主机名（不含端口）。
 
     用于“服务地址自适应”：从 192.0.2.10 进来就给出 192.0.2.10 的服务地址，
     从 Tailscale IP 进来就给出 Tailscale IP 的服务地址。
+
+    只采信白名单内的主机：``X-Forwarded-Host`` / ``Host`` 是客户端可控的头，
+    未经校验就拼进后续出站 URL 会变成 SSRF（比如伪造 ``169.254.169.254``）。
+    非法值一律回落到默认入口主机。
     """
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
-    return host.split(":")[0].strip()
+    name = host.split(":")[0].strip()
+    if _host_allowed(name):
+        return name
+    return settings.default_entry_host
+
 
 
 @app.get("/api/auth/login")
@@ -1136,7 +1171,9 @@ async def api_network_entries(request: Request, _: dict = Depends(require_user))
     async def probe(url: str, path: str) -> tuple[bool, str]:
         target = url.rsplit("/", 1)[0] + path if path != "/" else url
         try:
-            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            # 不跟随跳转：目标主机虽来自白名单，但上游 302 仍可能把我们带到任意地址
+            # （重定向放大）。自检只需要“这个入口现在通不通”，3xx 也算活着。
+            async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
                 resp = await client.get(target)
                 return resp.status_code < 400, f"HTTP {resp.status_code}"
         except Exception as exc:  # noqa: BLE001

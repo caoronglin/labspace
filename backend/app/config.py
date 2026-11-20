@@ -17,6 +17,10 @@ def _list(name: str, default: str = "") -> list[str]:
     return [x.strip() for x in raw.split(",") if x.strip()]
 
 
+#: 双入口（LAN + Tailscale）默认白名单；可用 LABSPACE_ALLOWED_HOSTS 覆盖。
+DEFAULT_ALLOWED_HOSTS = "192.0.2.10,198.51.100.71,127.0.0.1,localhost"
+
+
 @dataclass(frozen=True)
 class Settings:
     # OIDC / Casdoor
@@ -35,6 +39,13 @@ class Settings:
     csrf_cookie: str = os.getenv("LABSPACE_CSRF_COOKIE", "labspace_csrf")
     cookie_secure: bool = _bool("LABSPACE_COOKIE_SECURE", False)
     public_url: str = os.getenv("LABSPACE_PUBLIC_URL", "http://portal.lab.example").rstrip("/")
+
+    # 入口主机白名单：X-Forwarded-Host / Host 只在这份名单内被采信，
+    # 其余一律回落到 default_entry_host，避免拿伪造主机拼出站地址（SSRF）。
+    allowed_hosts: tuple[str, ...] = tuple(
+        _list("LABSPACE_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS)
+    )
+    default_entry_host: str = os.getenv("LABSPACE_DEFAULT_ENTRY_HOST", "192.0.2.10")
 
     # 数据库
     db_dsn: str = os.getenv("LABSPACE_DB_DSN", "")
