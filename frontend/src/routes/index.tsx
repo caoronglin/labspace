@@ -18,7 +18,6 @@ const Lab = lazy(() => import('../pages/Lab'));
 const Toolbox = lazy(() => import('../pages/Toolbox'));
 const Drawings = lazy(() => import('../pages/Drawings'));
 const Colors = lazy(() => import('../pages/Colors'));
-const Docparse = lazy(() => import('../pages/Docparse'));
 const Translate = lazy(() => import('../pages/Translate'));
 const Commands = lazy(() => import('../pages/Commands'));
 const Bioinfo = lazy(() => import('../pages/Bioinfo'));
@@ -133,7 +132,6 @@ export function AppRoutes() {
             <Route path="/plot" element={<ToolRedirect tool="plot" />} />
             {/* 多维表格已并入 /lab（多维表格空间） */}
             <Route path="/baserow" element={<Navigate to="/lab?tab=tables" replace />} />
-            <Route path="/docparse" element={<Docparse />} />
             <Route path="/translate" element={<Translate />} />
             <Route path="/commands" element={<Commands />} />
             <Route path="/bioinfo" element={<Bioinfo />} />

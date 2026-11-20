@@ -1,4 +1,7 @@
-"""文档解析：OXR-1.0 优先，Docling 作为回退。
+"""文档/图片取文本：OXR-1.0 优先，MinerU 处理图片，Docling 回退。
+
+这是**内部库**，不再是页面功能：`/docparse` 页与 `/api/docparse/*` 已下架，
+知识库入库（`app/knowledge.py`）仍然需要「PDF/图片 → Markdown」这一步。
 
 OXR（SoMark/OXR-1.0）是 1.3B 的开源文档解析模型，把 PDF / 图片解析为
 Markdown / JSON 并给出版面信息。其 HTTP 接口为 SoMark 兼容协议：
@@ -13,28 +16,53 @@ Markdown / JSON 并给出版面信息。其 HTTP 接口为 SoMark 兼容协议�
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import HTTPException
 
 from .http import async_client as http_client
-from .security import require_csrf, require_user
-from .uploads import read_upload_capped
 
-router = APIRouter(prefix="/api/docparse", tags=["docparse"])
+log = logging.getLogger("labspace.text_extract")
+
+
+def _ms_since(started: float) -> int:
+    """自 started（monotonic）起的毫秒数。
+
+    统一用 monotonic：`time.time()` 会被 NTP 校时往回拨，算出的耗时可能是负数。
+    """
+    # pi-lens-ignore: unchecked-numeric-parse-python -- monotonic 差值乘 1000 恒为有限浮点，int() 不会抛
+    return max(0, int((time.monotonic() - started) * 1000))
 
 OXR_BASE = os.getenv("LABSPACE_OXR_BASE_URL", "https://free-oxr.somark.ai/api/v1").rstrip("/")
 OXR_API_KEY = os.getenv("LABSPACE_OXR_API_KEY", "dummy")
 OXR_MODEL = os.getenv("LABSPACE_OXR_MODEL", "OXR-1.0")
 DOCLING_BASE = os.getenv("LABSPACE_DOCLING_URL", "http://lab-docling:5001").rstrip("/")
 MODEL_BASE = os.getenv("LABSPACE_MODEL_URL", "http://192.0.2.17:8000").rstrip("/")
-MINERU_TIMEOUT = float(os.getenv("LABSPACE_MINERU_TIMEOUT", "180"))
+def _env_number(name: str, default: float, convert: type = float) -> float:
+    """读数值型环境变量；写错了就用默认值并留一条日志。
+
+    直接 `int(os.getenv(...))` 的写法会在环境变量写成 "20MB" 时把整个模块的
+    导入炸掉（后端起不来），而这只是一个超时/上限的配置。
+    """
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return convert(str(raw).strip())
+    except (TypeError, ValueError):
+        log.warning("环境变量 %s=%r 不是数字，按默认值 %s 处理", name, raw, default)
+        return default
+
+
+MINERU_TIMEOUT = _env_number("LABSPACE_MINERU_TIMEOUT", 180.0)
 MINERU_MAX_BYTES = 20 * 1024 * 1024
-MAX_BYTES = int(os.getenv("LABSPACE_DOCPARSE_MAX_BYTES", str(40 * 1024 * 1024)))
-TIMEOUT = float(os.getenv("LABSPACE_DOCPARSE_TIMEOUT", "180"))
+# pi-lens-ignore: unchecked-numeric-parse-python -- _env_number 已用 try/except 兜底，返回值必为数字
+MAX_BYTES = int(_env_number("LABSPACE_DOCPARSE_MAX_BYTES", 40 * 1024 * 1024))
+TIMEOUT = _env_number("LABSPACE_DOCPARSE_TIMEOUT", 180.0)
 
 # 结构化解析链路只覆盖 PDF/图片；Office 与纯文本由 Tika/直读处理。
 PDF_IMAGE_SUFFIXES = {
@@ -68,10 +96,6 @@ OXR_EXTERNAL_ALLOWED = os.getenv("LABSPACE_OXR_ALLOW_EXTERNAL", "0") == "1"
 OXR_ENABLED = _is_internal_host(OXR_BASE) or OXR_EXTERNAL_ALLOWED
 """OXR 是否可用；为 False 时解析直接回退到内网 Docling。"""
 
-
-async def _read_capped(file: UploadFile, limit: int) -> bytes:
-    """分块读取上传文件，超过 limit 立即中断（避免整包进内存）。"""
-    return await read_upload_capped(file, limit)
 
 # 探活用的最小合法 PDF（OXR 只接受 PDF/图片，纯文本会返回 415）
 _MINIMAL_PDF = (
@@ -133,7 +157,7 @@ async def _mineru_probe() -> tuple[bool, str]:
 
 async def _parse_mineru(content: bytes, filename: str, mime: str = "image/png") -> dict[str, Any]:
     """图片版面解析（MinerU 2.5，输出 Markdown / 公式 / 表格）。"""
-    started = time.time()
+    started = time.monotonic()
     async with http_client(timeout=MINERU_TIMEOUT) as client:
         resp = await client.post(
             f"{MODEL_BASE}/v1/parse",
@@ -154,7 +178,7 @@ async def _parse_mineru(content: bytes, filename: str, mime: str = "image/png") 
         "pages": None,
         "fileType": "image",
         "taskId": None,
-        "elapsed_ms": int((time.time() - started) * 1000),
+        "elapsed_ms": _ms_since(started),
     }
 
 
@@ -182,7 +206,7 @@ async def _status() -> dict[str, Any]:
 
 
 async def _parse_oxr(content: bytes, filename: str, mime: str = "application/pdf") -> dict[str, Any]:
-    started = time.time()
+    started = time.monotonic()
     async with http_client(timeout=TIMEOUT) as client:
         resp = await client.post(
             f"{OXR_BASE}/parse/sync",
@@ -203,12 +227,12 @@ async def _parse_oxr(content: bytes, filename: str, mime: str = "application/pdf
         "pages": meta.get("page_num"),
         "fileType": meta.get("file_type"),
         "taskId": (data.get("result") or {}).get("task_id"),
-        "elapsed_ms": int((time.time() - started) * 1000),
+        "elapsed_ms": _ms_since(started),
     }
 
 
 async def _parse_docling(content: bytes, filename: str, mime: str = "application/pdf") -> dict[str, Any]:
-    started = time.time()
+    started = time.monotonic()
     async with http_client(timeout=TIMEOUT) as client:
         resp = await client.post(
             f"{DOCLING_BASE}/v1/convert/file",
@@ -227,7 +251,7 @@ async def _parse_docling(content: bytes, filename: str, mime: str = "application
         "pages": len(document.get("pages") or []) or None,
         "fileType": "pdf",
         "taskId": None,
-        "elapsed_ms": int((time.time() - started) * 1000),
+        "elapsed_ms": _ms_since(started),
     }
 
 
@@ -271,65 +295,3 @@ async def document_to_text(content: bytes, filename: str, mime: str = "") -> tup
     except Exception as exc:  # noqa: BLE001
         errors.append(f"Docling 异常：{type(exc).__name__}")
     raise HTTPException(status_code=502, detail="结构化解析失败：" + "；".join(errors[:2]))
-
-
-@router.get("/status")
-async def docparse_status(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
-    return await _status()
-
-
-@router.post("/parse")
-async def docparse_parse(
-    file: UploadFile = File(...),
-    fallback: bool = True,
-    user: dict[str, Any] = Depends(require_user),
-    _: None = Depends(require_csrf),
-) -> dict[str, Any]:
-    content = await _read_capped(file, MAX_BYTES)
-    if not content:
-        raise HTTPException(status_code=400, detail="上传文件为空")
-    name = file.filename or "document.pdf"
-    errors: list[str] = []
-    suffix = os.path.splitext(name)[1].lower()
-    if suffix in IMAGE_SUFFIXES:
-        if len(content) > MINERU_MAX_BYTES:
-            errors.append("图片超过 MinerU 上传上限（20 MB），已改用 Docling")
-        else:
-            try:
-                result = await _parse_mineru(content, name, file.content_type or "image/png")
-                if result.get("markdown"):
-                    result["fallbackUsed"] = False
-                    result["warnings"] = errors
-                    return result
-                errors.append("MinerU 未返回文本")
-            except HTTPException as exc:
-                errors.append(str(exc.detail))
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"MinerU 异常：{type(exc).__name__}")
-    if not OXR_ENABLED:
-        errors.append("外部文档解析服务未启用（仅内网自建实例可用），已直接使用 Docling")
-        result = await _parse_docling(content, name)
-        result["fallbackUsed"] = True
-        result["warnings"] = errors
-        return result
-    try:
-        result = await _parse_oxr(content, name)
-        result["fallbackUsed"] = False
-        if not result.get("markdown"):
-            raise HTTPException(status_code=502, detail="OXR 未返回解析内容")
-        return result
-    except HTTPException as exc:
-        errors.append(str(exc.detail))
-    except Exception as exc:  # noqa: BLE001 - 统一转中文提示
-        errors.append(f"OXR 解析异常：{type(exc).__name__}")
-    if fallback:
-        try:
-            result = await _parse_docling(content, name)
-            result["fallbackUsed"] = True
-            result["warnings"] = errors
-            return result
-        except HTTPException as exc:
-            errors.append(str(exc.detail))
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"Docling 解析异常：{type(exc).__name__}")
-    raise HTTPException(status_code=502, detail="文档解析失败：" + "；".join(errors[:2]))

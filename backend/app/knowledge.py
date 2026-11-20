@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 
 from . import db, semantic
 from .config import settings
-from .docparse import PDF_IMAGE_SUFFIXES, document_to_text
+from .text_extract import PDF_IMAGE_SUFFIXES, document_to_text
 from .http import async_client
 from .security import has_role, require_admin, require_csrf, require_user
 

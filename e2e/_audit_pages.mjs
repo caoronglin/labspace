@@ -16,7 +16,7 @@ const navPaths = await page.evaluate(async()=>{
 const svc = await page.evaluate(async()=> (await fetch('/api/services',{credentials:'include'})).json());
 const services = svc.services||[];
 
-const paths = ['/','/start','/services','/favorites','/search','/literature','/drawio','/drawings','/docling','/docparse','/translate','/translation','/weather','/workbench','/agent','/devtools','/databases','/network','/snapotter','/commands','/admin/status','/admin/users','/admin/settings','/cropgenome/'];
+const paths = ['/','/start','/services','/favorites','/search','/literature','/drawio','/drawings','/docling','/translate','/translation','/weather','/workbench','/agent','/devtools','/databases','/network','/snapotter','/commands','/admin/status','/admin/users','/admin/settings','/cropgenome/'];
 console.log('=== 门户路由检查 ===');
 const bad=[];
 for (const p of paths) {

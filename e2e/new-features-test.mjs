@@ -104,7 +104,7 @@ await checkPage(ctx, '/weather', {
   },
 });
 
-await checkPage(ctx, '/docparse', {
+await checkPage(ctx, {
   label: '文档解析',
   expect: async (page, text) => {
     const has = /文档解析|上传|拖拽/.test(text);

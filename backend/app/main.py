@@ -76,9 +76,6 @@ from . import (
     decision as decision_mod,
 )
 from . import (
-    docparse as docparse_mod,
-)
-from . import (
     genomes as genomes_mod,
 )
 from . import (
@@ -207,7 +204,6 @@ app.include_router(agent_mod.router)
 app.include_router(agentscope_router_mod.router)
 app.include_router(mt_mod.router)
 app.include_router(mt_mod.internal_router)
-app.include_router(docparse_mod.router)
 app.include_router(weather_mod.router)
 app.include_router(sso_mod.router)
 app.include_router(wecom_mod.router)

@@ -16,7 +16,7 @@ const ROUTES = [
   '/', '/start', '/workbench', '/latex', '/agent', '/knowledge',
   '/files', '/seeds', '/shared', '/research', '/meetings',
   '/lab', '/databases', '/tools', '/drawings', '/colors',
-  '/docparse', '/translate', '/literature', '/papers',
+  '/translate', '/literature', '/papers',
   '/commands', '/bioinfo', '/weather', '/network', '/help',
   '/snapotter', '/search', '/services/primer', '/embed/primer',
   '/admin/status', '/admin/users', '/admin/settings', '/admin/backups',

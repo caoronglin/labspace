@@ -88,9 +88,9 @@ labspace/
 ├── frontend/            React 19 + TS + Vite + Ant Design 6
 │   └── src/{app,components,pages,routes,services,theme}
 ├── backend/             FastAPI（OIDC 会话 / 收藏 / 受控绘图保存 / 统一语料 / 数据库 API
-│   │                    / 个人工作台 / Agent 中继 / 翻译 / 文档解析 / 天气）
+│   │                    / 个人工作台 / Agent 中继 / 翻译 / 天气）
 │   └── app/{config,security,casdoor,catalog,corpus,databases,db_apis,snapotter,
-│            workbench,agent,mt,docparse,weather,http,db,golink,main}.py
+│            workbench,agent,mt,text_extract,weather,http,db,golink,main}.py
 ├── go-core/             Go 核心（LabGo，纯标准库、零外部依赖）
 │   ├── cmd/labgo        服务入口（:8122）
 │   └── internal/{session,labfiles,health,embed,catalog,endpoints,platform,
@@ -120,7 +120,9 @@ labspace/
 - 个人工作台 `/workbench`：一句话捕获 → 自动分类（任务/项目/计划/想法/知识/记忆/笔记）→ 人工确认 → 落库。
 - Agent 助手 `/agent`：底层 **AgentScope 2.0.11**（独立容器，与门户共享 Postgres），12 个 `lab_*` MCP 工具；
   支持知识库 RAG 检索（回答带来源）、工作台捕获、绘图与脚本沙箱；首次进入有 antd Tour 互动引导。
-- 文本论文翻译 `/translation`（Hy-MT2，模型未部署时自动回退本机引擎并标注来源）、文档解析 `/docparse`
+- 文本论文翻译 `/translation`（Hy-MT2，模型未部署时自动回退本机引擎并标注来源）
+  - `/docparse`（文档解析页）已下架：它只是一层「上传 PDF 看 Markdown」的壳，
+    同样的能力现在由**知识库入库**在用（PDF/图片 → Markdown 走 Docling/MinerU，见 `backend/app/text_extract.py`）。
   （OXR-1.0，内网 Docling 兜底）、天气 `/weather`（Open-Meteo）。
 - 单点登录：门户与生信实训平台共用 Casdoor 账号免密进入；JBrowse / draw.io / Linux 命令为静态站，SnapOtter 走门户原生界面，均无需单独登录。
 - 既有服务保留：SearXNG、Tika、Docling、科研 API/MCP、Open Terminal、oikb；Open WebUI 与 Quantum 已下线（见入口表）。

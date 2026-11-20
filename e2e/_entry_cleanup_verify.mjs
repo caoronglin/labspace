@@ -13,7 +13,7 @@ const CASES = [
   ['bioinfo-training', '/bioinfo'],
   ['jbrowse', '/genomes'],
     ['snapotter', '/snapotter'],
-  ['docling', '/docparse'],
+  ['docling'],
   ['literature-search', '/literature'],
   ['pdf-translate', '/translate'],
   ['searxng', '/search'],

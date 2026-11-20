@@ -99,28 +99,10 @@ console.log('\n== 3. Hy-MT2 翻译 ==');
   }
 }
 
-console.log('\n== 4. OXR-1.0 文档解析 ==');
+console.log('\n== 4. 文档解析页已下架 ==');
 {
   const st = await api('/api/docparse/status');
-  record('GET /api/docparse/status', st.status === 200 && !!st.body?.provider, `provider=${st.body?.provider} available=${st.body?.available}`);
-  const pdf = readFileSync(new URL('./fixtures/probe.pdf', import.meta.url));
-  const r = await page.evaluate(
-    async ([b64]) => {
-      const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-      const fd = new FormData();
-      fd.append('file', new File([bin], 'probe.pdf', { type: 'application/pdf' }));
-      const csrf = (document.cookie.split('; ').find((c) => c.startsWith('labspace_csrf=')) || '').split('=')[1] || '';
-      const res = await fetch('/api/docparse/parse', { method: 'POST', body: fd, credentials: 'include', headers: { 'X-CSRF-Token': decodeURIComponent(csrf) } });
-      const t = await res.text();
-      try {
-        return { status: res.status, body: JSON.parse(t) };
-      } catch {
-        return { status: res.status, body: t.slice(0, 200) };
-      }
-    },
-    [pdf.toString('base64')],
-  );
-  record('POST /api/docparse/parse', r.status === 200 && !!r.body?.markdown, `provider=${r.body?.provider} pages=${r.body?.pages} len=${String(r.body?.markdown || '').length}`);
+  record('GET /api/docparse/status 已下线', st.status === 404, `${st.status}`);
 }
 
 console.log('\n== 5. Agent 助手 ==');

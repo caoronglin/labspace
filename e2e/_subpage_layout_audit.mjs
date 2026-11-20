@@ -10,7 +10,7 @@ const [user, pass] = line.trim().split(/\s+/);
 mkdirSync('/opt/labspace/e2e/shots/subpages', { recursive: true });
 
 const ROUTES = [
-  '/devtools', '/docparse', '/translate', '/bioinfo', '/literature', '/databases',
+  '/devtools', '/translate', '/bioinfo', '/literature', '/databases',
   '/network', '/colors', '/aikit', '/commands', '/snapotter', '/knowledge', '/files',
   '/genomes', '/agent', '/workbench', '/services', '/weather', '/translation', '/help',
 ];
@@ -77,5 +77,5 @@ async function scan(width, height, routes, shots) {
 }
 
 await scan(1440, 900, ROUTES, true);
-await scan(390, 844, ['/devtools', '/docparse', '/translate', '/bioinfo', '/literature', '/databases', '/knowledge', '/files', '/genomes', '/agent', '/workbench', '/services', '/help'], true);
+await scan(390, 844, ['/devtools', '/translate', '/bioinfo', '/literature', '/databases', '/knowledge', '/files', '/genomes', '/agent', '/workbench', '/services', '/help'], true);
 await browser.close();

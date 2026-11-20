@@ -132,46 +132,13 @@ try {
     }
   }
 
-  // ---------- Docparse 结果一键入库 ----------
+  // ---------- 文档解析页已下架 ----------
+  // 该页只是「上传 PDF 看 Markdown」的一层壳，能力已并入知识库入库；
+  // 这里只确认路由真的不在了，避免留下一个空白页。
   await page.goto(`${BASE}/docparse`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.ant-upload-drag input[type="file"]', { state: 'attached', timeout: 20000 });
-  await page.locator('.ant-upload-drag input[type="file"]').first().setInputFiles(DOC_PATH);
-  await page.getByRole('button', { name: '开始解析' }).click();
-  const saveBtn = page.getByRole('button', { name: '保存到知识库' });
-  await saveBtn.waitFor({ state: 'visible', timeout: 240000 });
-  await page
-    .waitForFunction(
-      () => {
-        const btns = [...document.querySelectorAll('button')];
-        const b = btns.find((x) => x.textContent?.trim() === '保存到知识库');
-        return b && !b.disabled;
-      },
-      null,
-      { timeout: 240000 },
-    )
-    .catch(() => {});
-  ok('解析完成后「保存到知识库」可用', await saveBtn.isEnabled());
-  await saveBtn.click();
-  await page.waitForSelector('.ant-modal-title:has-text("保存到知识库")', { timeout: 8000 });
-  const docTitle = await page.locator('.ant-modal input').first().inputValue();
-  ok('解析入库默认标题为文件名', docTitle === STEM, docTitle);
-  await saveModal();
-  // 消息 3 秒后自动消失，点击后立即等待结果。
-  const parseMsg = await page
-    .locator('.ant-message-notice-title')
-    .filter({ hasText: /已保存到知识库|保存失败/ })
-    .first()
-    .textContent({ timeout: 20000 })
-    .catch(() => '');
-  ok('解析结果保存成功提示', (parseMsg ?? '').includes('已保存到知识库'), (parseMsg ?? '').trim());
-  const found2 = await apiCall('GET', `/api/knowledge?q=${encodeURIComponent(STEM)}`);
-  const doc2 = (found2.json?.items ?? []).find((d) => d.title === STEM);
-  ok('知识库可检索到解析文档', Boolean(doc2), `total=${found2.json?.total ?? '?'}`);
-  if (doc2) {
-    created.push(doc2.id);
-    const full2 = await apiCall('GET', `/api/knowledge/${doc2.id}`);
-    ok('解析文档正文已保存', (full2.json?.item?.body ?? '').includes(STEM));
-  }
+  await page.waitForTimeout(1500);
+  const gone = (await page.evaluate(() => document.body.innerText)).includes('页面不存在');
+  ok('文档解析页已下架（404）', gone);
 
   ok('页面无未捕获异常', pageErrors.length === 0, pageErrors.join(' / '));
 } catch (err) {

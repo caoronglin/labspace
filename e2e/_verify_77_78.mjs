@@ -82,7 +82,7 @@ if (await suggestion.count()) {
 }
 
 // --- 合并后的页面可直接打开
-for (const [path, text] of [['/docparse', '文档解析'], ['/bioinfo', '生信'], ['/genomes', '基因组'], ['/snapotter', '文件']]) {
+for (const [path, text] of [['文档解析'], ['/bioinfo', '生信'], ['/genomes', '基因组'], ['/snapotter', '文件']]) {
   await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1800);
   const body = await page.evaluate(() => document.body.innerText);

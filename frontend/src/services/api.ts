@@ -1242,27 +1242,6 @@ export interface TranslateResult {
   usage?: { input?: number | null; output?: number | null };
 }
 
-export interface DocparseStatus {
-  provider: string;
-  available: boolean;
-  reason?: string;
-  base_url?: string;
-  mineru?: { available: boolean; detail: string; url: string };
-  fallback?: { name: string; available: boolean; detail: string; url: string };
-  maxBytes?: number;
-}
-
-export interface DocparseResult {
-  provider: string;
-  markdown: string;
-  text: string;
-  pages?: number | null;
-  fileType?: string;
-  taskId?: string | null;
-  elapsed_ms: number;
-  fallbackUsed?: boolean;
-  warnings?: string[];
-}
 
 export interface WeatherReport {
   city: string;
@@ -2736,15 +2715,6 @@ export const api = {
   },
 
   // ---- 文档解析（OXR-1.0 / Docling） ----
-  docparseStatus: () => request<DocparseStatus>('/api/docparse/status'),
-  docparseParse: (file: File, fallback = true) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return request<DocparseResult>(`/api/docparse/parse?fallback=${fallback ? 'true' : 'false'}`, {
-      method: 'POST',
-      body: fd,
-    });
-  },
 
   // ---- 天气（Open-Meteo） ----
   weather: (city = '', days = 7) =>

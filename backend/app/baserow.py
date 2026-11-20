@@ -45,7 +45,9 @@ log = logging.getLogger("labspace.baserow")
 router = APIRouter(prefix="/api/baserow", tags=["baserow"])
 
 _TIMEOUT = httpx.Timeout(30.0)
-_TOKEN_TTL = 25 * 60
+# Baserow 签发的 JWT 约 20 分钟过期；缓存比它短一点，
+# 避免“拿一个已经失效的令牌去请求→401→刷新→还是同一个令牌”的死循环。
+_TOKEN_TTL = 18 * 60
 
 # 附件上传：大小上限与扩展名白名单（上传到 Baserow 的 user-files）
 FILE_MAX_BYTES = 20 * 1024 * 1024
@@ -287,9 +289,11 @@ async def _user_token(user: dict[str, Any]) -> str:
 async def _token(user: dict[str, Any], force: bool = False) -> str:
     if _is_admin(user):
         return await _admin_token(force=force)
-    email = _email(user)
     if force:
-        _user_cache.pop(email, None)
+        # 缓存键必须与 `_user_token` 写入时**完全一致**（数据表身份，不是门户邮箱）。
+        # 取错了键就会“刷新”成同一个过期令牌，然后 401 一路抛给前端：
+        # 所有 @local 账号在多维表格/种子页停留 20 分钟后开始 401，刷新页面也好不了。
+        _user_cache.pop(_account_email(user), None)
     return await _user_token(user)
 
 

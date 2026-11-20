@@ -11,7 +11,7 @@ const [user, pass] = line.trim().split(/\s+/);
 const ROUTES = [
   '/', '/start', '/services', '/services/jbrowse', '/favorites', '/search',
   '/literature', '/drawio', '/drawings', '/colors', '/baserow', '/aikit',
-  '/docparse', '/translate', '/commands', '/bioinfo', '/translation',
+  '/translate', '/commands', '/bioinfo', '/translation',
   '/weather', '/workbench', '/agent', '/devtools', '/databases', '/genomes',
   '/help', '/files', '/knowledge', '/network', '/snapotter',
   '/admin/status', '/admin/users', '/admin/announcements', '/admin/agent', '/admin/settings',

@@ -15,7 +15,7 @@ const ROUTES = [
   ['/workbench', /工作台/],
   ['/genomes', /公共基因组|基因组/],
   ['/bioinfo', /生信|实训/],
-  ['/docparse', /文档解析/],
+  [/文档解析/],
   ['/snapotter', /文件工坊|SnapOtter/],
   ['/colors', /配色搭配/],
   ['/help', /帮助/],

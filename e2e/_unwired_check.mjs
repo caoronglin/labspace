@@ -75,10 +75,8 @@ const sideLink = async (label) => {
   return a.getAttribute('href');
 };
 
-const hrefDoc = await sideLink('文档解析');
 const hrefPdf = await sideLink('论文翻译');
 const hrefTxt = await sideLink('文本翻译');
-check('侧栏「文档解析」直达 /docparse', hrefDoc === '/docparse', `href=${hrefDoc}`);
 check('侧栏「论文翻译」直达 /translate', hrefPdf === '/translate', `href=${hrefPdf}`);
 check('侧栏「文本翻译」直达 /translation', hrefTxt === '/translation', `href=${hrefTxt}`);
 
@@ -89,27 +87,23 @@ const rendered = async (path, marker) => {
   const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
   return { ok: t.includes(marker) && !t.includes('页面不存在'), len: t.length };
 };
-const rDoc = await rendered('/docparse', '文档');
 const rPdf = await rendered('/translate', '翻译');
 const rTxt = await rendered('/translation', '翻译');
-check('/docparse 正常渲染', rDoc.ok);
 check('/translate 正常渲染', rPdf.ok);
 check('/translation 正常渲染', rTxt.ok);
 
 const rOld = await rendered('/docling', '文档解析');
 check('/docling 遗留路由显示 404 而非空白页', !rOld.ok);
+// /docparse（文档解析页）已下架：必须也落到 404，不能留一个空白页。
+const rGone = await rendered('/docparse', '文档解析');
+check('/docparse 已下架（404 或重定向）', !rGone.ok);
 await page.screenshot({ path: '/opt/labspace/e2e/shots/unwired-docling-404.png' });
 
 /* -------------------------------------------------- 3. 首页快捷入口不落到死路由 */
 await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(3000);
 const docTile = page.locator('.d509-tile:has-text("文档解析")');
-check('首页存在「文档解析」快捷入口', (await docTile.count()) > 0);
-if (await docTile.count()) {
-  await docTile.click();
-  await page.waitForTimeout(3000);
-  check('快捷入口跳转后 URL 为 /docparse', page.url().endsWith('/docparse'), page.url());
-}
+check('首页不再有「文档解析」快捷入口（功能已下架）', (await docTile.count()) === 0);
 
 /* -------------------------------------------------- 4. 头部死按钮已移除，个人资料可用 */
 const bell = page.locator('.ant-layout-header button:has(.anticon-bell)');

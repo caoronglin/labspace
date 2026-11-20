@@ -1,5 +1,49 @@
 # CHANGELOG.md
 
+## 2026-11-20 — 下架文档解析页 + 垃圾清理
+
+**下架 `/docparse`（文档解析页）**
+
+它只是「上传 PDF → 看 Markdown」的一层壳，同样的能力已经由**知识库入库**在用
+（PDF/图片 → Markdown 走 MinerU / OXR / Docling）。保留两个入口只会让人问
+「我该在哪儿解析」。
+
+- 删除 `frontend/src/pages/Docparse.tsx`、路由、导航项、`api.docparseStatus/docparseParse`
+  与两个类型；命令面板（`corpus.py`）里的那条入口一并去掉。
+- 后端删除 `app/docparse.py`（含 `/api/docparse/status|parse`）；知识库仍在用的取文本能力
+  迁到 **`app/text_extract.py`**（纯内部库，不再挂路由），`knowledge.py` 改从那里导入。
+- 顺手修掉转移过程中的两个隐患：
+  - 数值型环境变量改走 `_env_number()`：以前 `LABSPACE_DOCPARSE_MAX_BYTES=20MB` 这种手误
+    会让整个模块导入失败（后端起不来），现在只记一条 warning 用默认值。
+  - 耗时统一 `time.monotonic()`（`time.time()` 被 NTP 回拨时会算出负数）。
+- e2e：`/docparse` 从路由清单移除，专门测该页的断言改成「已下架（404）」；
+  新增 `e2e/_docparse_gone.mjs` 验证 404 + 首页无残留入口。
+
+**数据表令牌刷新的真实故障（顺手修复）**
+
+`/lab`（多维表格）停留约 20 分钟后所有请求开始 401（`ERROR_INVALID_ACCESS_TOKEN`），
+刷新页面也没用：`_token(force=True)` 按**门户邮箱**（`x@local`）清缓存，而
+`_user_token` 按**数据表身份**（`x@labspace.local`）写缓存 —— 键不一致，“刷新”拿回的
+还是那个过期令牌。修复缓存键并让 TTL（18 分钟）短于 Baserow 的 JWT 有效期；
+新增 `backend/tests/test_baserow_token_refresh.py`（去掉修复即 FAIL，已实证）。
+
+**垃圾清理**
+
+- 删除两个从未被引用的组件：`components/charts/DatabaseCategoryBar.tsx`（126 行）、
+  `TaskStatusDonut.tsx`（152 行）。
+- 修正导航里两处 `group: 'learn'` —— `NAV_GROUPS` 里没有这个分组，属于死配置。
+- 清理 `backend/**/__pycache__`、`.pytest_cache`、`.ruff_cache`。
+- `e2e/shots` 56MB 历史截图 + `e2e` 根目录 4MB 散落 PNG（都是脚本产物，未入库）。
+- `/tmp` 2.8G → 104M（含 1.3G 残留的 `lab-trash-annot-*`、711M 旧 AgentScope 包目录）。
+- Docker：删除已下架的 `ghcr.io/bifrost0x/webssh`（353MB）与旧版
+  `lab/agentscope-service:2.0.11`（1GB），清空构建缓存。
+- Qdrant：删除孤儿集合 `kb_6c360db8f7684636b22fe44f0ee5d463`（1 个空 payload 向量，
+  对应知识库记录已不存在；DB 里只剩 `auth` 这一个知识库）。
+
+**验证**：`pytest` 224 passed；`go test ./...` 全过；`tsc -b` 干净；`vite build` ✓；
+全局巡检 **34 条路由，老师 / 学生均 0 问题**；`/docparse` → 404 且首页无残留入口；
+`/api/docparse/*` → 404，`/api/knowledge` 仍 200。
+
 ## 2026-11-20 — 多维表格 / 种子台账对非管理员可用
 
 **问题**（全局巡检 35 条路由对老师、学生各跑一遍发现）：

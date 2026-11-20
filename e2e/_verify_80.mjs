@@ -85,10 +85,6 @@ const pbody = await resp.json().catch(() => ({}));
 ok(typeof pbody?.markdown === 'string' && pbody.markdown.length > 0, 'parse returned empty markdown');
 ok(typeof pbody?.engine === 'string' && pbody.engine.length > 0, 'parse engine missing');
 
-const dp = await call('/api/docparse/status');
-ok(dp.status === 200, `docparse status ${dp.status}`);
-ok(!!dp.body?.mineru, 'docparse status missing mineru block');
-
 // UI
 await page.goto(`${BASE}/aikit`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(3500);
