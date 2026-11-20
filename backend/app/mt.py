@@ -10,6 +10,7 @@ translation runs through the same local model instead of a public MT engine.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -233,10 +234,8 @@ async def _fallback_translate(prompt: str) -> str:
                     elif event == "error":
                         raise RuntimeError(str(data.get("error") or data.get("message") or "备用网关返回错误"))
         finally:
-            try:
+            with contextlib.suppress(httpx.HTTPError):
                 await c.delete(url, headers=headers)
-            except httpx.HTTPError:
-                pass
     result = (final or "".join(chunks)).strip()
     if not result:
         raise RuntimeError("备用网关未返回内容")
@@ -311,7 +310,7 @@ async def translate(body: dict[str, Any], _: dict = Depends(require_user)):
         raise HTTPException(
             502,
             f"本地 hy-mt2 不可用（{local_error}），备用网关也失败（{_brief(exc)}）",
-        )
+        ) from exc
     return {
         "translation": _restore_placeholders(text, keep),
         "provider": "pi-gateway",
@@ -408,7 +407,7 @@ async def chat_completions(request: Request):
     try:
         result = await _model_translate(protected, target_lang)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"hy-mt2: {_brief(exc)}")
+        raise HTTPException(502, f"hy-mt2: {_brief(exc)}") from exc
     text = _restore_placeholders(result["text"], keep)
 
     created = int(started)

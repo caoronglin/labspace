@@ -51,7 +51,7 @@ def _is_internal_host(host: str) -> bool:
         return False
     if h in ("localhost", "127.0.0.1", "::1"):
         return True
-    if h.startswith("127.") or h.startswith("10.") or h.startswith("192.168."):
+    if h.startswith(("127.", "10.", "192.168.")):
         return True
     if h.startswith("172."):
         try:
@@ -59,7 +59,7 @@ def _is_internal_host(host: str) -> bool:
         except (IndexError, ValueError):
             return False
         return 16 <= second <= 31
-    return h.endswith(".internal") or h.endswith(".local")
+    return h.endswith((".internal", ".local"))
 
 
 OXR_EXTERNAL_ALLOWED = os.getenv("LABSPACE_OXR_ALLOW_EXTERNAL", "0") == "1"
