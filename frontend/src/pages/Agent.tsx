@@ -4,12 +4,14 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Drawer,
   Dropdown,
   Empty,
   Flex,
   Grid,
   Input,
+  Radio,
   Segmented,
   Select,
   Skeleton,
@@ -70,6 +72,19 @@ type Citation = {
   chunk: number | null;
   score: number | null;
   text: string;
+};
+
+/** 2.0.12 HITL：等待人工确认 / AskUser 回答的工具调用。 */
+type HitlToolCall = {
+  id?: string;
+  name?: string;
+  input?: string;
+  suggested_rules?: unknown[];
+};
+type PendingHitl = {
+  kind: 'confirm' | 'ask';
+  replyId: string;
+  toolCalls: HitlToolCall[];
 };
 
 type ToolCall = {
@@ -312,6 +327,105 @@ async function copyText(text: string): Promise<boolean> {
 
 /* ------------------------------------------------------------------ */
 
+type AskQuestion = {
+  question: string;
+  header?: string;
+  context?: string;
+  options: { label: string; description?: string; preview?: string }[];
+  multi_select?: boolean;
+};
+
+/** AskUser 表单：从工具 input（JSON 字符串）里解析问题，渲染为原生单选/多选。 */
+function HitlAskForm({
+  calls,
+  onSubmit,
+}: {
+  calls: HitlToolCall[];
+  onSubmit: (answers: { question: string; selected: string[]; other: string | null }[]) => void;
+}) {
+  const questions = useMemo<AskQuestion[]>(() => {
+    for (const call of calls) {
+      if (call.name !== 'AskUser' || !call.input) continue;
+      try {
+        const raw = JSON.parse(call.input) as { questions?: AskQuestion[] };
+        if (Array.isArray(raw.questions) && raw.questions.length) return raw.questions;
+      } catch {
+        /* 格式异常时不猜 */
+      }
+    }
+    return [];
+  }, [calls]);
+
+  const [picks, setPicks] = useState<Record<number, string[]>>({});
+  const [others, setOthers] = useState<Record<number, string>>({});
+
+  if (!questions.length) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        title="助手提出了问题，但当前客户端无法解析选项"
+        description="请在命令行或重新提问；不会自动替你回答。"
+      />
+    );
+  }
+
+  const submit = () => {
+    const answers = questions.map((q, i) => {
+      const selected = picks[i] ?? [];
+      const other = others[i]?.trim() || null;
+      return { question: q.question, selected, other };
+    });
+    onSubmit(answers);
+  };
+
+  return (
+    <Flex vertical gap={12}>
+      {questions.map((q, i) => (
+        <div key={`${q.question}-${i}`}>
+          <Typography.Text strong style={{ fontSize: 13 }}>
+            {q.header ? `[${q.header}] ` : ''}
+            {q.question}
+          </Typography.Text>
+          {q.context ? (
+            <Typography.Paragraph type="secondary" style={{ margin: '4px 0', fontSize: 12 }}>
+              {q.context}
+            </Typography.Paragraph>
+          ) : null}
+          <div style={{ marginTop: 6 }}>
+            {q.multi_select ? (
+              <Checkbox.Group
+                value={picks[i] ?? []}
+                onChange={(vals) => setPicks((p) => ({ ...p, [i]: vals.map(String) }))}
+                options={[...q.options.map((o) => o.label), '其他']}
+              />
+            ) : (
+              <Radio.Group
+                value={(picks[i] ?? [])[0]}
+                onChange={(e) => setPicks((p) => ({ ...p, [i]: e.target.value ? [String(e.target.value)] : [] }))}
+                options={[...q.options.map((o) => o.label), '其他']}
+              />
+            )}
+          </div>
+          {(picks[i] ?? []).includes('其他') ? (
+            <Input.TextArea
+              size="small"
+              rows={2}
+              style={{ marginTop: 6 }}
+              placeholder="请补充你的回答"
+              value={others[i] ?? ''}
+              onChange={(e) => setOthers((o) => ({ ...o, [i]: e.target.value }))}
+            />
+          ) : null}
+        </div>
+      ))}
+      <Button type="primary" size="small" onClick={submit}>
+        提交回答
+      </Button>
+    </Flex>
+  );
+}
+
 export default function Agent() {
   const { message, modal } = App.useApp();
   const qc = useQueryClient();
@@ -329,6 +443,7 @@ export default function Agent() {
   const [generating, setGenerating] = useState(false);
   const [streamError, setStreamError] = useState('');
   const [streamNotice, setStreamNotice] = useState('');
+  const [pendingHitl, setPendingHitl] = useState<PendingHitl | null>(null);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [memoryQ, setMemoryQ] = useState('');
   const [memoryKind, setMemoryKind] = useState('');
@@ -710,7 +825,24 @@ export default function Agent() {
         appendTool(payload);
       });
 
+      // 2.0.12 HITL：确认请求 / AskUser 问题到达后挂起，等用户答复再继续。
+      const onHitl = (kind: 'confirm' | 'ask') => (ev: Event) => {
+        const raw = (ev as MessageEvent).data;
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = JSON.parse(String(raw)) as Record<string, unknown>;
+        } catch {
+          return;
+        }
+        const replyId = String(payload.replyId ?? '');
+        const calls = Array.isArray(payload.toolCalls) ? (payload.toolCalls as HitlToolCall[]) : [];
+        if (replyId && calls.length) setPendingHitl({ kind, replyId, toolCalls: calls });
+      };
+      es.addEventListener('confirm', onHitl('confirm'));
+      es.addEventListener('ask', onHitl('ask'));
+
       es.addEventListener('done', () => {
+        setPendingHitl(null);
         settle({});
       });
 
@@ -748,6 +880,7 @@ export default function Agent() {
     setInput('');
     setStreamError('');
     setStreamNotice('');
+    setPendingHitl(null);
 
     const now = new Date().toISOString();
     const assistantId = `local-assistant-${Date.now()}`;
@@ -1038,6 +1171,113 @@ export default function Agent() {
         }))}
       />
     ) : undefined;
+
+  /**
+   * 2.0.12 HITL：AskUser / 工具确认面板。
+   *
+   * 只渲染服务端发来的问题与选项；答案由这里构造，
+   * 经 /api/agent/sessions/{id}/hitl 回传（事件形状服务端重建，前端不能伪造）。
+   */
+  const hitlPanel = pendingHitl ? (
+    <Card
+      size="small"
+      style={{ marginBottom: 10, borderColor: '#FAAD14' }}
+      title={
+        <Flex align="center" gap={8}>
+          <SafetyCertificateOutlined style={{ color: '#FAAD14' }} />
+          <Typography.Text strong style={{ fontSize: 13 }}>
+            {pendingHitl.kind === 'confirm' ? '需要你确认工具调用' : '助手需要你做选择'}
+          </Typography.Text>
+          <Tag style={{ fontSize: 11 }}>{pendingHitl.toolCalls.length} 项</Tag>
+        </Flex>
+      }
+      extra={
+        <Button size="small" type="text" onClick={() => setPendingHitl(null)}>
+          忽略
+        </Button>
+      }
+    >
+      <Flex vertical gap={10}>
+        {pendingHitl.kind === 'confirm' ? (
+          <>
+            {pendingHitl.toolCalls.map((call, i) => (
+              <div
+                key={String(call.id ?? i)}
+                style={{
+                  padding: '6px 9px',
+                  borderRadius: 6,
+                  background: 'var(--ant-color-fill-quaternary)',
+                }}
+              >
+                <Typography.Text strong style={{ fontSize: 12.5 }}>
+                  {call.name || '工具调用'}
+                </Typography.Text>
+                <Typography.Paragraph
+                  type="secondary"
+                  ellipsis={{ rows: 3 }}
+                  style={{ margin: '3px 0 0', fontSize: 12 }}
+                >
+                  {call.input || '(无参数)'}
+                </Typography.Paragraph>
+              </div>
+            ))}
+            <Space>
+              <Button
+                size="small"
+                danger
+                onClick={() => {
+                  void api
+                    .agentHitl(activeId!, {
+                      kind: 'confirm',
+                      replyId: pendingHitl.replyId,
+                      toolCalls: pendingHitl.toolCalls,
+                      approved: false,
+                    })
+                    .then(() => setPendingHitl(null))
+                    .catch((e) => message.error(`回传失败：${errText(e)}`));
+                }}
+              >
+                拒绝
+              </Button>
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => {
+                  void api
+                    .agentHitl(activeId!, {
+                      kind: 'confirm',
+                      replyId: pendingHitl.replyId,
+                      toolCalls: pendingHitl.toolCalls,
+                      approved: true,
+                    })
+                    .then(() => setPendingHitl(null))
+                    .catch((e) => message.error(`回传失败：${errText(e)}`));
+                }}
+              >
+                批准
+              </Button>
+            </Space>
+          </>
+        ) : (
+          <HitlAskForm
+            key={pendingHitl.replyId}
+            calls={pendingHitl.toolCalls}
+            onSubmit={(answers) => {
+              void api
+                .agentHitl(activeId!, {
+                  kind: 'ask',
+                  replyId: pendingHitl.replyId,
+                  toolCalls: pendingHitl.toolCalls,
+                  answers,
+                })
+                .then(() => setPendingHitl(null))
+                .catch((e) => message.error(`回传失败：${errText(e)}`));
+            }}
+          />
+        )}
+      </Flex>
+    </Card>
+  ) : null;
 
   const bubbleItems = displayMessages.map((m) => {
     const tools = parseToolCalls(m.meta);
@@ -1345,6 +1585,8 @@ export default function Agent() {
             )}
           </div>
         )}
+
+        {hitlPanel}
 
         <div style={{ marginTop: 12 }}>
           <Sender

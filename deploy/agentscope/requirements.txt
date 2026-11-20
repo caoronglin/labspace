@@ -1,15 +1,16 @@
-# 锁定 AgentScope 2.0.11（与 docs.agentscope.io 的 2.0.11 章节一致）。
+# 锁定 AgentScope 2.0.12（与 docs.agentscope.io 的 2.0.12 章节一致）。
 #
 # extras 必须显式带上，否则 create_app 会在 import 期就缺 apscheduler：
 #   service      -> fastapi / uvicorn / apscheduler / ag-ui-protocol / aiortc
 #   storage-sql  -> sqlalchemy[asyncio] / alembic（AsyncSQLAlchemyStorage 依赖）
 #   vdb-qdrant  -> qdrant-client（QdrantStore 依赖）
-#   rag          -> pypdf / python-docx / python-pptx / openpyxl（自带 PDF/DOCX
-#                   解析器的依赖；pypdf 同时也是 agentscope 的基础依赖）
+#   rag          -> pypdf / python-docx / python-pptx / openpyxl / xlrd / pandas
+#                   （自带 PDF/DOCX/XLSX 解析器的依赖）
+#   channel      -> lark-oapi / discord.py / dingtalk-stream（飞书等 IM 渠道）
 #
-# openai 客户端不用额外声明：agentscope 2.0.11 本身就 Requires-Dist: openai，
+# openai 客户端不用额外声明：agentscope 2.0.12 本身就 Requires-Dist: openai，
 # 已在依赖树里（内网向量模型走 lab_embedding.py，不经过 openai SDK）。
-agentscope[service,storage-sql,vdb-qdrant,rag]==2.0.11
+agentscope[service,storage-sql,vdb-qdrant,rag,channel]==2.0.12
 
 # Postgres 异步驱动（storage-sql 不带驱动，只有 SQLAlchemy 本体）
 asyncpg>=0.30,<1

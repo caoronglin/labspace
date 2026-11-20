@@ -2668,6 +2668,12 @@ export const api = {
       { method: 'POST' },
     ),
   agentAbort: (id: string) => request<{ ok: boolean }>(`/api/agent/sessions/${encodeURIComponent(id)}/abort`, { method: 'POST' }),
+  /** 回传 HITL 结果（工具确认 / AskUser 答案）。 */
+  agentHitl: (id: string, body: Record<string, unknown>) =>
+    request<{ ok: boolean }>(`/api/agent/sessions/${encodeURIComponent(id)}/hitl`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   agentStreamUrl: (id: string) => `/api/agent/sessions/${encodeURIComponent(id)}/stream`,
   agentAdminConfig: () => request<AgentAdminConfig>('/api/agent/admin/config'),
   agentUpdateAdminConfig: (body: Partial<AgentAdminConfig>) =>

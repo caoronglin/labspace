@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from psycopg2.extras import Json
 
@@ -1061,6 +1061,108 @@ async def send_message(
         "regenerate": regenerate,
         "message": {"id": mid, "role": "user", "content": text, "meta": {}, "created_at": None} if mid else None,
     }
+
+
+@router.post("/sessions/{session_id}/hitl")
+async def submit_hitl(
+    session_id: str,
+    payload: dict[str, Any] = Body(...),
+    user: dict[str, Any] = Depends(require_user),
+    _: None = Depends(require_csrf),
+) -> dict[str, Any]:
+    """回传 HITL 结果：工具确认或 AskUser 答案。
+
+    前端只传「用户的选择」，**事件形状在这里构造** —— 防止客户端伪造
+    ``tool_call`` / 权限规则（那等于把「批准任意工具调用」交给前端）。
+    目前支持：
+
+    * ``kind=confirm``：``approved`` 布尔；服务端按 reply_id + tool_calls 重建
+      ``UserConfirmResultEvent``；
+    * ``kind=ask``：``answers`` 列表（question / selected / other）；
+      重建 ``ExternalExecutionResultEvent``，输出同时写给模型与程序。
+    """
+    if not _use_agentscope():
+        raise HTTPException(status_code=400, detail="当前助手不支持 HITL")
+    reply_id = str(payload.get("replyId") or "").strip()
+    kind = str(payload.get("kind") or "").strip()
+    tool_calls = payload.get("toolCalls") or []
+    if not reply_id or not isinstance(tool_calls, list) or not tool_calls:
+        raise HTTPException(status_code=400, detail="缺少 replyId 或 toolCalls")
+
+    from . import agentscope_adapter as adapter
+    from . import agentscope_bridge as bridge
+
+    agent_id, _model, _cred = await bridge.resolved_agent(user["sub"], _platform_model())
+
+    if kind == "confirm":
+        confirmed = bool(payload.get("approved"))
+        confirm_results = []
+        for call in tool_calls:
+            if not isinstance(call, dict):
+                continue
+            confirm_results.append(
+                {
+                    "confirmed": confirmed,
+                    "tool_call": call,
+                    "rules": call.get("suggested_rules") or [],
+                }
+            )
+        event: dict[str, Any] = {
+            "type": "USER_CONFIRM_RESULT",
+            "reply_id": reply_id,
+            "confirm_results": confirm_results,
+        }
+    elif kind == "ask":
+        answers = payload.get("answers") or []
+        if not isinstance(answers, list):
+            raise HTTPException(status_code=400, detail="answers 必须是数组")
+        results = []
+        for call in tool_calls:
+            if not isinstance(call, dict):
+                continue
+            name = str(call.get("name") or "")
+            if name != "AskUser":
+                continue
+            clean = []
+            for a in answers:
+                if not isinstance(a, dict):
+                    continue
+                clean.append(
+                    {
+                        "question": str(a.get("question") or ""),
+                        "selected": [str(x) for x in (a.get("selected") or [])],
+                        "other": a.get("other") or None,
+                    }
+                )
+            text = "；".join(
+                f"{a['question']}: {', '.join(a['selected']) or a['other'] or '(未回答)'}"
+                for a in clean
+            )
+            results.append(
+                {
+                    "type": "tool_result",
+                    "id": call.get("id"),
+                    "name": name,
+                    "output": [{"type": "text", "text": text}],
+                    "state": "success",
+                    "metadata": {"answers": clean},
+                }
+            )
+        if not results:
+            raise HTTPException(status_code=400, detail="没有可回传的 AskUser 工具调用")
+        event = {
+            "type": "EXTERNAL_EXECUTION_RESULT",
+            "reply_id": reply_id,
+            "execution_results": results,
+        }
+    else:
+        raise HTTPException(status_code=400, detail="未知的 HITL 类型")
+
+    try:
+        await adapter.submit_event(session_id, agent_id, user["sub"], event)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.post("/sessions/{session_id}/abort")

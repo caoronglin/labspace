@@ -73,6 +73,10 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 def translate(
     event: dict[str, Any],
     usage: dict[str, int],
@@ -96,6 +100,26 @@ def translate(
             if isinstance(value, int):
                 usage[key] = usage.get(key, 0) + value
         return None
+
+    # 工具调用需要人确认（2.0.12 HITL）：暂停等待前端答复。
+    if kind == "REQUIRE_USER_CONFIRM":
+        return sse(
+            "confirm",
+            {
+                "replyId": event.get("reply_id"),
+                "toolCalls": _as_list(event.get("tool_calls")),
+            },
+        )
+
+    # 外部执行的工具（如 AskUser 向用户提问）：把问题原样交给前端渲染。
+    if kind == "REQUIRE_EXTERNAL_EXECUTION":
+        return sse(
+            "ask",
+            {
+                "replyId": event.get("reply_id"),
+                "toolCalls": _as_list(event.get("tool_calls")),
+            },
+        )
 
     # 工具事件是**分片**的（2.0.11 实测字段）：
     #   TOOL_CALL_START{tool_call_id, tool_call_name} → TOOL_CALL_DELTA{delta}* → TOOL_CALL_END
@@ -219,6 +243,30 @@ async def chat(session_id: str, agent_id: str, user_sub: str, text: str) -> dict
         )
     if resp.status_code >= 400:
         raise RuntimeError(f"助手服务拒绝了消息（{resp.status_code}）")
+    return resp.json() if resp.content else {}
+
+
+async def submit_event(
+    session_id: str,
+    agent_id: str,
+    user_sub: str,
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """把 HITL 结果事件（确认 / AskUser 答案）投回 AgentScope。
+
+    2.0.12 的 ``ChatRequest.input`` 支持 ``UserConfirmResultEvent`` 与
+    ``ExternalExecutionResultEvent``；事件形状由调用方（门户后端）构造，
+    这里只负责带上调用者的身份转发，不让前端冒充。
+    """
+    payload = {"agent_id": agent_id, "session_id": session_id, "input": event}
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        resp = await client.post(
+            f"{settings.agentscope_base}/chat/",
+            json=payload,
+            headers=build_headers(user_sub),
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"助手服务拒绝了确认结果（{resp.status_code}）")
     return resp.json() if resp.content else {}
 
 

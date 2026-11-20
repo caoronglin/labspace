@@ -24,7 +24,7 @@ RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r /tmp/requirements
 #   lab_identity.py   —— AgentScope 与 MCP server 之间的身份通道
 #   lab_embedding.py  —— 内网向量模型（bge-m3）的凭据与 embedding 实现
 #   lab_memory.py     —— 长期记忆中间件的加固版（独立检索模型 / 超时 / 兜底）
-COPY app.py lab_mcp_server.py lab_portal.py lab_identity.py lab_embedding.py lab_memory.py /srv/agentscope/
+COPY app.py lab_mcp_server.py lab_portal.py lab_identity.py lab_embedding.py lab_memory.py lab_access.py /srv/agentscope/
 
 EXPOSE 8100
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8100"]

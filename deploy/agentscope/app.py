@@ -50,7 +50,9 @@ import os
 from collections.abc import Awaitable, Callable
 
 from agentscope.agent import Agent
-from agentscope.app import create_app
+from agentscope.app import SubAgentTemplate, create_app
+from agentscope.app.channel import DingTalkChannel, DiscordChannel, FeishuChannel
+from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.app.rag.blob_store import LocalBlobStore
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
@@ -63,9 +65,15 @@ from agentscope.app.storage import (
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.middleware import MiddlewareBase
-from agentscope.permission import PermissionBehavior, PermissionDecision
+from agentscope.permission import (
+    PermissionBehavior,
+    PermissionContext,
+    PermissionDecision,
+    PermissionMode,
+)
 from agentscope.rag import (
     ApproxTokenChunker,
+    ExcelParser,
     PDFParser,
     QdrantStore,
     TextParser,
@@ -74,6 +82,7 @@ from agentscope.rag import (
 from agentscope.tool import ToolBase
 from agentscope.workspace import WorkspaceBase
 
+import lab_access
 import lab_mcp_server
 from lab_embedding import (
     EMBED_DIM,
@@ -119,6 +128,56 @@ storage = AsyncSQLAlchemyStorage(
     create_tables=True,
     auto_migrate=False,
 )
+
+
+def _subagent_templates() -> list[SubAgentTemplate]:
+    """为 Agent Team 注册实验室专用的子智能体类型。
+
+    AgentScope 2.0.12 的团队能力默认是内置通用 worker；注册模板后，
+    leader 的 ``AgentCreate`` 工具会暴露 ``subagent_type`` 枚举，
+    可以按任务选角色，而不是所有 worker 共用一套提示词。
+
+    三个模板各有明确的权限边界：
+    - ``explorer`` 只读：检索文献/基因库/台账，不许写；
+    - ``analyst`` 可读可算：允许调用 lab 工具并在自己的工作区写分析产物；
+    - ``reviewer`` 只读：对已有结论做复核，不许改原始资料。
+    """
+    base = """你是 {member_name}，由 {leader_name} 领导的团队「{team_name}」中的 {type} 智能体。
+
+团队目标：{team_description}
+你的角色：{member_description}
+
+## 工作约定
+- 只做本角色职责范围内的事；用 lab_* 工具取**真实数据**，不要凭记忆编造。
+- 引用文献必须带来源；涉及种子/课题资料的数字必须来自工具返回。
+- 完成后用 TeamSay 向 {leader_name} 汇报：结论、依据、来源、未完成事项。
+"""
+    return [
+        SubAgentTemplate(
+            type="explorer",
+            description="只读调研员：检索文献、种子台账、组会资料与公共数据库，只汇报事实与来源，不修改任何数据。",
+            system_prompt_template=(
+                base + "\n## 角色边界\n- 你是**只读**的：不写工作台、不提交绘图、不改文件。\n"
+            ),
+            permission_context=PermissionContext(mode=PermissionMode.EXPLORE),
+            override_leader_mode=True,
+        ),
+        SubAgentTemplate(
+            type="analyst",
+            description="分析员：在只读检索的基础上做统计、比较与可视化，允许在**自己工作区**写分析产物。",
+            system_prompt_template=base
+            + "\n## 角色边界\n- 可以写自己的分析文件；但仍不得改动他人的资料或台账。\n",
+            permission_context=PermissionContext(mode=PermissionMode.ACCEPT_EDITS),
+        ),
+        SubAgentTemplate(
+            type="reviewer",
+            description="复核员：只读检查结论的证据链、来源与逻辑漏洞，不改原始资料，不给无依据的结论背书。",
+            system_prompt_template=base
+            + "\n## 角色边界\n- 你是**只读**的：只指出问题与依据，不修改任何内容。\n",
+            permission_context=PermissionContext(mode=PermissionMode.EXPLORE),
+            override_leader_mode=True,
+        ),
+    ]
 
 
 async def lab_tools(
@@ -461,12 +520,20 @@ app = create_app(
     message_bus=InMemoryMessageBus(),
     workspace_manager=LocalWorkspaceManager(WORKSPACE_DIR),
     knowledge_base_manager=knowledge_base_manager,
-    knowledge_parsers=[TextParser(), PDFParser(), WordParser()],
+    knowledge_parsers=[TextParser(), PDFParser(), WordParser(), ExcelParser()],
     knowledge_chunkers=[ApproxTokenChunker],
     blob_store=blob_store,
     extra_credentials=[LabEmbeddingCredential],
     extra_agent_tools=lab_tools,
     extra_agent_middlewares=lab_middlewares,
+    # —— 2.0.12 官方扩展点 ——
+    custom_subagent_templates=_subagent_templates(),
+    resource_access_policy=lab_access.LabResourceAccessPolicy(),
+    # IM 渠道：注册类型即可，具体机器人凭据由管理员在能力中心添加。
+    channels=[FeishuChannel, DingTalkChannel, DiscordChannel],
+    # MCP / 技能中心：让用户从市场安装到自己资源池，再装配到工作区。
+    mcp_hubs=[GitHubMCPHub()],
+    skill_hubs=[ClawSkillHub()],
     title="D509 科研助手（AgentScope）",
 )
 
