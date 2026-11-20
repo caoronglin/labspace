@@ -543,8 +543,11 @@ services:
       - 'MAILBOX_SERVICE_PROVIDERS=["imap","pop3","jmap"]'
       # 反代在后面：nginx 在 127.0.0.1，允许它传真实客户端地址与协议
       - MAILBOX_SERVICE_FORWARDED_ALLOW_IPS=127.0.0.1
-      # 收信服务对外地址：双入口都是 IP + 端口，不能写死某一个网段
-      - MAILBOX_SERVICE_PUBLIC_URL=${MAILBOX_SERVICE_PUBLIC_URL:-}
+      # 收信服务对外地址：**必须是相对路径**。
+      # 写成 http://<某个 IP>/mail 时，另一个入口（内网 ↔ Tailscale）打开页面后，
+      # 服务自己生成的链接会把人甩到不可达的网段去；相对路径 + nginx 的
+      # proxy_redirect 让「谁访问就还给谁」。
+      - MAILBOX_SERVICE_PUBLIC_URL=${MAILBOX_SERVICE_PUBLIC_URL:-/mail}
       # 限流：每人每分钟 120 次、匿名 30 次
       - MAILBOX_SERVICE_RATE_LIMIT_PER_MINUTE=120
       - MAILBOX_SERVICE_RATE_LIMIT_ANONYMOUS_PER_MINUTE=30
