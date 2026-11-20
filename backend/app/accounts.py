@@ -1089,6 +1089,9 @@ async def reset_password(
         (pwd, secrets.token_hex(11), _now(), OWNER, name),
     )
     _audit(_audit_actor(admin), "reset-password", name, {})
+    # 管理员设的口令等同于新的「初始口令」：必须要求本人改掉，
+    # 否则管理员知道的那个口令会一直是有效凭据。
+    account_security.mark_must_change(name)
     if _audit_actor(admin) != name:
         # 改密后旧令牌仍然有效直到过期，必须吊销；管理员给自己改密则保持在线。
         db.revoke_sessions(str(current.get("id") or ""), "password-reset")

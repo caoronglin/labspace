@@ -18,7 +18,12 @@ def _secret() -> str:
     return settings.session_secret
 
 
-def issue_session(user: dict[str, Any]) -> str:
+def issue_session(user: dict[str, Any], *, pwd_reset: bool = False) -> str:
+    """签发门户会话。
+
+    ``pwd_reset`` 写进 JWT 而不是靠每请求查库：强制改密要在 Python、Go 与 nginx
+    三处得出同一个结论，唯一能保证一致的就是把这个事实放进令牌本身。
+    """
     now = int(time.time())
     payload = {
         "sub": user["id"],
@@ -28,7 +33,16 @@ def issue_session(user: dict[str, Any]) -> str:
         "iat": now,
         "exp": now + settings.session_hours * 3600,
     }
+    if pwd_reset:
+        payload["pwd_reset"] = True
     return jwt.encode(payload, _secret(), algorithm="HS256")
+
+
+def session_pwd_reset(claims: dict[str, Any] | None) -> bool:
+    """会话是否标记了「必须改密」。"""
+    if not claims:
+        return False
+    return bool(claims.get("pwd_reset"))
 
 
 def read_session(token: str | None) -> dict[str, Any] | None:

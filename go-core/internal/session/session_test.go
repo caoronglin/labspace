@@ -220,3 +220,31 @@ func TestRevocationLookupFailureKeepsTheLabWorking(t *testing.T) {
 		t.Fatalf("a database blip must not log everybody out: %v", err)
 	}
 }
+
+func TestPwdResetClaimIsCarriedOnActor(t *testing.T) {
+	v := verifier(t)
+	now := time.Now().Unix()
+	token := sign(t, map[string]any{
+		"sub": "uuid-2", "email": "student09@local", "roles": []string{"lab-student"},
+		"iat": now, "exp": now + 3600, "pwd_reset": true,
+	})
+	actor, err := v.FromRequest(request(token, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !actor.PwdReset {
+		t.Fatal("pwd_reset claim must surface on Actor: Go has to refuse unmodified passwords too")
+	}
+
+	plain := sign(t, map[string]any{
+		"sub": "uuid-3", "email": "student10@local", "roles": []string{"lab-student"},
+		"iat": now, "exp": now + 3600,
+	})
+	actor, err = v.FromRequest(request(plain, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actor.PwdReset {
+		t.Fatal("a normal session must not be flagged as pwd_reset")
+	}
+}

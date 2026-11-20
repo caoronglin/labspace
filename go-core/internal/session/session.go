@@ -54,6 +54,12 @@ type Actor struct {
 	Tenant  string   `json:"tenant"`
 	Admin   bool     `json:"admin"`
 	Teacher bool     `json:"teacher"`
+	// PwdReset marks a session whose account still has the initial (or an
+	// admin-set) password. Every service that honours the portal session must
+	// refuse such a token for anything but the password-change endpoints,
+	// otherwise "change your password first" is only enforced on the Python
+	// routes and Go/nginx-proxied paths stay a back door.
+	PwdReset bool `json:"pwd_reset"`
 }
 
 // HasRole reports whether the actor carries the given role (case-insensitive).
@@ -168,6 +174,8 @@ func (v *Verifier) FromRequest(r *http.Request) (Actor, error) {
 		Name:   stringClaim(claims, "name"),
 		Roles:  roles,
 		Tenant: "lab",
+
+		PwdReset: boolClaim(claims, "pwd_reset"),
 	}
 	if actor.Email == "" {
 		actor.Email = actor.Sub
@@ -289,6 +297,18 @@ func stringClaim(claims map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+func boolClaim(claims map[string]any, key string) bool {
+	switch v := claims[key].(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true" || v == "1"
+	case float64:
+		return v != 0
+	}
+	return false
 }
 
 func intClaim(claims map[string]any, key string) int64 {

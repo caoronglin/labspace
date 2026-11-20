@@ -19,6 +19,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+from starlette.concurrency import run_in_threadpool
+
 from fastapi import (
     Body,
     Depends,
@@ -146,7 +148,9 @@ from .security import (
     require_csrf,
     require_user,
     require_user_or_service,
+    session_pwd_reset,
     set_session_cookies,
+    verify_csrf,
 )
 from .uploads import read_upload_capped as _read_upload_capped
 
@@ -589,17 +593,42 @@ def _can_dispatch(roles: list[str]) -> bool:
 
 
 @app.get("/api/auth/check")
-async def api_auth_check(user: dict[str, Any] | None = Depends(current_user)) -> Response:
+async def api_auth_check(
+    request: Request, user: dict[str, Any] | None = Depends(current_user)
+) -> Response:
     """给 nginx ``auth_request`` 用的会话探针。
 
     有效 -> 204 并把用户 ID 放进 ``X-Auth-User``；无效 -> 401。
     nginx 用 ``auth_request_set`` 取这个头，再注入到下游服务（例如 AgentScope
     的 ``X-User-ID``），因此**客户端自带的 X-User-ID 会被覆盖**，无法伪造。
 
+    这里也是**直连旁路服务的唯一鉴权关口**：``/pdf-api/``、``/mail/`` 与前台的
+    AgentScope 都不经过 FastAPI 业务代码，nginx 子请求是它们能看到的全部。
+    因此两件事必须在这里做，否则就是后门：
+
+    1. 未改初始口令（``pwd_reset``）一律 403，除非原始请求本身就是改密/探活；
+    2. 非幂等方法必须带 CSRF 双提交（``X-Original-Method`` + ``X-CSRF-Token``）。
+
     只回一个 ID，不返回用户资料：这个端点会被反向代理在每次子请求里调用。
     """
     if not user:
         return Response(status_code=401)
+
+    original = (request.headers.get("x-original-uri") or "").split("?", 1)[0]
+    if original and not _password_exempt_path(original) and session_pwd_reset(user):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "请先修改初始密码后再使用其它功能", "code": "PASSWORD_CHANGE_REQUIRED"},
+        )
+
+    method = (request.headers.get("x-original-method") or request.method or "GET").upper()
+    if method not in ("GET", "HEAD", "OPTIONS"):
+        verify_csrf(
+            request,
+            request.headers.get("x-csrf-token"),
+            request.cookies.get(settings.csrf_cookie),
+        )
+
     return Response(status_code=204, headers={"X-Auth-User": str(user.get("sub") or "")})
 
 
@@ -624,41 +653,71 @@ _PASSWORD_EXEMPT = {
     "/api/auth/logout",
 }
 
+# nginx 子请求会把原始 URI 带在 X-Original-URI 里，前缀同样享受豁免。
+_PASSWORD_EXEMPT_PREFIXES = ("/api/auth/",)
+
+
+def _password_exempt_path(path: str) -> bool:
+    """该路径是否允许未改密用户访问。"""
+    clean = (path or "").split("?", 1)[0]
+    if clean in _PASSWORD_EXEMPT:
+        return True
+    return any(clean.startswith(p) for p in _PASSWORD_EXEMPT_PREFIXES)
+
+
+#: 「确需改密」的正结果缓存（秒）。只缓存 True：异常/查不到一律不缓存，
+#: 避免一次库抖动就把所有用户钉在 428 上（之前缓存 False 则是相反方向的漏洞）。
+_PWD_RESET_TTL = 60.0
+_PWD_RESET_CACHE: dict[str, float] = {}
+
+
+async def _must_change_now(name: str) -> bool:
+    """该账号当前是否必须改密。
+
+    会话里的 ``pwd_reset`` claim 是主判据（零 IO、三端一致）；这里补的是
+    「登录后才被管理员置位」的情形：最多 60s 生效，且查库放到线程池，
+    不阻塞事件循环。
+    """
+    if not name:
+        return False
+    ts = _PWD_RESET_CACHE.get(name)
+    if ts is not None and time.time() - ts <= _PWD_RESET_TTL:
+        return True
+    try:
+        flag = await run_in_threadpool(account_security.must_change_password, name)
+    except Exception as exc:  # noqa: BLE001
+        # 读不到标记表就不缓存、按“不拦”处理：这张表与业务库同源，读不到时
+        # 整个门户都不可用，不该由一个中间件把请求变成 500。
+        log.debug("读取账号改密标记失败，本次放行: %s", exc)
+        return False
+    if flag:
+        _PWD_RESET_CACHE[name] = time.time()
+    else:
+        _PWD_RESET_CACHE.pop(name, None)
+    return flag
+
 
 @app.middleware("http")
 async def _enforce_password_change(request: Request, call_next):
     """未修改初始口令的用户，除少数豁免路径外一律 428。
 
     用中间件而不是逐路由加依赖：后者一定会漏挂，而漏挂的那个接口就是后门。
+    判定只认会话里的 ``pwd_reset`` claim：每请求查库既慢又会在库里出现异常时
+    反向变成 Fail-Open。置位/复位都在签发方（登录时查一次、改密后重签）。
+    管理员重置口令会顺带吊销会话，用户重登拿到的就是带 claim 的新令牌。
     """
     path = request.url.path
-    if path.startswith("/api/") and path not in _PASSWORD_EXEMPT:
+    if path.startswith("/api/") and not _password_exempt_path(path):
         user = read_session(request.cookies.get(settings.cookie_name))
-        if user:
-            name = _account_name(user)
-            # 每请求一次查询代价可接受（表按主键查、只有几行）；但用 20s 缓存
-            # 避免高频接口把它变成热点。
-            cached = _MUST_CHANGE_CACHE.get(name)
-            now = time.time()
-            if cached is None or now - cached[1] > 20:
-                try:
-                    cached = (account_security.must_change_password(name), now)
-                except Exception as exc:  # noqa: BLE001
-                    # 读不到标记表就按"无需改密"放行：这张表与其它业务数据同库，
-                    # 读不到通常意味着库不可用，此时整个门户都不可用，
-                    # 不该由一个中间件把请求变成 500。
-                    log.debug("读取账号改密标记失败，放行: %s", exc)
-                    cached = (False, now)
-                _MUST_CHANGE_CACHE[name] = cached
-            if cached[0]:
-                return JSONResponse(
-                    status_code=428,
-                    content={"detail": "请先修改初始密码后再使用其它功能"},
-                )
+        if user and session_pwd_reset(user):
+            return JSONResponse(
+                status_code=428,
+                content={
+                    "detail": "请先修改初始密码后再使用其它功能",
+                    "code": "PASSWORD_CHANGE_REQUIRED",
+                },
+            )
     return await call_next(request)
-
-
-_MUST_CHANGE_CACHE: dict[str, tuple[bool, float]] = {}
 
 
 @app.post("/api/me/password")
@@ -666,7 +725,7 @@ async def api_change_password(
     body: dict[str, Any],
     user: dict[str, Any] = Depends(require_user),
     _csrf: None = Depends(require_csrf),
-) -> dict[str, Any]:
+) -> Response:
     """用户自助改密：必须校验旧口令；新口令 ≥10 位且不得与初始口令相同。"""
     old = str(body.get("oldPassword") or "")
     new = str(body.get("newPassword") or "")
@@ -680,8 +739,13 @@ async def api_change_password(
     if not accounts_mod.verify_password(name, old):
         raise HTTPException(status_code=400, detail="旧口令不正确")
     accounts_mod.set_user_password(name, new)
-    _MUST_CHANGE_CACHE.pop(name, None)
-    return {"ok": True}
+    _PWD_RESET_CACHE.pop(name, None)
+    # 改密成功必须重签 Cookie：旧会话里的 pwd_reset claim 还在，
+    # 否则 Go 侧与 nginx 子请求会继续把用户挡在门外（裂脑）。
+    resp = JSONResponse(content={"ok": True})
+    reissued = {"id": user.get("sub"), "email": user.get("email", ""), "name": user.get("name", ""), "roles": user.get("roles", [])}
+    set_session_cookies(resp, issue_session(reissued, pwd_reset=False))
+    return resp
 
 
 @app.get("/api/people")
@@ -977,7 +1041,10 @@ async def api_callback(
     proto = request.headers.get("x-forwarded-proto", "http")
     base = f"{proto}://{host}" if host else settings.public_url
     resp = RedirectResponse(f"{base}{entry.get('back') or '/'}", status_code=302)
-    set_session_cookies(resp, issue_session(user))
+    set_session_cookies(
+        resp,
+        issue_session(user, pwd_reset=await _must_change_now(_account_name(user))),
+    )
     return resp
 
 

@@ -107,6 +107,23 @@ type actor struct {
 }
 
 // authError carries the HTTP status for a failed authentication step.
+
+// pwdResetExempt are the only paths a session with pwd_reset may touch: the
+// user must be able to read their own profile and change the password.
+func pwdResetExempt(path string) bool {
+	return path == "/api/me" || strings.HasPrefix(path, "/api/me/") || strings.HasPrefix(path, "/api/auth/")
+}
+
+// pwdResetGate refuses sessions that still carry the initial password. It runs
+// for both the bearer and the cookie branch so no route can be reached with an
+// unrevoked "must change password" token (BUG-02).
+func (s *Server) pwdResetGate(r *http.Request, a session.Actor) *authError {
+	if !a.PwdReset || pwdResetExempt(r.URL.Path) {
+		return nil
+	}
+	return &authError{code: 428, reason: "password change required"}
+}
+
 type authError struct {
 	code   int
 	reason string
@@ -130,6 +147,9 @@ func (s *Server) authenticate(r *http.Request, body []byte) (actor, *authError) 
 		}
 		if err := s.Session.CheckCSRF(r); err != nil {
 			return actor{}, &authError{code: 403, reason: "csrf verification failed"}
+		}
+		if e := s.pwdResetGate(r, a); e != nil {
+			return actor{}, e
 		}
 		return actor{UserID: a.UserID, TenantID: a.Tenant, Email: a.Email, Roles: a.Roles, Admin: a.Admin, Teacher: a.Teacher}, nil
 	}
@@ -161,6 +181,9 @@ func (s *Server) authenticate(r *http.Request, body []byte) (actor, *authError) 
 	}
 	if err := s.Session.CheckCSRF(r); err != nil {
 		return actor{}, &authError{code: 403, reason: "csrf verification failed"}
+	}
+	if e := s.pwdResetGate(r, a); e != nil {
+		return actor{}, e
 	}
 	return actor{UserID: a.UserID, TenantID: a.Tenant, Email: a.Email, Roles: a.Roles, Admin: a.Admin, Teacher: a.Teacher}, nil
 }
