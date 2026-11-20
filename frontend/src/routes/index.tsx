@@ -15,8 +15,10 @@ const Literature = lazy(() => import('../pages/Literature'));
 const PdfTools = lazy(() => import('../pages/PdfTools'));
 const DailyPapers = lazy(() => import('../pages/DailyPapers'));
 const Lab = lazy(() => import('../pages/Lab'));
-const Toolbox = lazy(() => import('../pages/Toolbox'));
-const Drawings = lazy(() => import('../pages/Drawings'));
+const Drawio = lazy(() => import('../pages/Drawio'));
+const PlotStudio = lazy(() => import('../pages/PlotStudio'));
+const BioTools = lazy(() => import('../pages/BioTools'));
+const Genomes = lazy(() => import('../pages/Genomes'));
 const Colors = lazy(() => import('../pages/Colors'));
 const Translate = lazy(() => import('../pages/Translate'));
 const Commands = lazy(() => import('../pages/Commands'));
@@ -85,11 +87,21 @@ function RequireTeacher({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function ToolRedirect({ tool }: { tool: string }) {
+/**
+ * `/tools?tool=plot|genomes|drawio` 的兼容跳转。
+ *
+ * 三个工具拆成独立页面后，旧地址仍会从收藏夹与历史回复里被用户点开：
+ * 这里把 `tool` 参数换成路径，其余参数（例如 `drawing=<id>`）原样带过去，
+ * 否则「继续编辑某个图形」的旧链接会落在空白画布上。
+ */
+function ToolsRedirect() {
   const location = useLocation();
   const query = new URLSearchParams(location.search);
-  query.set('tool', tool);
-  return <Navigate to={`/tools?${query.toString()}`} replace />;
+  const tool = query.get('tool');
+  const target = tool === 'plot' ? '/plot' : tool === 'genomes' ? '/genomes' : '/drawio';
+  query.delete('tool');
+  const rest = query.toString();
+  return <Navigate to={rest ? `${target}?${rest}` : target} replace />;
 }
 
 function Result403({ what = 'lab-admin 管理员' }: { what?: string }) {
@@ -125,11 +137,14 @@ export function AppRoutes() {
             <Route path="/pdf" element={<PdfTools />} />
             <Route path="/papers" element={<DailyPapers />} />
             <Route path="/lab" element={<Lab />} />
-            <Route path="/tools" element={<Toolbox />} />
-            <Route path="/drawio" element={<ToolRedirect tool="drawio" />} />
-            <Route path="/drawings" element={<Drawings />} />
+            {/* 科研工具拆成三个独立页面；旧地址 /tools?tool=… 曾出现在收藏、
+                Agent 回复和帮助文档里，必须重定向而不是 404。 */}
+            <Route path="/tools" element={<ToolsRedirect />} />
+            <Route path="/drawio" element={<Drawio />} />
+            {/* 我的图形已并入流程图页的右侧面板；旧书签直接打开面板。 */}
+            <Route path="/drawings" element={<Navigate to="/drawio?panel=drawings" replace />} />
             <Route path="/colors" element={<Colors />} />
-            <Route path="/plot" element={<ToolRedirect tool="plot" />} />
+            <Route path="/plot" element={<PlotStudio />} />
             {/* 多维表格已并入 /lab（多维表格空间） */}
             <Route path="/baserow" element={<Navigate to="/lab?tab=tables" replace />} />
             <Route path="/translate" element={<Translate />} />
@@ -144,7 +159,8 @@ export function AppRoutes() {
             {/* 能力中心已并入 /agent：旧深链重定向，避免外部链接失效 */}
             <Route path="/agent/hub" element={<Navigate to="/agent?mode=hub" replace />} />
             <Route path="/databases" element={<Databases />} />
-            <Route path="/genomes" element={<ToolRedirect tool="genomes" />} />
+            <Route path="/genomes" element={<Genomes />} />
+            <Route path="/bio-tools" element={<BioTools />} />
             <Route path="/help" element={<Help />} />
             <Route path="/files" element={<Files />} />
             <Route path="/seeds" element={<SeedStore />} />

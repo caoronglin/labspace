@@ -13,7 +13,7 @@ export default function PageShell({
   title: ReactNode;
   description?: ReactNode;
   extra?: ReactNode;
-  /** 嵌入到「科研工具」等上层容器时隐藏标题条，只保留内容与操作区 */
+  /** 作为上层页面的一个区块渲染时隐藏标题条，只保留内容与操作区 */
   embedded?: boolean;
   children: ReactNode;
 }) {

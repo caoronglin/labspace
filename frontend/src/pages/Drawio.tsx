@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
   Button,
+  Drawer,
+  Empty,
   Flex,
   Image,
   Input,
+  Listy,
   Modal,
+  Popconfirm,
   Select,
   Tag,
   Tooltip,
@@ -13,9 +17,12 @@ import {
   Upload,
 } from 'antd';
 import {
+  DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
   ExportOutlined,
   FileAddOutlined,
+  FolderOpenOutlined,
   FullscreenOutlined,
   PictureOutlined,
   SaveOutlined,
@@ -27,6 +34,7 @@ import { hostUrl } from '../utils/host';
 import { useThemeMode } from '../theme/ThemeContext';
 import { api } from '../services/api';
 import { errText } from '../utils/err';
+import { formatDateTime, formatSize } from '../utils/format';
 import PageShell from '../components/PageShell';
 
 const EMPTY_TEMPLATE = (name: string) =>
@@ -81,7 +89,7 @@ function decodeXml(reply: ExportReply): string {
 }
 
 /** 嵌入式 draw.io 画布：保存、预览与导出都走浏览器内的 embed 协议，不依赖公网服务。 */
-export default function Drawio({ embedded = false }: { embedded?: boolean }) {
+export default function Drawio() {
   const { message } = App.useApp();
   const { resolved } = useThemeMode();
   const qc = useQueryClient();
@@ -94,6 +102,9 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [searchParams] = useSearchParams();
   const initialDrawing = useRef(searchParams.get('drawing'));
+  // 旧「我的图形」页已并入本页：/drawings 重定向到 ?panel=drawings，旧收藏直接开面板
+  const [listOpen, setListOpen] = useState(searchParams.get('panel') === 'drawings');
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
 
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -121,6 +132,7 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
   }, [src]);
 
   const { data: drawings, isFetching } = useQuery({ queryKey: ['drawings'], queryFn: api.drawings });
+  const drawingList = drawings?.drawings ?? [];
 
   const post = useCallback((payload: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage(JSON.stringify(payload), frameOrigin || '*');
@@ -218,6 +230,7 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
   };
 
   const openDrawing = async (id?: string) => {
+    setListOpen(false);
     if (!id) {
       setDrawingId(undefined);
       setName('未命名流程图');
@@ -233,6 +246,42 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
       message.error(`打开失败：${errText(e)}`);
     }
   };
+
+  const renameM = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: string }) => api.renameDrawing(id, next),
+    onSuccess: (_, { id, next }) => {
+      message.success('已重命名');
+      setRenaming(null);
+      // 重命名的是当前打开的那张：标题框也要跟着改，
+      // 否则下一次「保存」会把旧名字又 PUT 回服务端，等于把重命名撤销了。
+      if (id === drawingId) setName(next.replace(/\.drawio$/i, ''));
+      void qc.invalidateQueries({ queryKey: ['drawings'] });
+    },
+    onError: (e: Error) => message.error(`重命名失败：${errText(e)}`),
+  });
+
+  const deleteM = useMutation({
+    mutationFn: (id: string) => api.deleteDrawing(id),
+    onSuccess: (_, id) => {
+      message.success('已删除');
+      // 删的就是当前正在编辑的那张：清掉 drawingId 让「保存」转成新建，
+      // 否则下一次保存会去 PUT 一个已不存在的 id。
+      if (id === drawingId) setDrawingId(undefined);
+      void qc.invalidateQueries({ queryKey: ['drawings'] });
+    },
+    onError: (e: Error) => message.error(`删除失败：${errText(e)}`),
+  });
+
+  /** 列表里的「导出到个人目录」：内容得从服务端取，画布上只有当前打开的那个。 */
+  const exportSaved = useMutation({
+    mutationFn: async (row: { id: string; name: string }) => {
+      const detail = await api.drawing(row.id);
+      await api.exportDrawing(row.id, detail.content, detail.name);
+      return detail.name.replace(/\.drawio$/i, '');
+    },
+    onSuccess: (n) => message.success(`已导出到个人目录/drawio/${n}.drawio`),
+    onError: (e: Error) => message.error(`导出失败：${errText(e)}`),
+  });
 
   const importFile = (file: File) => {
     if (file.size > 2 * 1024 * 1024) {
@@ -330,6 +379,9 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
         onChange={(v) => void openDrawing(v)}
         options={(drawings?.drawings ?? []).map((d) => ({ value: d.id, label: d.name }))}
       />
+      <Button icon={<FolderOpenOutlined />} onClick={() => setListOpen(true)}>
+        我的图形{drawingList.length ? ` · ${drawingList.length}` : ''}
+      </Button>
       <Button icon={<FileAddOutlined />} onClick={() => void openDrawing()}>新建</Button>
       <Button type="primary" icon={<SaveOutlined />} loading={save.isPending} onClick={handleSave}>
         保存
@@ -365,7 +417,7 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
       ref={wrapRef}
       style={{
         position: 'relative',
-        height: fullscreen ? '100dvh' : embedded ? 640 : 'calc(100dvh - 210px)',
+        height: fullscreen ? '100dvh' : 'calc(100dvh - 210px)',
         minHeight: 520,
         border: '1px solid var(--d509-border-soft)',
         borderRadius: fullscreen ? 0 : 12,
@@ -409,10 +461,71 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
     </Flex>
   );
 
+  const drawingListPanel = (
+    <Drawer
+      title="我的图形"
+      width={520}
+      open={listOpen}
+      onClose={() => setListOpen(false)}
+      extra={<Button type="primary" onClick={() => void openDrawing()}>新建图形</Button>}
+    >
+      {isFetching && !drawingList.length ? (
+        <Empty description="加载中…" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : drawingList.length === 0 ? (
+        <Empty description="还没有保存的图形：画完点「保存」，就会出现在这里" />
+      ) : (
+        <Listy
+          items={drawingList}
+          rowKey="id"
+          height={Math.min(drawingList.length * 84, 560)}
+          itemRender={(d: { id: string; name: string; size: number; updated_at: string }) => (
+            <Flex gap={12} align="center" justify="space-between" style={{ padding: '8px 4px' }}>
+              <div style={{ minWidth: 0 }}>
+                <Typography.Text strong ellipsis style={{ display: 'block' }}>
+                  {d.name}
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {formatDateTime(d.updated_at)} · {formatSize(d.size)}
+                </Typography.Text>
+              </div>
+              <Flex gap={4} align="center">
+                <Button size="small" onClick={() => void openDrawing(d.id)}>继续编辑</Button>
+                <Tooltip title="重命名">
+                  <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => setRenaming({ id: d.id, name: d.name })}
+                  />
+                </Tooltip>
+                <Tooltip title="导出到个人目录">
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    loading={exportSaved.isPending && exportSaved.variables?.id === d.id}
+                    onClick={() => exportSaved.mutate(d)}
+                  />
+                </Tooltip>
+                <Tooltip title="下载 .drawio">
+                  <Button size="small" icon={<ExportOutlined />} href={`/api/drawings/${d.id}/download`} />
+                </Tooltip>
+                <Popconfirm title="删除该图形？" onConfirm={() => deleteM.mutate(d.id)}>
+                  <Button size="small" danger type="text" icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </Flex>
+            </Flex>
+          )}
+        />
+      )}
+      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
+        「导出到个人目录」会把 .drawio 写入个人目录的 drawio/ 下，可在文件空间里继续管理；
+        「下载」直接取服务端保存的那一份。
+      </Typography.Text>
+    </Drawer>
+  );
+
   return (
     <>
       <PageShell
-        embedded={embedded}
         title="流程图设计"
         description="内嵌 draw.io 画布：绘图、保存、预览与导出都在门户内完成。"
         extra={toolbar}
@@ -422,6 +535,22 @@ export default function Drawio({ embedded = false }: { embedded?: boolean }) {
           {canvas}
         </Flex>
       </PageShell>
+      {drawingListPanel}
+      <Modal
+        open={!!renaming}
+        title="重命名图形"
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={renameM.isPending}
+        onOk={() => renaming && renameM.mutate({ id: renaming.id, next: renaming.name })}
+        onCancel={() => setRenaming(null)}
+      >
+        <Input
+          value={renaming?.name ?? ''}
+          onChange={(e) => setRenaming((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+          maxLength={64}
+        />
+      </Modal>
       <Modal
         open={!!preview}
         title={name}

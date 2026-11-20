@@ -41,7 +41,9 @@ import {
   CloudServerOutlined,
 } from '@ant-design/icons';
 
-export type NavGroupKey = 'work' | 'research' | 'learn' | 'tools' | 'admin';
+// 只保留 NAV_GROUPS 里真实存在的一级组：写死一个没有条目的组 key 会让页面
+// 在侧栏里彻底消失（sidebarSections 按 NAV_GROUPS 遍历），排查时很难发现。
+export type NavGroupKey = 'work' | 'research' | 'admin';
 
 /** 二级入口：折叠态下侧栏只显示这些图标，点击展开子菜单。 */
 export interface NavSub {
@@ -98,14 +100,12 @@ export const NAV_GROUPS: NavGroup[] = [
  */
 export const NAV_SUBS: Record<string, NavSub> = {
   data: { key: 'data', label: '文件与数据', icon: <DatabaseOutlined /> },
+  // 写作与分析：LaTeX、翻译、流程图、绘图、基因组都归这里。
   writing: { key: 'writing', label: '分析与写作', icon: <FileTextOutlined /> },
-  // 学习资源 + 小工具合并：两者都是"偶尔用一次"的辅助入口，
-  // 拆成两个子菜单只会让侧栏更长得滚。
-  more: { key: 'more', label: '学习与小工具', icon: <ToolOutlined /> },
-  // PDF 工具箱 + 内网主机台合并：两个都是"处理具体材料/具体机器"的工具，
-  // 平铺在科研组里各占一行、又不常用，收成一个子菜单更清爽
-  //（与"分析与写作""学习与小工具"同一套分组逻辑）。
-  toolbox: { key: 'toolbox', label: '实验工具', icon: <ToolOutlined /> },
+  // 「实验工具」与「学习与小工具」曾经是两个子菜单，语义几乎重合
+  // （都是"偶尔用一次的辅助工具"），合并成一个「实用工具」，按用途排序：
+  // 处理材料 → 查资料 → 上手帮助。
+  utility: { key: 'utility', label: '实用工具', icon: <ToolOutlined /> },
   admin: { key: 'admin', label: '后台管理', icon: <CloudServerOutlined /> },
 };
 
@@ -150,11 +150,13 @@ export const NAV_ITEMS: NavItem[] = [
   // ---------------------------------------------------------------- 科研工作
   {
     path: '/files',
-    label: '文件存储',
+    label: '文件空间',
     icon: <FolderOpenOutlined />,
     group: 'research',
     hint: '个人/公共文件 · 在线预览',
-    keywords: ['files', 'file', '文件', '网盘', '共享', '质粒', 'genome', '基因组'],
+    // 旧叫法「文件存储」留在关键词里：用户习惯一个月内改不过来，
+    // 搜旧名也得能命中同一个页面。
+    keywords: ['files', 'file', '文件', '文件空间', '文件存储', '网盘', '共享', '质粒', 'genome', '基因组'],
   },
   {
     path: '/seeds',
@@ -212,39 +214,46 @@ export const NAV_ITEMS: NavItem[] = [
     hint: '生物数据库目录',
     keywords: ['databases', 'plant', '数据库', '植物库'],
   },
-  {
-    path: '/tools',
-    label: '科研工具',
-    icon: <ToolOutlined />,
-    group: 'research',
-    sub: 'writing',
-    hint: '流程图 · 绘图 · 基因组',
-    keywords: ['tools', 'drawio', 'diagram', 'plot', 'genomes', '流程图', '绘图', '基因组', '科研工具'],
-  },
+  // 科研工具拆成三个独立页面：以前 `/tools` 用 Tabs 把三件事塞在一个路由里，
+  // 收藏、分享、面包屑都只能指到 `?tool=` 参数上，谁也无法记住地址。
   {
     path: '/drawio',
     label: '流程图设计',
     icon: <PartitionOutlined />,
     group: 'research',
-    keywords: ['drawio', 'diagram', '流程图', '绘图', 'drawings', '图形', '草稿'],
-    hidden: true,
-  },
-  {
-    path: '/drawings',
-    label: '我的图形',
-    icon: <FileTextOutlined />,
-    group: 'research',
     sub: 'writing',
-    hint: '流程图草稿与历史',
-    keywords: ['drawings', '图形', '草稿'],
+    hint: 'draw.io 画布 · 我的图形',
+    keywords: ['drawio', 'diagram', '流程图', '绘图', 'drawings', '图形', '草稿', '我的图形'],
   },
   {
     path: '/plot',
     label: '绘图工作台',
     icon: <BarChartOutlined />,
     group: 'research',
+    sub: 'writing',
+    hint: '预设出图 · 出版级渲染',
     keywords: ['plot', 'chart', '绘图', '画图', 'seaborn', 'antv', 'gsea', 'venn', 'circos', '火山图', '热图'],
-    hidden: true,
+  },
+  {
+    path: '/bio-tools',
+    label: '生信工具',
+    icon: <ExperimentOutlined />,
+    group: 'research',
+    sub: 'writing',
+    hint: '序列 · 克隆 · 引物 · 比对建树',
+    keywords: [
+      'bio', 'biotools', '生信', '序列', 'gc', 'orf', '翻译', '酶切', '质粒', '引物', 'tm',
+      '比对', '进化树', 'blast', 'entrez', 'abi', 'fasta', 'genbank', 'primer', 'pcoa',
+    ],
+  },
+  {
+    path: '/genomes',
+    label: '公共基因组',
+    icon: <ExperimentOutlined />,
+    group: 'research',
+    sub: 'writing',
+    hint: 'JBrowse 浏览 · 序列分析',
+    keywords: ['genomes', 'genome', 'jbrowse', 'fasta', '基因组', '序列', 'orf', 'gc', 'rust-bio'],
   },
   {
     path: '/colors',
@@ -282,15 +291,6 @@ export const NAV_ITEMS: NavItem[] = [
     keywords: ['literature', 'pubmed', '文献', '检索', 'openalex', 'arxiv', 'crossref'],
   },
   {
-    path: '/pdf',
-    label: 'PDF 工具箱',
-    icon: <FilePdfOutlined />,
-    group: 'research',
-    sub: 'toolbox',
-    hint: '合并 · 拆分 · 压缩 · 旋转 · 删页',
-    keywords: ['pdf', '合并', '拆分', '压缩', '水印', 'stirling', '论文'],
-  },
-  {
     path: '/papers',
     label: '每日论文',
     icon: <ReadOutlined />,
@@ -299,38 +299,69 @@ export const NAV_ITEMS: NavItem[] = [
     hidden: true,
     keywords: ['daily', '论文', 'arxiv', 'openalex'],
   },
-  {
-    path: '/genomes',
-    label: '公共基因组',
-    icon: <ExperimentOutlined />,
-    group: 'research',
-    keywords: ['genomes', 'genome', 'jbrowse', 'fasta', '基因组', '序列', 'orf', 'gc', 'rust-bio'],
-    hidden: true,
-  },
 
-  // ---------------------------------------------------------------- 学习资源
+  // ------------------------------------------------------- 实用工具（子菜单）
+  // 「实验工具」与「学习与小工具」合并成一个子菜单后，这里按**用途**排序：
+  // 处理材料（PDF、文件工坊）→ 查资料（命令、全站搜索）→ 上手与帮助（实训、帮助中心）。
+  // 侧栏子菜单按本文件的条目顺序渲染，「按用途」就落在这一段的先后上。
+  {
+    path: '/pdf',
+    label: 'PDF 工具箱',
+    icon: <FilePdfOutlined />,
+    group: 'research',
+    sub: 'utility',
+    hint: '合并 · 拆分 · 压缩 · 旋转 · 删页',
+    keywords: ['pdf', '合并', '拆分', '压缩', '水印', 'stirling', '论文'],
+  },
+  {
+    path: '/snapotter',
+    label: '文件工坊',
+    icon: <ThunderboltOutlined />,
+    group: 'research',
+    sub: 'utility',
+    hint: '文件与媒体处理',
+    keywords: ['snapotter', 'media', '转换', '文件'],
+  },
   {
     path: '/commands',
     label: 'Linux 命令速查',
     icon: <ConsoleSqlOutlined />,
     group: 'research',
-    sub: 'more',
+    sub: 'utility',
     keywords: ['command', 'linux', 'shell', '命令'],
+  },
+  {
+    path: '/search',
+    label: '统一搜索',
+    icon: <GlobalOutlined />,
+    group: 'research',
+    sub: 'utility',
+    keywords: ['search', '搜索'],
   },
   {
     path: '/bioinfo',
     label: '生信实验实训',
     icon: <CodeOutlined />,
     group: 'research',
-    sub: 'more',
+    sub: 'utility',
     hint: '课程与终端工作区',
     keywords: ['bioinfo', '生信', '实训', '课程', '终端', 'terminal'],
+  },
+  {
+    path: '/help',
+    label: '帮助中心',
+    icon: <QuestionCircleOutlined />,
+    group: 'research',
+    sub: 'utility',
+    hint: '上手 / FAQ / 诊断',
+    keywords: ['help', 'faq', '帮助', '文档', '更新日志', 'release'],
   },
   {
     path: '/weather',
     label: '天气',
     icon: <CloudOutlined />,
-    group: 'research',
+    // 天气与工作台这种日常页面同类，不是科研资料；仍隐藏，只是归位。
+    group: 'work',
     hidden: true,
     keywords: ['weather', '天气'],
   },
@@ -338,44 +369,19 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/network',
     label: '访问与诊断',
     icon: <GlobalOutlined />,
-    group: 'research',
+    // 连通性/别名诊断是运维视角的工具，归系统组；已隐藏，只是归位。
+    group: 'admin',
     hint: '网络别名与连通性',
     keywords: ['network', 'dns', '网络', '诊断'],
     hidden: true,
   },
   {
-    path: '/help',
-    label: '帮助中心',
-    icon: <QuestionCircleOutlined />,
-    group: 'research',
-    sub: 'more',
-    hint: '上手 / FAQ / 诊断',
-    keywords: ['help', 'faq', '帮助', '文档', '更新日志', 'release'],
-  },
-
-  // ---------------------------------------------------------------- 实用工具
-  {
-    path: '/snapotter',
-    label: '文件工坊',
-    icon: <ThunderboltOutlined />,
-    group: 'research',
-    sub: 'more',
-    hint: '文件与媒体处理',
-    keywords: ['snapotter', 'media', '转换', '文件'],
-  },
-  {
-    path: '/search',
-    label: '统一搜索',
-    icon: <GlobalOutlined />,
-    group: 'research',
-    sub: 'more',
-    keywords: ['search', '搜索'],
-  },
-  {
     path: '/start',
     label: '起始页',
     icon: <FolderOpenOutlined />,
-    group: 'tools',
+    // 起始页是浏览器主页级别的跳转，不是科研工具；
+    // 原来写在不存在的 'tools' 组里，sidebarSections 遍历不到就等于被默默隐藏。
+    group: 'work',
     hint: '浏览器主页',
     hidden: true,
     keywords: ['start', 'home', '起始页'],

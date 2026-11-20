@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Badge, Button, Descriptions, Drawer, Empty, Flex, Image, Input, InputNumber,
+  Alert, Badge, Button, Collapse, Descriptions, Drawer, Empty, Flex, Image, Input, InputNumber,
   Modal, Segmented, Select, Space, Spin, Table, Tag, Typography, Upload, message,
 } from 'antd';
 import {
@@ -62,7 +62,79 @@ function formatTime(value: number): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false });
 }
 
-export default function PlotStudio({ embedded = false }: { embedded?: boolean } = {}) {
+type ParsedTable = ReturnType<typeof parseTable>;
+
+/** 数值列：整列都能解析成数字才算，避免混进带单位的列名。 */
+function numericColumnsOf(table: ParsedTable): string[] {
+  return table.headers.filter(
+    (h) => table.rows.length > 0 && table.rows.every((r) => r[h] !== '' && Number.isFinite(Number(r[h]))),
+  );
+}
+
+/**
+ * 一键预设：把「常用组合」做成按钮。
+ *
+ * 用户的原话是「太麻烦」：以前要选模板 → 想清楚 x/y/group 填哪些列 → 提交。
+ * 这几个组合覆盖了实验室八成需求，点一下就把示例数据 + 参数一次填好并进实时预览。
+ */
+const PRESETS: { key: string; label: string; chart: string; sample: string }[] = [
+  { key: 'bar-group', label: '柱状 · 分组', chart: 'bar', sample: 'bar-growth' },
+  { key: 'line-trend', label: '折线 · 趋势', chart: 'line', sample: 'line-dose' },
+  { key: 'scatter-reg', label: '散点 · 回归', chart: 'scatter', sample: 'scatter-cor' },
+  { key: 'volcano', label: '火山图', chart: 'volcano', sample: 'volcano-deg' },
+  { key: 'heatmap', label: '热图', chart: 'heatmap', sample: 'heatmap-matrix' },
+];
+
+/**
+ * 模板的「基础参数」：只留出图真正必填的列映射，其余（聚合、阈值、色带、尺寸）进高级区。
+ * 没有列映射概念的模板（维恩图、系统发育树）退回「前 3 个非标题参数」，
+ * 保证基础区永远不超过 3~4 项。
+ */
+const BASIC_PARAM_KEYS: Record<string, string[]> = {
+  bar: ['x', 'y', 'group'],
+  line: ['x', 'y', 'group'],
+  scatter: ['x', 'y', 'group'],
+  box: ['x', 'y', 'group'],
+  violin: ['x', 'y', 'group'],
+  heatmap: ['x', 'y', 'value'],
+  volcano: ['gene', 'x', 'y'],
+};
+
+function basicParamKeys(chart?: PlotChart): string[] {
+  if (!chart) return [];
+  const preferred = BASIC_PARAM_KEYS[chart.id] ?? ['x', 'y', 'group'];
+  const hit = chart.params.filter((p) => preferred.includes(p.key)).map((p) => p.key);
+  if (hit.length) return hit;
+  return chart.params.filter((p) => p.key !== 'title').slice(0, 3).map((p) => p.key);
+}
+
+/**
+ * 列名联动：按参数语义收窄候选。
+ *
+ * 选了分类列之后，Y 列还列出所有文本列的话，用户得自己在 30 个选项里
+ * 辨认哪个是数值 —— 直接只给数值列，选错的机会就没了。
+ */
+function columnCandidates(
+  spec: PlotParamSpec,
+  chartId: string,
+  table: ParsedTable,
+  numeric: string[],
+): string[] | undefined {
+  if (spec.type !== 'text') return undefined;
+  const numericKeys = ['y', 'value', 'score', 'pos', 'start', 'end'];
+  const categoricalKeys = ['group', 'gene', 'chr'];
+  const numericOnly = (chartId === 'line' || chartId === 'scatter' || chartId === 'pca') && spec.key === 'x';
+  if (numericKeys.includes(spec.key) || numericOnly) {
+    return numeric.length ? numeric : table.headers;
+  }
+  if (categoricalKeys.includes(spec.key)) {
+    const categorical = table.headers.filter((h) => !numeric.includes(h));
+    return categorical.length ? categorical : table.headers;
+  }
+  return table.headers;
+}
+
+export default function PlotStudio() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const queryClient = useQueryClient();
@@ -81,7 +153,8 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
   const [logText, setLogText] = useState('');
   const [apiOpen, setApiOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
-  const [styleOpen, setStyleOpen] = useState(false);
+  // 当前生效的预设：用户一旦改了数据或参数就不再算「预设结果」，按钮不再高亮
+  const [activePreset, setActivePreset] = useState<string>();
 
   const metaQ = useQuery({ queryKey: ['plot-meta'], queryFn: plotApi.meta, staleTime: 5 * 60_000 });
   const historyQ = useQuery({ queryKey: ['plot-jobs'], queryFn: plotApi.jobs, refetchInterval: 30_000 });
@@ -138,6 +211,23 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
     const next = charts.find((c) => c.id === id);
     setValues(defaultParams(next));
     setSampleId(undefined);
+    setActivePreset(undefined);
+  }
+
+  /**
+   * 应用预设：数据、模板、参数、标题一次填好，并直接切到实时预览。
+   * 预设指向后端的示例数据（samples），不在此处再写一份 CSV：
+   * 否则两份数据会漂移，渲染出来的图与「示例数据」下的同一模板不一样。
+   */
+  function applyPreset(preset: (typeof PRESETS)[number]) {
+    const sample = samples.find((s) => s.id === preset.sample);
+    if (!sample) {
+      message.info('示例数据还没加载完成，已先切到对应模板');
+      pickChart(preset.chart);
+      return;
+    }
+    loadSample(sample);
+    setActivePreset(preset.key);
   }
 
   function loadSample(sample: PlotSample) {
@@ -158,6 +248,7 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
 
   function setValue(key: string, value: unknown) {
     setValues((prev) => ({ ...prev, [key]: value }));
+    setActivePreset(undefined);
   }
 
   function payloadParams() {
@@ -211,7 +302,17 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
   });
 
   const table = useMemo(() => parseTable(dataText), [dataText]);
+  const numericColumns = useMemo(() => numericColumnsOf(table), [table]);
   const preview = useMemo(() => buildPreview(chartId, table, values), [chartId, table, values]);
+  const basicKeys = useMemo(() => basicParamKeys(chart), [chart]);
+  const basicSpecs = useMemo(
+    () => (chart?.params ?? []).filter((spec) => basicKeys.includes(spec.key)),
+    [chart, basicKeys],
+  );
+  const advancedSpecs = useMemo(
+    () => (chart?.params ?? []).filter((spec) => !basicKeys.includes(spec.key)),
+    [chart, basicKeys],
+  );
   const busy = currentJob?.status === 'queued' || currentJob?.status === 'running';
   const png = currentJob?.outputs.find((o) => o.path.endsWith('.png'));
 
@@ -245,14 +346,13 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
 
   return (
     <PageShell
-      embedded={embedded}
       title="绘图工作台"
-      description="模板化科研绘图：浏览器内用 AntV 预览，Go 核心调度 Python 渲染出版级 PNG / SVG / PDF。"
+      description="模板化科研绘图：点预设一键出图，浏览器内用 AntV 预览，Go 核心调度 Python 渲染出版级 PNG / SVG / PDF。"
       extra={(
         <Space wrap>
           <Button size="small" icon={<BgColorsOutlined />} onClick={() => navigate('/colors')}>配色搭配</Button>
-          <Button size="small" icon={<DatabaseOutlined />} onClick={() => navigate('/tools?tool=genomes')}>公共基因组</Button>
-          <Button size="small" icon={<FolderOpenOutlined />} onClick={() => navigate('/files')}>文件存储</Button>
+          <Button size="small" icon={<DatabaseOutlined />} onClick={() => navigate('/genomes')}>公共基因组</Button>
+          <Button size="small" icon={<FolderOpenOutlined />} onClick={() => navigate('/files')}>文件空间</Button>
           <Button size="small" icon={<CodeOutlined />} onClick={() => setApiOpen(true)}>Agent 调用</Button>
         </Space>
       )}
@@ -267,6 +367,21 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
       )}
 
       <Flex vertical gap={12}>
+        {/* 预设放在最上面：新用户不用先想清楚 x/y 该填哪列，
+            点一下就得到一份能看、能改的图。 */}
+        <Flex gap={6} wrap align="center">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>一键出图</Typography.Text>
+          {PRESETS.map((p) => (
+            <Button
+              key={p.key}
+              size="small"
+              type={activePreset === p.key ? 'primary' : 'default'}
+              onClick={() => applyPreset(p)}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </Flex>
         {/* 工具栏吸顶：预览区很长时，「渲染并保存」不应被滚出视野 */}
         <div
           style={{
@@ -309,7 +424,6 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
           <Button icon={<DatabaseOutlined />} onClick={() => setDataOpen(true)}>
             数据{table.rows.length ? ` · ${table.rows.length} 行` : ''}
           </Button>
-          <Button icon={<BgColorsOutlined />} onClick={() => setStyleOpen(true)}>样式</Button>
           <Button
             type="primary"
             icon={<PlayCircleOutlined />}
@@ -340,6 +454,91 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
             </Flex>
           ) : null}
         </div>
+
+        {/* 参数分两级：基础区只留列映射（不改也能出图，最多 3 项），
+            聚合方式 / 阈值 / 色带 / 尺寸这些一次调好就不再动的收进「高级」，
+            默认折起——列表全展开正是用户说的「太麻烦」。 */}
+        <Collapse
+          size="small"
+          defaultActiveKey={['basic']}
+          items={[
+            {
+              key: 'basic',
+              label: '基础参数',
+              children: basicSpecs.length ? (
+                <Flex gap={12} wrap>
+                  {basicSpecs.map((spec) => (
+                    <div key={spec.key} style={{ width: 220 }}>
+                      <ParamField
+                        spec={spec}
+                        value={values[spec.key]}
+                        columns={columnCandidates(spec, chartId, table, numericColumns)}
+                        onChange={(v) => setValue(spec.key, v)}
+                      />
+                    </div>
+                  ))}
+                </Flex>
+              ) : (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  这个模板不需要列映射，参数都在「高级参数与样式」里。
+                </Typography.Text>
+              ),
+            },
+            {
+              key: 'advanced',
+              label: '高级参数与样式',
+              children: (
+                <Flex vertical gap={12}>
+                  {advancedSpecs.length ? (
+                    <Flex gap={12} wrap>
+                      {advancedSpecs.map((spec) => (
+                        <div key={spec.key} style={{ width: spec.type === 'textarea' ? '100%' : 220 }}>
+                          <ParamField
+                            spec={spec}
+                            value={values[spec.key]}
+                            columns={spec.type === 'text' ? table.headers : undefined}
+                            onChange={(v) => setValue(spec.key, v)}
+                          />
+                        </div>
+                      ))}
+                    </Flex>
+                  ) : null}
+                  <Flex gap={8} wrap>
+                    <div style={{ width: 160 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>色板</Typography.Text>
+                      <Select
+                        value={palette}
+                        onChange={(v) => { setPalette(v); setActivePreset(undefined); }}
+                        style={{ width: '100%' }}
+                        options={(metaQ.data?.palettes ?? ['npg']).map((p) => ({ value: p, label: p.toUpperCase() }))}
+                      />
+                    </div>
+                    <div style={{ width: 88 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>宽 (in)</Typography.Text>
+                      <InputNumber min={2} max={20} step={0.5} value={width} onChange={(v) => setWidth(Number(v) || 7.2)} style={{ width: '100%' }} />
+                    </div>
+                    <div style={{ width: 88 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>高 (in)</Typography.Text>
+                      <InputNumber min={2} max={20} step={0.5} value={height} onChange={(v) => setHeight(Number(v) || 4.8)} style={{ width: '100%' }} />
+                    </div>
+                  </Flex>
+                  {customColors.length > 0 && (
+                    <Space wrap size={4}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>配色搭配：</Typography.Text>
+                      {customColors.map((c) => (
+                        <Tag key={c} color={c} style={{ color: '#fff', border: 'none' }}>{c}</Tag>
+                      ))}
+                      <Button size="small" type="link" onClick={() => setCustomColors([])}>清除</Button>
+                    </Space>
+                  )}
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    输出 300 dpi · PNG / SVG / PDF
+                  </Typography.Text>
+                </Flex>
+              ),
+            },
+          ]}
+        />
 
         <Flex
           vertical
@@ -563,58 +762,6 @@ export default function PlotStudio({ embedded = false }: { embedded?: boolean } 
       </Drawer>
 
       <Drawer
-        title={chart ? `${chart.name} · 参数与样式` : '参数与样式'}
-        width={400}
-        open={styleOpen}
-        onClose={() => setStyleOpen(false)}
-        extra={<Button type="primary" onClick={() => setStyleOpen(false)}>完成</Button>}
-      >
-        <Flex vertical gap={12}>
-          {(chart?.params ?? []).map((spec) => (
-            <div key={spec.key}>
-              <ParamField spec={spec} value={values[spec.key]} onChange={(v) => setValue(spec.key, v)} />
-            </div>
-          ))}
-          <Flex gap={8}>
-            <div style={{ flex: 1 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>色板</Typography.Text>
-              <Select
-                value={palette}
-                onChange={setPalette}
-                style={{ width: '100%' }}
-                options={(metaQ.data?.palettes ?? ['npg']).map((p) => ({ value: p, label: p.toUpperCase() }))}
-              />
-            </div>
-            <div style={{ width: 76 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>宽 (in)</Typography.Text>
-              <InputNumber min={2} max={20} step={0.5} value={width} onChange={(v) => setWidth(Number(v) || 7.2)} style={{ width: '100%' }} />
-            </div>
-            <div style={{ width: 76 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>高 (in)</Typography.Text>
-              <InputNumber min={2} max={20} step={0.5} value={height} onChange={(v) => setHeight(Number(v) || 4.8)} style={{ width: '100%' }} />
-            </div>
-          </Flex>
-          {customColors.length > 0 && (
-            <Space wrap size={4}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>配色搭配：</Typography.Text>
-              {customColors.map((c) => (
-                <Tag key={c} color={c} style={{ color: '#fff', border: 'none' }}>{c}</Tag>
-              ))}
-              <Button size="small" type="link" onClick={() => setCustomColors([])}>清除</Button>
-            </Space>
-          )}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            输出 300 dpi · PNG / SVG / PDF
-          </Typography.Text>
-          {chart?.description ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {chart.description}
-            </Typography.Text>
-          ) : null}
-        </Flex>
-      </Drawer>
-
-      <Drawer
         title="运行日志"
         width={640}
         open={logOpen}
@@ -671,7 +818,23 @@ async function copyShareLink(job: PlotJob) {
   }
 }
 
-function ParamField({ spec, value, onChange }: { spec: PlotParamSpec; value: unknown; onChange: (v: unknown) => void }) {
+/**
+ * 单个参数控件。
+ *
+ * `columns` 有值时，文本类参数渲染成「列名下拉」而不是自由输入框：
+ * 手打列名很容易拼错一个字符、渲染时才报错，下拉里只列真实存在的列就不会错。
+ */
+function ParamField({
+  spec,
+  value,
+  columns,
+  onChange,
+}: {
+  spec: PlotParamSpec;
+  value: unknown;
+  columns?: string[];
+  onChange: (v: unknown) => void;
+}) {
   const label = (
     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
       {spec.label}{spec.help ? `（${spec.help}）` : ''}
@@ -734,12 +897,24 @@ function ParamField({ spec, value, onChange }: { spec: PlotParamSpec; value: unk
   return (
     <Flex vertical gap={2}>
       {label}
-      <Input
-        size="small"
-        value={(value as string) ?? ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="列名"
-      />
+      {columns ? (
+        <Select
+          size="small"
+          value={(value as string | undefined) ?? undefined}
+          onChange={onChange}
+          allowClear
+          style={{ width: '100%' }}
+          placeholder="选择列"
+          options={columns.map((c) => ({ value: c, label: c }))}
+        />
+      ) : (
+        <Input
+          size="small"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="列名"
+        />
+      )}
     </Flex>
   );
 }

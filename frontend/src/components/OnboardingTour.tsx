@@ -82,7 +82,7 @@ export default function OnboardingTour() {
       {
         title: '欢迎使用 D509 工作台',
         description:
-          '这里统一了实验室的文件、课题资料、种子台账、文献、科研工具与 AI 助手。' +
+          '这里统一了实验室的文件、课题资料、种子台账、文献、绘图与 AI 助手。' +
           '一分钟看完这几个入口，之后就不用到处找了。',
         // 第 0 步不锚定控件，作为总览居中展示
         target: null,
@@ -91,7 +91,7 @@ export default function OnboardingTour() {
         title: '左侧是所有功能的入口',
         description:
           '分「工作」「科研」「系统」三组。课题资料与组会汇报按角色/授权显示；' +
-          'PDF 工具箱在「实验工具」子菜单里。收起后鼠标移上去也能展开。',
+          '流程图、绘图工作台、公共基因组在「分析与写作」子菜单里，收起后鼠标移上去也能展开。',
         target: findTarget('[data-tour="sider"]'),
       },
       {

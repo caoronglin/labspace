@@ -960,7 +960,8 @@ export default function LatexStudio() {
                               </Flex>
                               {assets.length === 0 ? (
                                 <Text type="secondary" style={{ fontSize: 12 }}>
-                                  还没有素材。学位论文模板需要 nwafuthesis.cls 才能编译通过。
+                                  还没有素材。学位论文模板默认用 ctexbook，可直接编译；
+                                  要用学校官方类，把 nwafuthesis.cls（及 .bst）上传到这里。
                                 </Text>
                               ) : (
                                 <Flex vertical gap={6} style={{ marginTop: 8 }}>
