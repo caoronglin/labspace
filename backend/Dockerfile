@@ -51,9 +51,13 @@ COPY requirements-lock.txt /tmp/requirements-lock.txt
 RUN pip install --no-index --find-links=/wheels -r /tmp/requirements-lock.txt \
     && rm -rf /wheels /tmp/requirements-lock.txt
 
-# h5py 是动态链接系统 HDF5 的（源码编译，不像 manylinux 轮子自带静态库），
-# 运行时必须装这个库，否则 `import skbio` 直接 ImportError。
-RUN apt-get update && apt-get install -y --no-install-recommends libhdf5-310 \
+# h5py 是动态链接系统 HDF5 的（源码编译，不像 manylinux 轮子自带静态库），运行时必须装。
+# **两个包都要**：`libhdf5-hl-310` 是高阶库，h5py 的 h5.hl 需要它；
+# 只装 `libhdf5-310` 时 `import h5py` 会在 dlopen 阶段报
+# "libhdf5_serial_hl.so.310: cannot open shared object file"，
+# 而这条依赖只有真正调用 skbio.stats（PCoA 等）时才会被踩到。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libhdf5-310 libhdf5-hl-310 \
     && rm -rf /var/lib/apt/lists/*
 
 # Office 放映/旧格式转换依赖：LibreOffice 无头模式 + 中文字体，
@@ -70,6 +74,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   RapidOCR 系列装不上。Tesseract 是系统二进制，不绑定 Python ABI，
 #   chi_sim 语言包对印刷体标签够用。识别结果只用于**预填表单**，
 #   一律由人确认后才入库，不自动提交。
+
+# 冒烟检查：三个生信库的 import 依赖系统库（h5py → HDF5），装错包时只有真正
+# 调用某个端点才会炸；这里在构建阶段就 import 一次，失败立刻停构建。
+RUN python -c "import Bio, skbio, dna_features_viewer, skbio.stats.ordination, skbio.tree; print('bio deps ok')"
 
 COPY app /srv/app/app
 

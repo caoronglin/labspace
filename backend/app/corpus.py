@@ -33,7 +33,7 @@ PAGES: list[dict[str, Any]] = [
     {"id": "/commands", "name": "Linux 命令速查", "keywords": "linux 命令 shell"},
     {"id": "/drawio", "name": "绘图工具", "keywords": "drawio 绘图 流程图"},
     {"id": "/drawings", "name": "我的图形", "keywords": "图形 存档"},
-    {"id": "/genomes", "name": "公共基因组", "keywords": "genomes genome jbrowse 基因组 浏览器 变异 序列 fasta orf gc cropgenome rust-bio"},
+    {"id": "/genomes", "name": "公共基因组", "keywords": "genomes genome jbrowse 基因组 浏览器 变异 序列 fasta orf gc 生信工具 biotools"},
     {"id": "/bioinfo", "name": "生信实验实训", "keywords": "bioinfo 生信 实训 课程 实验 终端 作业 批阅 terminal"},
     {"id": "/translate", "name": "PDF 论文翻译", "keywords": "pdf 翻译 论文"},
     {"id": "/network", "name": "访问与诊断", "keywords": "网络 端口 诊断"},

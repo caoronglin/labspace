@@ -1113,13 +1113,23 @@ async def vector_trim(
 
     trimmed = read
     trimmed_region = {"start": 0, "end": 0}
+    warnings: list[str] = []
     if _alignment_score(alignment) >= min_score and end > start:
         if start <= 5:  # 5' 端残留（允许 5 个碱基的比对噪声）
-            trimmed = read[end:]
-            trimmed_region = {"start": 0, "end": end}
+            candidate, region = read[end:], {"start": 0, "end": end}
         elif len(read) - end <= 5:  # 3' 端残留
-            trimmed = read[:start]
-            trimmed_region = {"start": start, "end": len(read)}
+            candidate, region = read[:start], {"start": start, "end": len(read)}
+        else:
+            candidate, region = read, {"start": 0, "end": 0}
+        # 剪完什么都不剩（或只剩几个碱基）几乎都是参数问题，不是"这条读段全是载体"：
+        # 返回空串既没法用也没法判断，所以保留原序列并把原因说清楚。
+        if len(candidate) < min(10, len(read)):
+            warnings.append(
+                f"按当前 min_score={min_score:g} 会把整条读段都判为载体残留，已保留原序列；"
+                "若确实要剪，请提高 min_score 或确认载体序列是否与读段同源"
+            )
+            candidate, region = read, {"start": 0, "end": 0}
+        trimmed, trimmed_region = candidate, region
     return {
         "trimmed_sequence": trimmed,
         "trimmed": trimmed_region,
@@ -1129,6 +1139,7 @@ async def vector_trim(
         "identity": stats["identity"],
         "min_score": min_score,
         "matched_region": {"start": start, "end": end},
+        "warnings": warnings,
     }
 
 

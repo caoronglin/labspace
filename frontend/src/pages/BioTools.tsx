@@ -329,6 +329,20 @@ const TOOLS: Tool[] = [
     ],
   },
   {
+    id: 'entrez_search',
+    name: 'NCBI 检索',
+    group: '外部数据库',
+    summary: '按关键词在 NCBI 库里检索，拿登录号（再配合「NCBI 取序列」）',
+    method: 'GET',
+    path: '/api/biotools/entrez/search',
+    fields: [
+      { name: 'db', label: '库', kind: 'select', value: 'nuccore', options: [{ label: '核酸 nuccore', value: 'nuccore' }, { label: '蛋白 protein', value: 'protein' }, { label: 'PubMed', value: 'pubmed' }] },
+      { name: 'term', label: '检索式', kind: 'text', placeholder: '例如 BRD4 AND Arabidopsis' },
+      { name: 'retmax', label: '最多返回条数', kind: 'number', value: 20, min: 1, max: 200 },
+    ],
+    tip: 'NCBI 需要外网；连不上时会在 3 秒内直接报错，不会让请求一直挂着。',
+  },
+  {
     id: 'entrez_fetch',
     name: 'NCBI 取序列',
     group: '外部数据库',
@@ -540,7 +554,12 @@ export default function BioTools() {
         setImageUrl(URL.createObjectURL(blob));
         return;
       }
-      const res = await fetch(endpointOf(tool.path), {
+      const target = endpointOf(tool.path);
+      // GET 类工具（NCBI 检索）参数走 query string —— 后端签名就是 Query 参数
+      const query = tool.method === 'GET' ? new URLSearchParams(
+        Object.entries(body).map(([k, v]) => [k, String(v)]),
+      ).toString() : '';
+      const res = await fetch(query ? `${target}?${query}` : target, {
         method: tool.method,
         credentials: 'include',
         headers: tool.method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
