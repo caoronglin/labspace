@@ -15,7 +15,7 @@ const ROLE = process.env.ROLE || 'admin';
 const ROUTES = [
   '/', '/start', '/workbench', '/latex', '/agent', '/knowledge',
   '/files', '/seeds', '/shared', '/research', '/meetings',
-  '/lab', '/databases', '/tools', '/drawings', '/colors',
+  '/lab', '/databases', '/tools', '/drawio', '/plot', '/bio-tools', '/genomes', '/drawings', '/colors',
   '/translate', '/literature', '/papers',
   '/commands', '/bioinfo', '/weather', '/network', '/help',
   '/snapotter', '/search', '/services/primer', '/embed/primer',
