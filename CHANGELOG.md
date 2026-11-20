@@ -1,5 +1,63 @@
 # CHANGELOG.md
 
+## 2026-11-20 — 统一生信入口 + 导航重构 + 学位论文模板可编译
+
+### A. 生信工具 `/bio-tools`（Biopython + scikit-bio，取代 CropGenome）
+
+- 新增 `backend/app/biotools.py`：25 个端点，一个入口做完序列层面的事
+  - 序列：分析（GC/互补/转录/三框翻译/理化参数）、CDS 提取、格式互转（GenBank/FASTA/EMBL）、
+    ORF 六框、GC 滑窗 + k-mer、单/三字母互转 + 专利排版
+  - 克隆：限制酶切（内置 30 种酶）、去载体/接头、质粒图谱（dna-features-viewer，PNG/SVG）
+  - 蛋白与引物：ProtParam（MW/pI/GRAVY/芳香性/不稳定指数/消光系数）、Tm（NN/GC/Wallace）、稀释换算
+  - 比对与进化：双序列（全局/局部/半全局）、多序列（星型渐进，docstring 写明不是 MSA 最优解）、
+    NJ 树、Newick ↔ JSON/文本树、PCoA
+  - 测序与批处理：`.ab1` 峰图解析（质量 + Mott 裁剪）、SeqIO 批量筛选（长度/GC/名称正则）
+  - 外部：Entrez / BLAST —— 本机无外网，**3 秒快速失败**并给中文提示，不挂在请求上等超时
+  - 上限与错误全部本地化（2 MB 源码、1 MB ab1、20 MB 序列文件；非法输入 400 说明原因）
+- 前端新增 `src/pages/BioTools.tsx`（antd 自绘，抽屉式分组 + 结果表格/比对视图/图谱预览），
+  导航「分析与写作 → 生信工具」。请求 URL 走**端点白名单**（`endpointOf()`），不接受运行时拼接。
+- `src/pages/Genomes.tsx` 收缩为「只负责浏览」：JBrowse 2 轨道 + 公共基因组文件表，
+  顶部加「生信工具」入口；删除 `components/genome/{GenomeTools,ResultActions}.tsx`。
+- 依赖与镜像：新增 `biopython==1.88`、`scikit-bio==0.7.4`、`dna-features-viewer==3.1.5`。
+  这三个在 Python 3.15 上**没有 manylinux 轮子**（scikit-bio/biom-format/h5py 需源码编译），
+  因此 `backend/Dockerfile` 改成两阶段：`wheels` 阶段装 gcc/HDF5 做 wheel，运行时镜像只装
+  wheel 并补 `libhdf5-310`（h5py 动态链接系统 HDF5，缺了 `import skbio` 直接失败）。
+  `requirements-lock.txt` 重生成（37 → 65 个包，保留原有 pin，只新增传递依赖）。
+- 测试：`backend/tests/test_biotools.py` 51 条（含非法序列、空输入、过大上传、未知格式）。
+
+### B. 前端导航与工具入口重构
+
+- `/tools` 三合一入口**拆成三个独立页面**：`/drawio`（流程图设计）、`/plot`（绘图工作台）、
+  `/genomes`（公共基因组），各自带标题条；`/tools?tool=…` 与 `/tools` 走兼容重定向，不 404。
+- `/drawings`（我的图形）并进 `/drawio` 的抽屉：列表/重命名/删除/导出到个人目录全保留，
+  `/drawings` 重定向到 `/drawio?panel=drawings`。
+- `/plot` 交互简化：5 个一键预设（柱状·分组/折线·趋势/散点·回归/火山图/热图）点一下即出预览；
+  高级参数默认折叠；列名改为下拉并按语义收窄（y 只给数值列）。
+  最短路径从「10+ 次交互」降到 **2 次点击出成品图**。
+- 子菜单去重：「实验工具」+「学习与小工具」合并为「实用工具」（`NAV_SUBS` 5 → 4）。
+- 「文件存储」改名「文件空间」，与首页快捷入口一致；导航/引导/帮助文案同步。
+- 分组键收紧为 `work | research | admin`，修掉 `/start` 的 `group: 'tools'` 与
+  `/weather`、`/network` 的 `'learn'` 死枚举（原来会被静默隐藏）。
+
+### C. LaTeX 学位论文模板「开箱不可编译」
+
+- 现象：选「西农学位论文骨架」直接编译，xelatex 停在 `File 'nwafuthesis.cls' not found`，
+  随后卡在交互提示符 `Enter file name: → Emergency stop`。
+- 根因两条：模板 `\documentclass{nwafuthesis}` 依赖的类文件不在仓库里；模板还 `\include`
+  了 9 个根本不存在的子文件。
+- 修复：模板改为**自包含 `ctexbook`** 学位论文骨架（封面/中英文摘要/目录/章节/参考文献/致谢），
+  实测编译通过（86 KB PDF）；官方类文件路径保留在注释里（上传 `.cls` 后改一行即可）。
+- 编译 sidecar 增加**编译前检查**：缺 `.cls` 或 `\include` 的子文件时直接返回
+  「缺少文档类 nwafuthesis.cls / 把缺的文件用右侧「素材」上传」，不再让用户面对 TeX 交互提示符。
+- `docx2latex` 的 `nwafu` 模板同步改成 ctexbook 骨架（原来也是直接写 `\documentclass{nwafuthesis}`）。
+- 顺手：`latex_worker` 的数值环境变量改走 `_env_int()`（手误不再让 sidecar 反复重启）；
+  删除从未被调用、且会抛未捕获异常的 `convert_docx_path()`。
+
+**验证**：`pytest` **275 passed**（新增 51 条 biotools + 修 2 条模板断言）；
+`go build ./...` + `go test ./...` 全绿；`tsc -b` 干净；`vite build` ✓；
+全局巡检 **38 条路由，老师 / 学生均 0 问题**；`/api/biotools/*` 实测
+（分析/酶切/ORF/比对/质粒图谱 PNG）；学位论文模板经真实编译接口产出 86 KB PDF。
+
 ## 2026-11-20 — 下架文档解析页 + 垃圾清理
 
 **下架 `/docparse`（文档解析页）**
