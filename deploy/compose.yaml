@@ -20,7 +20,9 @@ services:
       - /etc/labspace/agent-model.env
     environment:
       TZ: Asia/Shanghai
-      LABSPACE_DB_DSN: "postgresql://labspace:labspace-local-dev-pw@lab-postgres:5432/labspace"
+      # 口令只存在于 deploy/.env（0600，不入库）：仓库里出现的任何口令都是
+      # 可被复制的明文，迟早会跟着镜像或备份一起流出去。
+      LABSPACE_DB_DSN: "${LABSPACE_DB_DSN:?deploy/.env 缺少 LABSPACE_DB_DSN}"
       # AgentScope 服务在同一个 compose 网络里，用服务名访问（容器到容器不走宿主机回环）
       LABSPACE_AGENTSCOPE_BASE: "http://agentscope:8100"
       # 生信工具独立服务（科学计算依赖太重，不塞进本镜像；/api/biotools 是代理）
@@ -82,14 +84,17 @@ services:
       - qdrant
     environment:
       TZ: Asia/Shanghai
-      AGENTSCOPE_DB_DSN: "postgresql+asyncpg://labspace:labspace-local-dev-pw@lab-postgres:5432/agentscope"
+      AGENTSCOPE_DB_DSN: "${AGENTSCOPE_DB_DSN:?deploy/.env 缺少 AGENTSCOPE_DB_DSN}"
       AGENTSCOPE_WORKSPACE_DIR: /srv/agentscope/workspaces
       # 知识库（RAG）装配：
       #   AGENTSCOPE_QDRANT_URL —— 用服务名走 compose 网络（容器间不走宿主机回环）
       #   AGENTSCOPE_EMBED_*   —— 内网向量模型（bge-m3，1024 维，内网无需 key）
       #   AGENTSCOPE_BLOB_DIR  —— 知识库文档原件的落盘目录
       AGENTSCOPE_QDRANT_URL: "http://qdrant:6333"
-      AGENTSCOPE_EMBED_BASE: "http://192.0.2.17:8000/v1/embeddings"
+      # 向量库也要钥匙：Qdrant 只在内网可达，但「没端口的服务」不是「免鉴权的服务」
+      AGENTSCOPE_QDRANT_API_KEY: "${QDRANT_API_KEY:?deploy/.env 缺少 QDRANT_API_KEY}"
+      # 内网向量模型服务地址（部署事实，取自 deploy/.env）
+      AGENTSCOPE_EMBED_BASE: "${AGENTSCOPE_EMBED_BASE:?deploy/.env 缺少 AGENTSCOPE_EMBED_BASE}"
       AGENTSCOPE_EMBED_MODEL: "bge-m3"
       AGENTSCOPE_EMBED_DIM: "1024"
       AGENTSCOPE_BLOB_DIR: /srv/agentscope/blobs
@@ -114,26 +119,39 @@ services:
     networks:
       - labspace
       - lab-tools
-    deploy:
-      resources:
-        limits:
-          memory: 2G
+    # 与门户后端同一套最小权限：不追加任何 capability、禁止提权、限内存限进程限日志。
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---------------------------------------------------------------- Qdrant（知识库向量库）
   # AgentScope 知识库（原生 RAG）的向量库：一个知识库一个集合。
   # 只在 compose 网络内可达（不发布宿主机端口），数据落在挂载卷里。
   qdrant:
-    image: qdrant/qdrant:latest
+    # digest 锁定：`:latest` 会让「昨天的备份」和「今天的重建」不是同一个东西
+    image: qdrant/qdrant@sha256:d277592721d2e3b73f9b797b53cf05e6a5bb2134f6d13fdbda4ca51782afbcac
     container_name: lab-qdrant
     restart: unless-stopped
     init: true
     environment:
       TZ: Asia/Shanghai
-      QDRANT__SERVICE__API_KEY: ""
+      QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY:?deploy/.env 缺少 QDRANT_API_KEY}"
     volumes:
       - /srv/labdata/qdrant:/qdrant/storage
     networks:
       - labspace
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 2g
     cpus: 2.0
     pids_limit: 256
@@ -226,7 +244,7 @@ services:
 
   # ---------------------------------------------------------------- Casdoor（统一身份源）
   casdoor:
-    image: casbin/casdoor:latest
+    image: casbin/casdoor@sha256:d8fd4f387026e1ffdf887b924c1c74ad5c15e8d3be54fb739b57b2037073a51f
     container_name: lab-casdoor
     restart: unless-stopped
     init: true
@@ -277,7 +295,7 @@ services:
 
   # ---------------------------------------------------------------- draw.io
   drawio:
-    image: jgraph/drawio:latest
+    image: jgraph/drawio@sha256:3e3281733f69416b2b632adad05c9c07d434ebb775e01070d55e9f3247cebe31
     container_name: lab-drawio
     restart: unless-stopped
     init: true
@@ -318,7 +336,7 @@ services:
 
   # ---------------------------------------------------------------- PDF 翻译
   pdf2zh:
-    image: awwaawwa/pdfmathtranslate-next:latest
+    image: awwaawwa/pdfmathtranslate-next@sha256:d7ff3755f8ae93a7d42a655ce228722990dbdddd5eaff7ea86ee8a3fb80bf453
     container_name: lab-pdf2zh
     restart: unless-stopped
     init: true
@@ -376,10 +394,11 @@ services:
     environment:
       TZ: Asia/Shanghai
       # 规范化入口；Tailscale 访问时前端使用相对路径，仅邀请链接等绝对地址指向该值
-      BASEROW_PUBLIC_URL: "http://192.0.2.10:8094"
+      # Baserow 依据这些 URL/Host 解析站点：属于部署事实，取自 deploy/.env
+      BASEROW_PUBLIC_URL: "${BASEROW_PUBLIC_URL:?deploy/.env 缺少 BASEROW_PUBLIC_URL}"
       # 双 IP 入口均需通过 Django ALLOWED_HOSTS 与前端站点解析校验
-      BASEROW_EXTRA_ALLOWED_HOSTS: "192.0.2.10,198.51.100.71,localhost,127.0.0.1"
-      BASEROW_EXTRA_PUBLIC_URLS: "http://192.0.2.10:8094,http://198.51.100.71:8094"
+      BASEROW_EXTRA_ALLOWED_HOSTS: "${BASEROW_EXTRA_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+      BASEROW_EXTRA_PUBLIC_URLS: "${BASEROW_EXTRA_PUBLIC_URLS:-}"
       # 外层 Nginx 已终止 HTTP；内层 Caddy 只监听 80，避免自动申请证书
       BASEROW_CADDY_ADDRESSES: ":80"
     volumes:
@@ -425,7 +444,7 @@ services:
   # LibreOffice / Python 子进程做转换，不限并发的话，一个批量转换
   # 就能把整台机器的 CPU 和内存吃光（这是它最常见的坑）。
   stirling:
-    image: docker.io/stirlingtools/stirling-pdf:latest
+    image: stirlingtools/stirling-pdf@sha256:ed7b1775c6706b5e5ea24fa6155f078eff1027bd35a17d21834e4407036025e6
     container_name: lab-stirling
     restart: unless-stopped
     init: true
@@ -463,6 +482,21 @@ services:
     volumes:
       - stirling_data:/app/data
       - stirling_data:/app/configs
+    # 与门户后端同一套最小权限：PDF 批处理是最容易被塞进恶意文件的地方。
+    # 但 Stirling 的 LibreOffice 沙箱要建 /var/lib/libreoffice-sandbox 并降权到
+    # 非特权用户跑转换，cap_drop: ALL 会让它 Permission denied 直接退出，
+    # 因此只把「降权所需」的这几项能力精确加回来（仍然不是 privileged）。
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - FSETID
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
     pids_limit: 512
     mem_limit: 1536m
     memswap_limit: 3072m
@@ -509,7 +543,8 @@ services:
       - 'MAILBOX_SERVICE_PROVIDERS=["imap","pop3","jmap"]'
       # 反代在后面：nginx 在 127.0.0.1，允许它传真实客户端地址与协议
       - MAILBOX_SERVICE_FORWARDED_ALLOW_IPS=127.0.0.1
-      - MAILBOX_SERVICE_PUBLIC_URL=http://198.51.100.71/mail
+      # 收信服务对外地址：双入口都是 IP + 端口，不能写死某一个网段
+      - MAILBOX_SERVICE_PUBLIC_URL=${MAILBOX_SERVICE_PUBLIC_URL:-}
       # 限流：每人每分钟 120 次、匿名 30 次
       - MAILBOX_SERVICE_RATE_LIMIT_PER_MINUTE=120
       - MAILBOX_SERVICE_RATE_LIMIT_ANONYMOUS_PER_MINUTE=30
@@ -519,6 +554,10 @@ services:
     volumes:
       - mailbox-data:/data
       - /etc/labspace/mailbox-master.key:/run/secrets/master_key:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 512m
     cpus: 0.8
     pids_limit: 256

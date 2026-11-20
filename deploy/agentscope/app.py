@@ -102,16 +102,29 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 # 数据库：与门户同实例、独立库。用独立库而不是同库不同 schema ——
 # AgentScope 自带 alembic，schema 隔离需要给 asyncpg 与 alembic 两侧都加
 # search_path，任何一侧漏配都会写到 public，风险高于收益。
-DSN = os.getenv(
-    "AGENTSCOPE_DB_DSN",
-    "postgresql+asyncpg://labspace:labspace-local-dev-pw@lab-postgres:5432/agentscope",
-)
+def _required_env(name: str) -> str:
+    """必须由环境提供的部署事实。
+
+    这些值（数据库口令、向量库 API Key）以前在仓库里带默认值，等于把凭据
+    和代码一起分发出去：谁拿到镜像或备份，谁就有库的钥匙。缺了就立刻炸，
+    而不是悄悄连到某个写死的账号上。
+    """
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        raise RuntimeError(f"{name} 未设置（应由 deploy/.env 注入）")
+    return value
+
+
+DSN = _required_env("AGENTSCOPE_DB_DSN")
 WORKSPACE_DIR = os.getenv("AGENTSCOPE_WORKSPACE_DIR", "/srv/agentscope/workspaces")
 
 # 知识库（RAG）装配参数（全部走环境变量）。
 #   AGENTSCOPE_QDRANT_URL —— compose 内的 qdrant 服务（不发布宿主机端口）
 #   AGENTSCOPE_BLOB_DIR   —— 知识库文档原件的落盘目录（挂载卷）
 QDRANT_URL = os.getenv("AGENTSCOPE_QDRANT_URL", "http://qdrant:6333")
+# 向量库只在内网可达，但「没有端口」不等于「不需要鉴权」：
+# Qdrant 一旦开了 API Key，任何知道 compose 网络名的容器都能全量读知识库。
+QDRANT_API_KEY = os.getenv("AGENTSCOPE_QDRANT_API_KEY", "").strip()
 BLOB_DIR = os.getenv("AGENTSCOPE_BLOB_DIR", "/srv/agentscope/blobs")
 
 # lab MCP server（与本服务同进程、只绑回环）。
@@ -525,7 +538,7 @@ lab_mcp_server.serve_in_thread()
 #   knowledge_chunkers    —— 自带分块器：ApproxTokenChunker
 knowledge_base_manager = LabKnowledgeBaseManager(
     storage=storage,
-    vector_store=QdrantStore(url=QDRANT_URL),
+    vector_store=QdrantStore(url=QDRANT_URL, api_key=QDRANT_API_KEY or None),
 )
 blob_store = LocalBlobStore(root_dir=BLOB_DIR)
 
