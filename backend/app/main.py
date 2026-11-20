@@ -59,6 +59,9 @@ from . import (
     baserow as baserow_mod,
 )
 from . import (
+    biotools as biotools_mod,
+)
+from . import (
     casdoor,
     db,
     db_apis,
@@ -209,6 +212,8 @@ app.include_router(sso_mod.router)
 app.include_router(wecom_mod.router)
 app.include_router(debug_api_mod.router)
 app.include_router(baserow_mod.router)
+# 统一生信工具（Biopython + scikit-bio）：取代已废弃的 CropGenome 序列工具，纯计算只读
+app.include_router(biotools_mod.router)
 app.include_router(office_mod.router)
 app.include_router(genomes_mod.router)
 app.include_router(labops_mod.router)

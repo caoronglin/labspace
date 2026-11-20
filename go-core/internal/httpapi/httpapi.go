@@ -56,10 +56,6 @@ type Server struct {
 	Catalog  *catalog.Service
 	Search   *search.Service
 	Vault    *vault.Vault
-	// CropGenome fronts the CropGenome Toolkit as an OIDC aware reverse
-	// proxy: the core validates the portal session and injects verified
-	// claims, the toolkit never sees a cookie nor a client identity.
-	CropGenome *CropGenome
 	// Health probes live services and caches results for a short TTL.
 	Health *health.Prober
 	// Embed inspects X-Frame-Options / CSP frame-ancestors of third-party services.
@@ -176,12 +172,6 @@ func (a actor) fileIdentity() labfiles.Identity {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/healthz" && r.Method == "GET" {
 		jsonResponse(w, 200, map[string]string{"status": "alive"})
-		return
-	}
-	// The CropGenome proxy runs before the bounded body reader: it forwards
-	// the request body upstream and authenticates on its own.
-	if strings.HasPrefix(r.URL.Path, "/cropgenome/") {
-		s.serveCropGenome(w, r)
 		return
 	}
 	// Multipart uploads (SnapOtter /run) can be up to 200MB; guard.ReadBounded

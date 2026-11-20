@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # 本地跑 CI 的全部检查，与 .cnb.yml 里的 stage 一一对应。
-# 用法：bash labspace/ops/ci-local.sh [hygiene|python|frontend|go|cropgenome]...
+# 用法：bash labspace/ops/ci-local.sh [hygiene|python|frontend|go]...
 #     不带参数 = 全跑
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE/../.."
 
-ALL=(hygiene python frontend go cropgenome rust)
+ALL=(hygiene python frontend go)
 TARGETS=("$@")
 [ ${#TARGETS[@]} -eq 0 ] && TARGETS=("${ALL[@]}")
 

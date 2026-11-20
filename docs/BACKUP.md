@@ -16,7 +16,7 @@ LabSpace 使用 [restic](https://restic.net/) 做加密、去重、压缩的增�
 备份内容：PostgreSQL 逻辑备份（labspace / casdoor / cropgenome / snapotter / baserow）、
 `/srv/lab` 教学与用户文件、`/srv/labdata/bioinfo-training`、`/srv/labdata/baserow`
 （媒体与配置，PGDATA 已由逻辑备份替代）、`/srv/labdata/jbrowse`、`/srv/labdata/labops`、
-`/srv/labdata/labgo`、`/srv/labdata/plot`、`/srv/labdata/snapotter`、`/srv/labdata/cropgenome`、
+`/srv/labdata/labgo`、`/srv/labdata/plot`、`/srv/labdata/snapotter`、
 项目源码与部署配置、`/etc/labspace`。依赖目录（`node_modules`、`.venv`、缓存）不进入备份。
 
 ## 常用操作

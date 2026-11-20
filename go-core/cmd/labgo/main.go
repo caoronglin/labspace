@@ -277,7 +277,6 @@ func main() {
 		SnapOtter:    snapHandler,
 		DBAPIs:       dbHandler,
 		Colors:       colorLab(),
-		CropGenome:   cropGenomeProxy(),
 	}
 
 	addr := env("LABGO_ADDR", "127.0.0.1:8122")
@@ -483,21 +482,6 @@ func corpusTools(h *snapotter.Handler) []corpus.Tool {
 		return h.Client.Snapshot()
 	}
 	return tools
-}
-
-// cropGenomeProxy wires the CropGenome Toolkit behind the core. The toolkit
-// is optional: without CROPGENOME_URL the route stays disabled.
-func cropGenomeProxy() *httpapi.CropGenome {
-	base := strings.TrimSpace(os.Getenv("CROPGENOME_URL"))
-	if base == "" {
-		return nil
-	}
-	return &httpapi.CropGenome{
-		BaseURL:  base,
-		Issuer:   env("CROPGENOME_ISSUER", "http://192.0.2.10:8090"),
-		Audience: env("CROPGENOME_AUDIENCE", "cropgenome"),
-		Timeout:  120 * time.Second,
-	}
 }
 
 func colorLab() *colorlab.Service {

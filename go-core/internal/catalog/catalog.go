@@ -187,7 +187,7 @@ func Default() *Service {
 			},
 			{
 				ID: "jbrowse", Name: "公共基因组", Category: "research",
-				Description: "JBrowse 2 基因组浏览器 + CropGenome / rust-bio 成对比对、基序检索、区域重叠、序列提取、基因检索、ID 解析与 BLAST",
+				Description: "JBrowse 2 基因组浏览器 + 门户内置生信工具（Biopython / scikit-bio）：比对、CDS 提取、酶切、ORF、进化树、质粒图谱与 BLAST",
 				URL:         "/genomes", Icon: "ExperimentOutlined",
 				OpenMode: "link",
 				Tags:     []string{"基因组", "JBrowse", "变异", "序列", "ORF", "GC", "BLAST", "比对", "注释", "作物"},
@@ -195,9 +195,10 @@ func Default() *Service {
 					"门户 /genomes 是统一入口：浏览 JBrowse 2 轨道，对 FASTA 做 ORF / GC 分析，或使用「比对与注释工具」。",
 					"比对与注释工具包含：成对比对、基序检索、区域重叠、序列提取、基因检索、ID 解析、BLAST 任务。",
 					"数据来自「公共基因组」文件源，按 ACL 过滤；注释相关功能需先导入并发布参考物种。",
-					"浏览器轨道经 /jbrowse/ 同源反代，分析请求经 /cropgenome/api/ 以你的身份代理，均不暴露服务令牌。",
+					"浏览器轨道经 /jbrowse/ 同源反代，不暴露服务令牌。",
+					"JBrowse 2 负责轨道浏览；序列层面的分析（CDS 提取、酶切、ORF、比对、进化树、质粒图谱等）由门户内置生信工具（Biopython + scikit-bio）完成。",
 				},
-				Enabled: true, Status: "preserved", Engine: "JBrowse 2 + CropGenome / rust-bio",
+				Enabled: true, Status: "preserved", Engine: "JBrowse 2 + Biopython / scikit-bio",
 				Health: HealthSpec{URL: "http://192.0.2.10:8091/index.html", Kind: "host", Host: "192.0.2.10:8091"},
 			},
 			{

@@ -227,22 +227,34 @@ One paragraph, no new claims.
 """,
     },
     {
-        "id": "nwafuthesis",
-        "name": "西农学位论文骨架",
-        "description": "nwafuthesis 学位论文骨架（摘要 / 章节 / 参考文献占位）。需要先把 nwafuthesis.cls 上传到编译沙箱才能编译通过。",
+        "id": "thesis",
+        "name": "学位论文骨架（可直接编译）",
+        "description": "自包含的学位论文骨架：封面 / 中英文摘要 / 目录 / 正文章节 / 参考文献 / 致谢，用 ctexbook 排版，开箱即可编译。"
+        "要用学校官方模板，把 nwafuthesis.cls（及 .bst）作为「素材」上传，再把第一行换成 \\documentclass{nwafuthesis} 即可。",
         "kind": "thesis",
-        "tags": ["中文", "学位论文", "需类文件"],
+        "tags": ["中文", "学位论文"],
         "content": r"""% !TeX program = xelatex
 % ---------------------------------------------------------------------------
-% 重要说明（请先读完再编译）：
-%   这份模板用的是西北农林科技大学官方学位论文类文件 nwafuthesis.cls。
-%   编译沙箱里默认没有这个类文件，必须先把 nwafuthesis.cls 上传到沙箱
-%   （与 main.tex 放在同一目录，沙箱会把它当作主文件的一部分一起编译），
-%   否则编译会停在 "File `nwafuthesis.cls' not found"。
-%   门户目前只把源码文本送进沙箱，还没有开放「附加类文件」的入口，
-%   所以在门户里直接编译这份模板会失败——这不是模板本身写错了。
+% 自包含的学位论文骨架：不依赖任何额外的类文件，新建即可编译。
+%
+% 想换成学校官方模板（nwafuthesis）：
+%   1) 在右侧「素材」里上传 nwafuthesis.cls（需要 .bst 的话一并上传）；
+%   2) 把下面这行的 ctexbook 换成 nwafuthesis，并按其文档填入 \title 等字段；
+%   3) 素材会与 main.tex 放在同一目录，xelatex 按文件名就能找到。
+%   缺文件时编译会**提前**报出「缺少 xxx.cls」，而不是停在交互提示符上。
 % ---------------------------------------------------------------------------
-\documentclass{nwafuthesis}
+\documentclass[UTF8,zihao=-4,openany]{ctexbook}
+
+\usepackage[a4paper,left=3cm,right=2.5cm,top=2.8cm,bottom=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{setspace}
+\usepackage[hidelinks]{hyperref}
+% titling 提供 \thetitle / \theauthor / \thedate：ctexbook 本身没有这几个宏，
+% 直接写 \thetitle 会报 "Undefined control sequence"。
+\usepackage{titling}
+\onehalfspacing
 
 \title{学位论文题目}
 \author{作者姓名}
@@ -250,19 +262,98 @@ One paragraph, no new claims.
 
 \begin{document}
 
-\makenomenclature
-\makefrontmatter
+% ---------------------------------------------------------------- 封面
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\zihao{2}\bfseries 西\quad 北\quad 农\quad 林\quad 科\quad 技\quad 大\quad 学\par}
+  \vspace{2cm}
+  {\zihao{1}\bfseries 学\quad 位\quad 论\quad 文\par}
+  \vspace{2.5cm}
+  {\zihao{3}\bfseries \thetitle\par}
+  \vfill
+  \begin{tabular}{rl}
+    \zihao{4}学\quad 科 & \zihao{4}作物遗传育种 \\
+    \zihao{4}研究方向 & \zihao{4}（填写） \\
+    \zihao{4}研究生 & \zihao{4}\theauthor \\
+    \zihao{4}指导教师 & \zihao{4}（填写） \\
+  \end{tabular}
+  \vfill
+  {\zihao{4}\thedate\par}
+\end{titlepage}
 
-\include{abstract}
-\include{summary}
-\include{materials}
-\include{methods}
-\include{results}
-\include{discussion}
-\include{conclusion}
-\include{references}
-\include{appendix}
-\include{acknowledgements}
+% ---------------------------------------------------------------- 摘要
+\frontmatter
+\chapter*{摘\quad 要}
+\addcontentsline{toc}{chapter}{摘要}
+
+这里是中文摘要。一段话讲清楚：研究背景与问题、用了什么方法、得到什么结果、
+结论与意义。摘要里不放图表、不引用文献，一般 300--500 字。
+
+\vspace{1em}
+\noindent\textbf{关键词：}关键词一；关键词二；关键词三
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+English abstract goes here. It should mirror the Chinese abstract: background,
+methods, results and conclusion, in one paragraph of roughly 250--350 words.
+
+\vspace{1em}
+\noindent\textbf{Keywords:} keyword one; keyword two; keyword three
+
+% ---------------------------------------------------------------- 目录
+\tableofcontents
+\clearpage
+\mainmatter
+
+% ---------------------------------------------------------------- 正文
+\chapter{绪论}
+\section{研究背景}
+正文从这里开始。\LaTeX{} 里空行分段，中文标点直接用全角。
+
+\section{研究进展}
+引用示例~\cite{example2026}。
+
+\chapter{材料与方法}
+\section{试验材料}
+\begin{table}[htbp]
+  \centering
+  \caption{供试材料一览}
+  \begin{tabular}{lll}
+    \toprule
+    编号 & 名称 & 备注 \\
+    \midrule
+    M1 & 材料一 & 对照 \\
+    M2 & 材料二 & 处理 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{统计分析}
+\begin{equation}
+  y_{ij} = \mu + \tau_i + \varepsilon_{ij}
+\end{equation}
+
+\chapter{结果与分析}
+\section{主要结果}
+把图和表放在论证链上，而不是堆在一起。
+
+\chapter{讨论与结论}
+\section{讨论}
+\section{结论}
+
+% ---------------------------------------------------------------- 参考文献
+% 用 thebibliography 内联，免去 bibtex 的额外步骤；正式投稿可换成
+% \bibliographystyle{...} + \bibliography{refs}（refs.bib 作为素材上传）。
+\backmatter
+\begin{thebibliography}{99}
+  \bibitem{example2026} 作者. 文献题名[J]. 期刊名, 2026, 1(1): 1--10.
+\end{thebibliography}
+
+\chapter*{致\quad 谢}
+\addcontentsline{toc}{chapter}{致谢}
+感谢导师、同学与家人的支持。
 
 \end{document}
 """,

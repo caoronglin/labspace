@@ -84,13 +84,21 @@ def test_latin_document_uses_plain_article():
     assert "ctexart" not in conv.latex
 
 
-def test_nwafu_template_emits_class_skeleton_without_pretending_to_compile():
+def test_nwafu_template_compiles_without_school_class_file():
+    """学位论文模板必须**开箱可编译**。
+
+    以前这里生成的是 school 类（nwafuthesis），而学校类文件不在仓库里，
+    用户点「编译」只会停在 "File `nwafuthesis.cls' not found"。
+    现在改用 ctexbook，并在注释里说明怎么换成官方类文件。
+    """
+
     def build(d):
         d.add_heading("摘要", level=1)
 
     conv = convert_docx(_docx_bytes(build), template="nwafu")
-    assert r"\documentclass{nwafuthesis}" in conv.latex
-    assert "需在公共模板库中提供" in conv.latex
+    assert r"\documentclass[UTF8,zihao=-4,openany]{ctexbook}" in conv.latex
+    # 官方类文件留成注释里的可切换说明，而不是直接用
+    assert "% 想用学校官方 nwafuthesis" in conv.latex
 
 
 def test_title_style_becomes_title_command():

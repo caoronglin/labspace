@@ -10,8 +10,32 @@
 #
 #  依赖真源：backend/pyproject.toml（直接依赖，宿主机由 pnpm 管理）
 #  传递依赖锁：backend/requirements-lock.txt（由 python:3.15-slim 一次性容器
-#              `pip install -r requirements-runtime.txt && pip freeze` 生成）
+#              `pip install -r requirements-runtime.txt && pip freeze` 生成；
+#              3.15 上 scikit-bio/h5py 无 manylinux 轮子，构建阶段带 gcc+HDF5 编译）
 # =====================================================================
+# ---------------------------------------------------------------------------
+# 阶段 1：把锁文件里的依赖做成 wheel
+#
+# 为什���要单独一阶段：scikit-bio / biom-format / h5py 在 Python 3.15 上还没有
+# 现成的 manylinux 轮子（3.15 太新），只能从源码编译，而编译需要 gcc 与
+# HDF5 头文件。把这些工具留在 runtime 镜像里会白占几百 MB 并扩大攻击面，
+# 所以放在构建阶段，最终镜像只拿 wheel。
+# ---------------------------------------------------------------------------
+FROM python:3.15-slim AS wheels
+
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential libhdf5-dev pkg-config cmake ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-lock.txt /tmp/requirements-lock.txt
+RUN pip wheel --wheel-dir /wheels -r /tmp/requirements-lock.txt \
+    && rm -f /tmp/requirements-lock.txt
+
+# ---------------------------------------------------------------------------
+# 阶段 2：运行时镜像
+# ---------------------------------------------------------------------------
 FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -21,10 +45,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/app
 
-# 依赖全部来自锁文件（含传递依赖），构建结果可复现
+# 依赖全部来自构建阶段产出的 wheel（含传递依赖），构建结果可复现、且不需要网络
+COPY --from=wheels /wheels /wheels
 COPY requirements-lock.txt /tmp/requirements-lock.txt
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
-      -r /tmp/requirements-lock.txt && rm -f /tmp/requirements-lock.txt
+RUN pip install --no-index --find-links=/wheels -r /tmp/requirements-lock.txt \
+    && rm -rf /wheels /tmp/requirements-lock.txt
+
+# h5py 是动态链接系统 HDF5 的（源码编译，不像 manylinux 轮子自带静态库），
+# 运行时必须装这个库，否则 `import skbio` 直接 ImportError。
+RUN apt-get update && apt-get install -y --no-install-recommends libhdf5-310 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Office 放映/旧格式转换依赖：LibreOffice 无头模式 + 中文字体，
 # 避免 PPTX 转 PDF 时中文变成方框（字体缺失会静默回退）。

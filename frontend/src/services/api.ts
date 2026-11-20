@@ -551,87 +551,16 @@ export interface SequenceOrf {
 }
 
 /** CropGenome Toolkit `/sequence/analyze` 的返回；gc 为 0~1 比例而不是百分数。 */
-export interface SequenceAnalysis {
-  library: string;
-  library_version: string;
-  alphabet: string;
-  length: number;
-  gc_content: number;
-  gc3_content: number;
-  reverse_complement: string;
-  orfs: SequenceOrf[];
-  coordinate_system: string;
-  warnings: string[];
-}
 
-export interface GenomeSpecies {
-  id: string;
-  common_name: string;
-  scientific_name: string;
-}
 
-export interface GenomeAssembly {
-  id: string;
-  cultivar: string;
-  assembly_name: string;
-}
 
-export interface GenomeAnnotation {
-  id: string;
-  annotation_name: string;
-  status: string;
-}
 
 /** rust-bio pairwise 对齐；端点坐标为 0-based 半开区间。 */
-export interface PairwiseAlignment {
-  algorithm: string;
-  library_version: string;
-  mode: string;
-  score: number;
-  query_interval: { start: number; end: number };
-  reference_interval: { start: number; end: number };
-  cigar: string;
-  pretty: string;
-  coordinate_system: string;
-}
 
-export interface MotifSearchResult {
-  algorithm: string;
-  library_version: string;
-  mode: string;
-  pattern_length: number;
-  max_distance: number;
-  matches: Array<{ start: number; end: number; distance: number }>;
-  coordinate_system: string;
-}
 
 /** 区域重叠查询；对外坐标 1-based 闭区间，内部回显 0-based 半开区间。 */
-export interface RegionOverlapResult {
-  algorithm: string;
-  library_version: string;
-  coordinate_system: string;
-  contig: string;
-  internal_interval: { start: number; end: number; coordinate_system: string };
-  hits: string[];
-}
 
-export interface ExtractedSequence {
-  fasta_id: string;
-  sequence: string;
-  sequence_type?: string;
-  [key: string]: unknown;
-}
 
-export interface GenomeGene {
-  id: string | number;
-  stable_id: string;
-  seqid: string;
-  start_1: number;
-  end_1: number;
-  strand: string;
-  biotype?: string | null;
-  description?: string | null;
-}
 
 export interface IdResolveCandidate {
   entity_kind: string;
@@ -642,11 +571,6 @@ export interface IdResolveCandidate {
   entity_pk: string | number;
 }
 
-export interface IdResolveItem {
-  input: string;
-  status: string;
-  candidates: IdResolveCandidate[];
-}
 
 export interface IdMapOutput {
   identifier: string;
@@ -662,64 +586,6 @@ export interface IdMapEdge {
   evidence_url?: string | null;
 }
 
-export interface IdMapItem {
-  input: string;
-  status: string;
-  outputs?: IdMapOutput[];
-  edges?: IdMapEdge[];
-}
-
-export interface BlastDatabase {
-  id: string;
-  usable: boolean;
-  supported_modes: string[];
-  [key: string]: unknown;
-}
-
-export interface BlastJob {
-  job_id: string;
-  status: string;
-  mode?: string;
-  database_id?: string;
-  evalue?: number;
-  created_at?: string;
-  [key: string]: unknown;
-}
-
-export interface BlastQuery {
-  internal_id: string;
-  original_header?: string;
-  length: number;
-  zero_hits?: boolean;
-}
-
-export interface BlastHit {
-  id: string;
-  hit_rank: number;
-  subject_id: string;
-  best_bitscore?: number;
-  best_evalue?: number;
-  query_coverage?: number;
-  subject_coverage?: number;
-  hsp_count?: number;
-}
-
-export interface BlastHsp {
-  hsp_rank: number;
-  query_start_1: number;
-  query_end_1: number;
-  query_strand?: string;
-  subject_start_1: number;
-  subject_end_1: number;
-  subject_strand?: string;
-  pident?: number;
-  align_length?: number;
-  evalue?: number;
-  bitscore?: number;
-  frame?: string;
-  query_aligned?: string;
-  subject_aligned?: string;
-}
 
 export type FileSortKey = 'name' | 'size' | 'modified' | 'created' | 'path';
 
@@ -1862,125 +1728,6 @@ export const api = {
     ),
   officePdf: (id: string) => requestBlob(`/api/office/files/${encodeURIComponent(id)}/pdf`),
 
-  // ---- 公共基因组 / CropGenome Toolkit（rust-bio，经门户鉴权代理） ----
-  genomeAnalyze: (sequence: string) =>
-    request<SequenceAnalysis>('/cropgenome/api/v1/sequence/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ sequence, alphabet: 'dna' }),
-    }),
-  genomeSpecies: () => request<{ items: GenomeSpecies[] | null; total?: number }>('/cropgenome/api/v1/species'),
-  genomeAssemblies: (speciesId: string) =>
-    request<{ items: GenomeAssembly[] | null }>(
-      `/cropgenome/api/v1/assemblies?species_id=${encodeURIComponent(speciesId)}`,
-    ),
-  genomeAnnotations: (assemblyId: string) =>
-    request<{ items: GenomeAnnotation[] | null }>(
-      `/cropgenome/api/v1/annotations?assembly_id=${encodeURIComponent(assemblyId)}`,
-    ),
-  genomeAlignPairwise: (body: {
-    query: string;
-    reference: string;
-    molecule: 'dna' | 'protein';
-    mode: 'global' | 'semiglobal' | 'local';
-    scoring: { match: number; mismatch: number; gap_open: number; gap_extend: number };
-  }) =>
-    request<PairwiseAlignment>('/cropgenome/api/v1/alignments/pairwise', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeSearchMotifs: (body: {
-    text: string;
-    pattern: string;
-    mode: 'exact' | 'approximate';
-    max_distance: number;
-  }) =>
-    request<MotifSearchResult>('/cropgenome/api/v1/motifs/search', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeRegionFeatures: (body: {
-    features: Array<{ contig: string; start: number; end: number; id: string }>;
-    query: { contig: string; start: number; end: number; assembly_id?: string };
-    assembly_id?: string;
-  }) =>
-    request<RegionOverlapResult>('/cropgenome/api/v1/regions/features', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeExtract: (body: {
-    annotation_id: string;
-    sequence_type: string;
-    multi_transcript_policy: 'all' | 'canonical' | 'longest';
-    format: 'json';
-    identifiers?: string[];
-    interval_seqid?: string;
-    interval_start_1?: number;
-    interval_end_1?: number;
-    upstream_bp?: number;
-    downstream_bp?: number;
-  }) =>
-    request<{ items: ExtractedSequence[] }>('/cropgenome/api/v1/sequences/extract', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeGenes: (params: { annotationId: string; q?: string; cursor?: string; limit?: number }) => {
-    const q = new URLSearchParams({ annotation_id: params.annotationId, limit: String(params.limit ?? 20) });
-    if (params.q) q.set('q', params.q);
-    if (params.cursor) q.set('cursor', params.cursor);
-    return request<{ items: GenomeGene[]; next_cursor?: string | null }>(`/cropgenome/api/v1/genes?${q.toString()}`);
-  },
-  genomeResolveIds: (body: { ids: string[]; annotation_id?: string; match_type: 'exact' | 'alias' }) =>
-    request<{ items: IdResolveItem[] }>('/cropgenome/api/v1/ids/resolve', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeMapIds: (body: {
-    inputs: string[];
-    source_namespace: string;
-    target_namespace: string;
-    source_annotation_id: string;
-    target_annotation_id: string;
-  }) =>
-    request<{ items: IdMapItem[] }>('/cropgenome/api/v1/ids/map', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeBlastDatabases: (annotationId: string, mode: string) =>
-    request<{ items: BlastDatabase[] }>(
-      `/cropgenome/api/v1/blast/databases?annotation_id=${encodeURIComponent(annotationId)}&mode=${encodeURIComponent(mode)}`,
-    ),
-  genomeCreateBlastJob: (body: {
-    mode: string;
-    database_id: string;
-    query_fasta: string;
-    evalue: number;
-    max_target_seqs: number;
-    sensitivity: string;
-  }) =>
-    request<{ job_id: string }>('/cropgenome/api/v1/blast/jobs', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  genomeBlastJobs: () => request<{ items: BlastJob[] }>('/cropgenome/api/v1/blast/jobs'),
-  genomeCancelBlastJob: (jobId: string) =>
-    request<void>(`/cropgenome/api/v1/blast/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
-  genomeBlastJobQueries: (jobId: string) =>
-    request<{ items: BlastQuery[] }>(`/cropgenome/api/v1/blast/jobs/${encodeURIComponent(jobId)}/queries`),
-  genomeBlastJobHits: (jobId: string, params: { queryId?: string; limit?: number; sort?: string }) => {
-    const q = new URLSearchParams();
-    if (params.queryId) q.set('query_id', params.queryId);
-    q.set('limit', String(params.limit ?? 200));
-    q.set('sort', params.sort ?? 'bitscore');
-    return request<{ items: BlastHit[] }>(
-      `/cropgenome/api/v1/blast/jobs/${encodeURIComponent(jobId)}/hits?${q.toString()}`,
-    );
-  },
-  genomeBlastJobHsps: (jobId: string, hitId: string) =>
-    request<{ items: BlastHsp[] }>(
-      `/cropgenome/api/v1/blast/jobs/${encodeURIComponent(jobId)}/hits/${encodeURIComponent(hitId)}/hsps`,
-    ),
-  genomeBlastDownload: (jobId: string, kind: 'tsv' | 'json' | 'fasta') =>
-    requestBlob(`/cropgenome/api/v1/blast/jobs/${encodeURIComponent(jobId)}/downloads/${kind}`),
 
   // ---- 知识库 ----
   knowledgeList: (q = '', filter: { category?: string; tag?: string; folder?: string; space?: number } = {}) => {
@@ -2287,6 +2034,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ name, content }),
     }),
+  // 重命名与删除以前在「我的图形」页里手写 fetch + 手搞 CSRF，
+  // 与 request() 的 401 / 错误文案处理不一致；统一走这里。
+  renameDrawing: (id: string, name: string) =>
+    request<{ ok: boolean }>(`/api/drawings/${encodeURIComponent(id)}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  deleteDrawing: (id: string) =>
+    request<{ ok: boolean }>(`/api/drawings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   exportDrawing: (id: string, content: string, name: string) =>
     request<{ path: string }>(`/api/drawings/${id}/export`, { method: 'POST', body: JSON.stringify({ content, name }) }),
   announcements: () => request<{ announcements: Announcement[] }>('/api/announcements'),

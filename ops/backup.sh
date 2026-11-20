@@ -240,7 +240,6 @@ else
     /srv/labdata/labgo
     /srv/labdata/plot
     /srv/labdata/snapotter
-    /srv/labdata/cropgenome
     /opt/labspace
     /opt/bioinfo-training
     /opt/lab-core-stack

@@ -13,6 +13,7 @@ import base64
 import binascii
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -25,8 +26,23 @@ MAX_ASSET_BYTES = 2 * 1024 * 1024
 MAX_ASSETS_BYTES = 20 * 1024 * 1024
 # 请求体上限：源码 2 MB + 素材 20 MB（base64 还要膨胀一点）
 MAX_REQUEST = MAX_BODY + MAX_ASSETS_BYTES * 2
-TIMEOUT = int(os.environ.get("LATEX_COMPILE_TIMEOUT", "60"))
-PORT = int(os.environ.get("LATEX_WORKER_PORT", "8131"))
+def _env_int(name: str, default: int) -> int:
+    """读整型环境变量，写错了用默认值。
+
+    直接 `int(os.environ.get(...))` 会让一个手误（例如 `LATEX_COMPILE_TIMEOUT=60s`）
+    在 import 阶段抛异常，容器反复重启，日志里只有一行 ValueError。
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+TIMEOUT = _env_int("LATEX_COMPILE_TIMEOUT", 60)
+PORT = _env_int("LATEX_WORKER_PORT", 8131)
 ENGINE = os.environ.get("LATEX_ENGINE", "xelatex")
 
 
@@ -57,6 +73,62 @@ def _decode_files(raw: object) -> dict[str, bytes]:
         files[safe] = data
         total += len(data)
     return files
+
+
+#: `\\documentclass[opts]{name}` —— 只取类名，用来判断类文件在不在。
+_CLASS_RE = re.compile(r"\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
+#: `\\include{name}` / `\\input{name}` —— 子文件缺了会报 "No file name.tex"。
+_CHILD_RE = re.compile(r"\\(?:include|input)\s*\{([^}]+)\}")
+
+
+def _strip_comments(text: str) -> str:
+    """去掉整行的 `%` 注释，避免注释里的 documentclass 被当成真需求。"""
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("%"))
+
+
+def _has_tex_file(workdir: str, name: str, suffix: str) -> bool:
+    """类文件/子文件是否存在：先看临时目录（随请求上传的素材），再问 kpsewhich。"""
+    local = os.path.join(workdir, name if name.endswith(suffix) else name + suffix)
+    if os.path.exists(local):
+        return True
+    if os.path.exists(os.path.join(workdir, name)):
+        return True
+    try:
+        proc = subprocess.run(
+            ["kpsewhich", name if name.endswith(suffix) else name + suffix],
+            cwd=workdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # kpsewhich 不可用时不要误报：让 xelatex 自己去报错。
+        return True
+    return bool(proc.stdout.strip())
+
+
+def _missing_dependencies(content: str, workdir: str) -> list[str]:
+    """编译前就能确定缺失的类文件与子文件，返回中文说明列表。
+
+    为什么要提前查：缺 `.cls` 时 xelatex 会停在 `Enter file name:` 交互提示符上，
+    日志里只有一行 ``File `x.cls' not found``。用户看到的是"编译失败"，
+    完全不知道下一步该做什么。这里一次把缺的东西列全，并直接说怎么补。
+    """
+    body = _strip_comments(content)
+    missing: list[str] = []
+    for name in dict.fromkeys(m.strip() for m in _CLASS_RE.findall(body)):
+        # 只认"名字"：带路径成分或宏的写法交给 xelatex 自己报错，
+        # 否则这里会把用户写的 ../ 拼进临时目录去探文件（没有意义也不安全）。
+        if not name or "\\" in name or "#" in name or "/" in name or ".." in name:
+            continue
+        if not _has_tex_file(workdir, name, ".cls"):
+            missing.append(f"缺少文档类 {name}.cls")
+    for name in dict.fromkeys(m.strip() for m in _CHILD_RE.findall(body)):
+        if not name or "\\" in name or "#" in name or " " in name or "/" in name or ".." in name:
+            continue
+        if not _has_tex_file(workdir, name, ".tex"):
+            missing.append(f"缺少被 \\include/\\input 引入的子文件 {name}.tex")
+    return missing
 
 
 def _run(engine: str, workdir: str) -> tuple[bool, str, int]:
@@ -109,6 +181,17 @@ def compile_pdf(content: str, files: dict[str, bytes] | None = None) -> dict:
         for name, blob in (files or {}).items():
             with open(os.path.join(workdir, name), "wb") as fh:
                 fh.write(blob)
+        # 先做一次"缺什么"预检：缺类文件时 xelatex 会停在交互提示符，
+        # 日志只有一行 "File `x.cls' not found"，用户根本不知道该传什么。
+        missing = _missing_dependencies(content, workdir)
+        if missing:
+            hint = "把缺的文件用右侧「素材」上传后重试（素材会与 main.tex 放在同一目录）。"
+            return {
+                "ok": False,
+                "log": "编译前检查未通过：\n- " + "\n- ".join(missing) + "\n\n" + hint,
+                "ms": 0,
+                "pdf": "",
+            }
         # 两遍编译以解析目录 / 交叉引用；第一遍失败就不再跑第二遍
         ok, log, ms = _run(ENGINE, workdir)
         if ok:

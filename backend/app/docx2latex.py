@@ -131,11 +131,15 @@ class Conversion:
 
 def _preamble(title: str, *, cjk: bool, template: str) -> str:
     if template == "nwafu":
-        # 学校模板（nwafuthesis）不在本仓库内：只生成它的调用骨架，
-        # 由用户在模板库上传后编译，而不是在这里假装能直接编译。
+        # 学位论文用 ctexbook：可**直接编译**。以前这里写的是
+        # `\documentclass{nwafuthesis}`，而学校类文件不在仓库里，
+        # 用户点"编译"必然停在 "File `nwafuthesis.cls' not found"。
+        # 想用官方类文件的话，把 .cls 作为素材上传后把这一行换掉即可。
         head = [
-            r"% 由 DOCX 转换生成；nwafuthesis 文稿类需在公共模板库中提供后方可编译",
-            r"\documentclass{nwafuthesis}",
+            r"% 由 DOCX 转换生成；学位论文用 ctexbook 排版，可直接编译。",
+            r"% 想用学校官方 nwafuthesis：上传 .cls 改为 \documentclass{nwafuthesis}",
+            r"\documentclass[UTF8,zihao=-4,openany]{ctexbook}",
+            r"\usepackage[a4paper,left=3cm,right=2.5cm,top=2.8cm,bottom=2.5cm]{geometry}",
             r"\usepackage{booktabs}",
             r"\usepackage{graphicx}",
         ]
@@ -254,8 +258,3 @@ def convert_docx(data: bytes, *, template: str = "article", fallback_title: str 
     if not stats["headings"]:
         warnings.append("未识别到标题样式：Word 里请用「标题 1/2/3」而不是手动加粗")
     return Conversion(latex=latex, warnings=warnings, stats=stats)
-
-
-def convert_docx_path(path: str, **kwargs: Any) -> Conversion:
-    with open(path, "rb") as fh:
-        return convert_docx(fh.read(), **kwargs)

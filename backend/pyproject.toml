@@ -15,6 +15,11 @@ dependencies = [
   "python-pptx==1.0.2",
   # 标准库 crypt 自 Python 3.13 移除，口令哈希改用 bcrypt（$2b$ 与既有数据兼容）
   "bcrypt==5.0.0",
+  # 统一生信工具后端（app/biotools.py）：序列/比对/建树用 Biopython + scikit-bio，
+  # 质粒图谱用 dna-features-viewer。版本锁定与容器镜像保持一致。
+  "biopython==1.88",
+  "scikit-bio==0.7.4",
+  "dna-features-viewer==3.1.5",
 ]
 
 [dependency-groups]

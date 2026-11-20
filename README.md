@@ -22,7 +22,7 @@ React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验
 | --- | --- |
 | 门户 D509 工作台 | http://192.0.2.10/ |
 | 统一认证 Casdoor | http://192.0.2.10:8090/ |
-| 文件存储（门户原生网盘） | http://192.0.2.10/files |
+| 文件空间（门户原生网盘） | http://192.0.2.10/files |
 | 文件工坊 SnapOtter | http://192.0.2.10:8092/ |
 | draw.io | http://192.0.2.10:8082/ |
 | Linux 命令速查 | http://192.0.2.10:8086/ |
@@ -51,7 +51,7 @@ Tailscale 入口为 `http://198.51.100.71/`（同端口）。访问控制由独�
 > 内网客户端访问 `192.0.2.10` 时其它服务也是 `192.0.2.10`；
 > 通过 Tailscale 访问 `198.51.100.71` 时其它服务自动换成 `198.51.100.71`。
 > 门户地址、Casdoor issuer、服务目录、前端外链均已适配；
-> 门户内页面（文件存储 / 文件工坊 / 公共基因组 / 生信实训）与静态站链接同样跟随当前入口。
+> 门户内页面（文件空间 / 文件工坊 / 生信工具 / 公共基因组 / 生信实训）与静态站链接同样跟随当前入口。
 
 ## 快速开始
 
@@ -90,7 +90,7 @@ labspace/
 ├── backend/             FastAPI（OIDC 会话 / 收藏 / 受控绘图保存 / 统一语料 / 数据库 API
 │   │                    / 个人工作台 / Agent 中继 / 翻译 / 天气）
 │   └── app/{config,security,casdoor,catalog,corpus,databases,db_apis,snapotter,
-│            workbench,agent,mt,text_extract,weather,http,db,golink,main}.py
+│            workbench,agent,mt,text_extract,biotools,weather,http,db,golink,main}.py
 ├── go-core/             Go 核心（LabGo，纯标准库、零外部依赖）
 │   ├── cmd/labgo        服务入口（:8122）
 │   └── internal/{session,labfiles,health,embed,catalog,endpoints,platform,
@@ -123,6 +123,11 @@ labspace/
 - 文本论文翻译 `/translation`（Hy-MT2，模型未部署时自动回退本机引擎并标注来源）
   - `/docparse`（文档解析页）已下架：它只是一层「上传 PDF 看 Markdown」的壳，
     同样的能力现在由**知识库入库**在用（PDF/图片 → Markdown 走 Docling/MinerU，见 `backend/app/text_extract.py`）。
+  - **生信工具 `/bio-tools`**（Biopython 1.88 + scikit-bio 0.7.4 + dna-features-viewer）：
+    序列分析 / CDS 提取 / 酶切 / ORF / 蛋白参数 / 引物 Tm 与稀释 / 格式互转 / 双序列与多序列比对 /
+    NJ 树 / GC 滑窗与 k-mer / 单三字母与专利排版 / 去载体 / `.ab1` / 批量筛选 / 质粒图谱 / PCoA，
+    以及 Entrez / BLAST（无外网时 3 秒内明确报错）。原来的 CropGenome（rust-bio）已下架，
+    原因与回滚见 [`docs/RETIRE-CROPGENOME.md`](docs/RETIRE-CROPGENOME.md)。
   （OXR-1.0，内网 Docling 兜底）、天气 `/weather`（Open-Meteo）。
 - 单点登录：门户与生信实训平台共用 Casdoor 账号免密进入；JBrowse / draw.io / Linux 命令为静态站，SnapOtter 走门户原生界面，均无需单独登录。
 - 既有服务保留：SearXNG、Tika、Docling、科研 API/MCP、Open Terminal、oikb；Open WebUI 与 Quantum 已下线（见入口表）。

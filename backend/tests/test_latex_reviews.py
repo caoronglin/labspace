@@ -256,7 +256,9 @@ def test_templates_list_is_public_library_without_content(client: TestClient) ->
     templates = resp.json()["templates"]
     ids = {t["id"] for t in templates}
     # 公共模板库至少覆盖这几种文稿
-    assert {"article-cn", "article-en", "article-two-column", "nwafuthesis", "letter", "beamer"} <= ids
+    # 学位论文模板的 id 从 nwafuthesis 改为 thesis：它现在用 ctexbook 自包含排版，
+    # 不再依赖仓库里没有的学校类文件（能直接编译）。
+    assert {"article-cn", "article-en", "article-two-column", "thesis", "letter", "beamer"} <= ids
     for tpl in templates:
         assert "content" not in tpl, "模板列表不带源码，源码走单模板接口"
         assert tpl["name"] and tpl["description"]
@@ -276,14 +278,23 @@ def test_unknown_template_is_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_nwafuthesis_documents_that_class_file_is_required() -> None:
-    """学位论文模板要说清「类文件得先上传」，不能假装沙箱里能编译。"""
+def test_thesis_template_compiles_without_extra_class_file() -> None:
+    """学位论文模板必须**开箱可编译**，并说明怎么换成学校官方类文件。
+
+    以前这条断言要求模板里写 `\\documentclass{nwafuthesis}` 且"必须先上传类文件"，
+    而仓库里根本没有那个类文件 —— 用户一点编译就停在
+    "File `nwafuthesis.cls' not found"。现在默认用 ctexbook，官方类文件作为
+    可选路径写在注释里（素材上传后换一行即可）。
+    """
     from app.latex import TEMPLATES
 
-    tpl = next(t for t in TEMPLATES if t["id"] == "nwafuthesis")
-    assert "\\documentclass{nwafuthesis}" in tpl["content"]
-    assert "nwafuthesis.cls" in tpl["content"]
-    assert "上传" in tpl["content"]
+    tpl = next(t for t in TEMPLATES if t["id"] == "thesis")
+    assert "\\documentclass[UTF8,zihao=-4,openany]{ctexbook}" in tpl["content"]
+    # 不依赖任何外部类文件
+    assert "\\documentclass{nwafuthesis}" not in tpl["content"]
+    # 但要把"怎么换成官方模板"讲清楚
+    assert "nwafuthesis" in tpl["content"]
+    assert "素材" in tpl["content"]
 
 
 # ---------------------------------------------------------------- 批注 CRUD

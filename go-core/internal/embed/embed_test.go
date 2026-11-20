@@ -97,7 +97,7 @@ func TestProbeDisabledEmbedEntry(t *testing.T) {
 
 func TestProbeAllowsSameOriginRelativePath(t *testing.T) {
 	p := New(time.Minute)
-	res := p.Check(Target{ID: "x", Name: "X", URL: "/cropgenome/", Embeddable: true})
+	res := p.Check(Target{ID: "x", Name: "X", URL: "/snapotter/", Embeddable: true})
 	if !res.Embeddable {
 		t.Fatalf("expected same-origin embeddable, got reason=%q", res.Reason)
 	}

@@ -47,7 +47,7 @@
 | `main.py::api_workbench_*()`（工作台 16 个接口） | `internal/workbench` + `internal/pgwire`（手写 PostgreSQL v3 wire 驱动） | `GET /api/next/v1/workbench/*` | ✅ 已替换（Python 保留兼容路由） |
 | `db_apis.py`（32 个科研 API 适配器） | `internal/dbapis` | `GET /api/next/v1/databases*` | ✅ 已替换（Python 保留兼容路由） |
 | `snapotter.py`（工具目录 / 提交任务） | `internal/snapotter` | `GET /api/next/v1/snapotter/*` | ✅ 已替换 |
-| 新增：CropGenome Toolkit 接入 | `internal/httpapi/cropgenome.go`（OIDC 感知反向代理） | `GET /cropgenome/api/v1/*` | ✅ 新增 |
+| ~~新增：CropGenome Toolkit 接入~~ | ~~`internal/httpapi/cropgenome.go`（OIDC 感知反向代理）~~ | ~~`GET /cropgenome/api/v1/*`~~ | ⛔ 2026-11 已下架，见 `docs/RETIRE-CROPGENOME.md` |
 
 ### 保留在 Python 的部分（有意为之）
 
@@ -302,17 +302,16 @@ SNAPOTTER_API_KEY=…
 
 启动日志会打印 `corpus: 1012 entries (services+commands+tools+databases)`。
 
-### 8.4 CropGenome Toolkit 接入（新增）
+### 8.4 CropGenome Toolkit 接入（**已下架，2026-11**）
 
-CropGenome Toolkit（CNB 新增项目，Go 网关 + Python 离线导入管线）不直接暴露给浏览器：
+这一节保留为历史记录：CropGenome Toolkit（Go 网关 + Rust worker）已于 2026-11 下架，
+`/cropgenome/*` 路由与 `internal/httpapi/cropgenome.go` 一并移除。序列层面的分析改由
+门户 `/bio-tools` 页面调用后端 `/api/biotools/*`（Biopython + scikit-bio）。
+原因、操作步骤与回滚方式见 `docs/RETIRE-CROPGENOME.md`。
 
-* 服务：`cropgenome-api.service` / `cropgenome-worker.service`（用户 `cropapi` / `cropworker`，
-  数据库 `cropgenome` 在 `lab-postgres` 内，端口 `127.0.0.1:8095`）。
-* 认证：工具服务只信任 `X-OIDC-Subject` / `X-OIDC-Issuer` / `X-OIDC-Audience` 头（生产模式）。
-  **Go 核心充当 OIDC 感知反向代理**：校验门户会话 → 注入上述头 → 转发。
-  客户端自带的 `X-OIDC-*` / `X-Crop-Dev-*` 头会被剥离，写操作还必须带 CSRF 证明。
-* 浏览器路径：`/cropgenome/*` → nginx → `labgo` → `127.0.0.1:8095`。
-* 七物种数据集的 manifest 全部是 `not_provisioned`（不伪造 checksum），因此当前只有 API 契约可用。
+当时的接入形状（仅供考古）：服务 `cropgenome-api.service` / `cropgenome-worker.service` 监听
+`127.0.0.1:8095`；工具服务只信任 `X-OIDC-*` 头，Go 核心校验门户会话后注入；
+浏览器路径 `/cropgenome/*` → nginx → `labgo` → `127.0.0.1:8095`。
 
 ### 8.5 Python 侧：上游二次 gzip（`proteinatlas.org`）
 
