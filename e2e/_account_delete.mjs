@@ -109,6 +109,7 @@ const self = await call('DELETE', '/api/admin/accounts/labadmin', adminToken, { 
 ok('不能删除当前登录账号（400）', self.status === 400, `${self.status} ${self.text.slice(0, 160)}`);
 const ghost = await call('DELETE', '/api/admin/accounts/e2e-no-such-user', adminToken, { confirm: 'e2e-no-such-user' });
 ok('不存在的账号 404', ghost.status === 404, `${ghost.status}`);
+// nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- 内网门户按设计不启用 TLS（docs/USER_GUIDE.md「不使用 SSL 证书」），e2e 只能用 http
 const bare = await fetch(`${BASE}/api/admin/accounts/${NAME}`, {
   method: 'DELETE',
   headers: { cookie: `labspace_session=${adminToken}`, 'content-type': 'application/json' },
