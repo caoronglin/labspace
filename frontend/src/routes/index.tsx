@@ -72,22 +72,6 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * 教师视角页面（课题资料、组会汇报）的路由守卫。
- *
- * 侧栏已经按 `teacherOnly` 隐藏了入口，但**直接粘链接**（收藏、分享、命令面板
- * 之外的旧地址）仍会进来：页面先渲出来，接口再 403，控制台一片红。
- * 这里提前拦住，给一个明确的"无访问权限"。
- */
-function RequireTeacher({ children }: { children: React.ReactNode }) {
-  const { isTeacher, loading } = useAuth();
-  if (loading) return <Loading />;
-  if (!isTeacher) {
-    return <Result403 what="lab-teacher 教师" />;
-  }
-  return <>{children}</>;
-}
-
-/**
  * `/tools?tool=plot|genomes|drawio` 的兼容跳转。
  *
  * 三个工具拆成独立页面后，旧地址仍会从收藏夹与历史回复里被用户点开：
@@ -165,22 +149,12 @@ export function AppRoutes() {
             <Route path="/files" element={<Files />} />
             <Route path="/seeds" element={<SeedStore />} />
             <Route path="/shared" element={<SharedMembers />} />
-            <Route
-              path="/research"
-              element={
-                <RequireTeacher>
-                  <ResearchFolders />
-                </RequireTeacher>
-              }
-            />
-            <Route
-              path="/meetings"
-              element={
-                <RequireTeacher>
-                  <MeetingReports />
-                </RequireTeacher>
-              }
-            />
+            {/* 课题资料与组会：学生也能进。
+                之前用 RequireTeacher 整体拦住，学生连自己被授权的那一页都打不开
+                （侧栏又没入口，只能靠导师口头说“去点这个链接”）。
+                页面内部按角色分支：教师看管理视图，学生只看已授权目录与自己的周。 */}
+            <Route path="/research" element={<ResearchFolders />} />
+            <Route path="/meetings" element={<MeetingReports />} />
             <Route path="/knowledge" element={<Knowledge />} />
             <Route path="/network" element={<Network />} />
             <Route path="/snapotter" element={<SnapOtter />} />

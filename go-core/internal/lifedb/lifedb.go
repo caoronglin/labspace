@@ -163,11 +163,16 @@ func (s *Searcher) getJSON(ctx context.Context, endpoint string, dst any) error 
 	return json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(dst)
 }
 
+// fallbackTimeout 是没配 Client 时的兜底上限。
+// 不用 http.DefaultClient：它没有超时，上游偶发卡住就会把 handler 的
+// goroutine 永久占住（请求方早已断开），几次之后整个搜索都排不上号。
+const fallbackTimeout = 15 * time.Second
+
 func (s *Searcher) client() *http.Client {
 	if s.Client != nil {
 		return s.Client
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: fallbackTimeout}
 }
 
 func clip(v string, n int) string {
