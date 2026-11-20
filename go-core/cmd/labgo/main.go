@@ -281,11 +281,15 @@ func main() {
 
 	addr := env("LABGO_ADDR", "127.0.0.1:8122")
 	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           server,
+		Addr:    addr,
+		Handler: httpapi.WithDeadlines(server),
+		// 只保留「读完请求头」的上限：它挡的是慢速攻击者用半截请求占连接。
+		// 读写超时必须在路由粒度上给（见 httpapi/deadlines.go）——
+		// 服务器级 ReadTimeout 会把「读完整请求体」算进去，10GB 慢速上传
+		// 15 秒就被掐断，而 nginx 那边给的是 3600s，用户看到的是 502。
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      120 * time.Second,
+		ReadTimeout:       0,
+		WriteTimeout:      0,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 16,
 	}
@@ -376,10 +380,10 @@ func main() {
 	if bridgeAddr != "" {
 		bridgeServer = &http.Server{
 			Addr:              bridgeAddr,
-			Handler:           server,
+			Handler:           httpapi.WithDeadlines(server),
 			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       15 * time.Second,
-			WriteTimeout:      120 * time.Second,
+			ReadTimeout:       0,
+			WriteTimeout:      0,
 			IdleTimeout:       60 * time.Second,
 			MaxHeaderBytes:    1 << 16,
 		}
