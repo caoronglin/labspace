@@ -1,5 +1,39 @@
 # CHANGELOG.md
 
+## 2026-11-20 — 多维表格 / 种子台账对非管理员可用
+
+**问题**（全局巡检 35 条路由对老师、学生各跑一遍发现）：
+
+- `/seeds`：`GET /api/baserow/templates/seed` 挂着 `require_admin`，学生与导师一进页面就 **403**，
+  而页面只有这一条入口，整个种子模块对他们白屏。
+- `/lab`（多维表格）：`GET /api/baserow/overview` 对 `@local` 账号稳定 **409**
+  「该邮箱已在数据表服务中注册」——完全指错方向。
+
+**根因**：
+
+1. 门户账号邮箱是 `<账号>@local`，Baserow 注册接口（Django EmailValidator）判其非法回 **400**；
+   后端把这个 400 当成「已注册」，于是永远 409。
+2. 种子台账建在**管理员**账号的 Baserow 工作区里，普通账号拿自己的令牌看不到，
+   于是解析表 404；读接口又被 `require_admin` 挡在门口。
+
+**改动**：
+
+- `backend/app/baserow.py`
+  - 新增 `_account_email()`：不合法的门户邮箱映射为 `<账号>@labspace.local`（一人一账号）。
+  - `_provision()` 区分 400 / 409：400 报「服务拒绝了账号 + 原因」，409 才说「账号已存在」。
+  - 新增 `call_as_admin()`：只允许 GET/HEAD，供全实验室共享的只读台账使用。
+- `backend/app/seed_tables.py`
+  - `GET /templates/seed` 改为 `require_user`；管理员走自己的令牌并顺带清理空行，
+    非管理员用管理员令牌**只读**解析（`_shared_seed_ids()` 带 5 分钟缓存）。
+  - 新增 `GET /seed/rows`：全实验室同一份台账的只读行接口，不接受前端传 table id。
+- `frontend/src/services/api.ts`：`BaserowSeedTemplateField` 补 `primary`/`select_options`；
+  新增 `seedRows()`。
+- `frontend/src/pages/SeedStore.tsx`：去掉对 `/tables/{id}/fields` 的第二次请求
+  （非管理员必 404，还会丢选项），字段完全取自模板；行数据走 `/seed/rows`。
+
+**实测**：巡检 35 条路由，老师 / 学生均 **0 问题**；学生 `/seeds` 能看到台账行、
+`/lab` 自动开通个人工作区（`baserow_accounts` 写入 `student02@labspace.local`）。
+
 ## 2026-11-20 — 文件分类可见性按角色重写（老师看全部 / 其他人只看自己那份）
 
 **问题**：`/files` 里「课题资料」「组会汇报」老师打不开（后端 `listable:false`），

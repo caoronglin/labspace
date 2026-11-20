@@ -2926,6 +2926,10 @@ export interface BaserowSeedTemplateField {
   type: string;
   /** 后端标注的必填字段；缺失时前端按字段语义推断。 */
   required?: boolean;
+  /** 主字段（Baserow 每表必有一个，渲染时置顶）。 */
+  primary?: boolean;
+  /** 单选/多选的选项；由模板接口一并给出，省掉一次往返。 */
+  select_options?: { id?: number; value: string; color?: string }[];
 }
 
 /** 种子管理模板：工作区 / 数据库 / 表 + 字段。 */
@@ -2964,6 +2968,23 @@ export const baserowApi = {
   overview: () => request<BaserowOverview>('/api/baserow/overview'),
   /** 读取种子管理模板（幂等，模板不存在时返回 404）。 */
   seedTemplate: () => request<BaserowSeedTemplate>('/api/baserow/templates/seed'),
+  /**
+   * 种子台账的行（全实验室共享的只读视图）。
+   *
+   * 不能直接用 `/tables/{id}/rows`：那条路径以**调用者自己的**数据表令牌
+   * 访问，而台账在管理员账号的工作区里，非管理员一律 404。
+   */
+  seedRows: (p: { page?: number; size?: number; search?: string; order_by?: string }) => {
+    const sp = new URLSearchParams();
+    if (p.page) sp.set('page', String(p.page));
+    if (p.size) sp.set('size', String(p.size));
+    if (p.search) sp.set('search', p.search);
+    if (p.order_by) sp.set('order_by', p.order_by);
+    const q = sp.toString();
+    return request<{ count: number; next: string | null; previous: string | null; results: BaserowRow[] }>(
+      `/api/baserow/seed/rows${q ? `?${q}` : ''}`,
+    );
+  },
   /** 创建/修复种子管理模板（幂等），返回可用的表与字段。 */
   ensureSeedTemplate: () =>
     request<BaserowSeedTemplate>('/api/baserow/templates/seed', { method: 'POST' }),

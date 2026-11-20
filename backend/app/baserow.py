@@ -18,6 +18,7 @@ import io
 import logging
 import mimetypes
 import os
+import re
 import secrets
 import time
 from typing import Any
@@ -94,11 +95,37 @@ def _read_admin_file() -> dict[str, str]:
     return data
 
 
+#: 内网账号用的伪域名。门户账号的邮箱是 ``<账号>@local``（没有点，Django 的
+#: EmailValidator 直接判非法），而 Baserow 注册必须用合法地址，
+#: 所以给数据表单独发一个 ``<账号>@labspace.local`` 身份。
+BASEROW_DOMAIN = "labspace.local"
+
+#: 数据表能接受的最小邮箱判定：@ 前非空、域名里至少一个点。
+_REAL_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$")
+
+
 def _email(user: dict[str, Any]) -> str:
+    """门户账号的邮箱（用于显示与人员映射）。"""
     email = str(user.get("email") or "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="当前账号缺少邮箱，无法开通数据表")
     return email
+
+
+def _account_email(user: dict[str, Any]) -> str:
+    """数据表服务里的账号地址。
+
+    门户大量使用 ``xxx@local``：它是**合法**的门户标识，但 Baserow 的注册接口会
+    回 ``Enter a valid email address``（400）。之前把这个 400 当成「邮箱已注册」，
+    于是所有 ``@local`` 账号打开多维表格 / 种子页都是 409，提示词还完全指错方向
+    （让用户去找管理员重置一个根本不存在的账号）。
+    这里把不合法的域名换成 ``<账号>@labspace.local``，一人一个数据表账号。
+    """
+    email = _email(user)
+    if _REAL_EMAIL_RE.match(email):
+        return email
+    local = email.split("@", 1)[0] or "user"
+    return f"{local}@{BASEROW_DOMAIN}"
 
 
 def _is_admin(user: dict[str, Any]) -> bool:
@@ -199,8 +226,20 @@ async def _provision(email: str, name: str) -> str:
             json_body={"name": name or email.split("@")[0], "email": email, "password": password, "language": "en", "authenticate": False},
         )
     except HTTPException as exc:
-        if getattr(exc, "baserow_status", 0) in (400, 409):
-            raise HTTPException(status_code=409, detail="该邮箱已在数据表服务中注册，请联系管理员重置数据表账号") from exc
+        status = getattr(exc, "baserow_status", 0)
+        if status == 409:
+            raise HTTPException(
+                status_code=409,
+                detail=f"数据表账号 {email} 已存在但门户没有它的密码（历史遗留），"
+                "请联系管理员在「后台 → 用户和权限」重置数据表账号",
+            ) from exc
+        if status == 400:
+            # 之前把 400 也当成「已注册」，拼写错误的提示把排查引到错误方向。
+            reason = str(getattr(exc, "detail", "") or "注册被拒")
+            raise HTTPException(
+                status_code=502,
+                detail=f"数据表服务拒绝了账号 {email}：{reason}",
+            ) from exc
         raise
     db.execute(
         "INSERT INTO labspace.baserow_accounts (email, secret) VALUES (%s,%s) "
@@ -227,7 +266,8 @@ async def _auto_setup(token: str) -> None:
 
 
 async def _user_token(user: dict[str, Any]) -> str:
-    email = _email(user)
+    # 用**数据表身份**（合法邮箱）做主键：`@local` 这种门户邮箱 Baserow 不接受。
+    email = _account_email(user)
     cached = _user_cache.get(email)
     if cached and time.time() - cached[1] < _TOKEN_TTL:
         return cached[0]
@@ -270,6 +310,25 @@ async def _call(
             token = await _token(user, force=True)
             return await _http(method, path, token, json_body=json_body, params=params, files=files)
         raise
+
+
+async def call_as_admin(
+    method: str,
+    path: str,
+    *,
+    json_body: Any = None,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    """以**数据表管理员**身份调用。
+
+    只给「全实验室同一份」的只读台账用（种子台账）：它建在管理员账号的
+    工作区里，普通账号用自己的令牌看不到——之前就因此把种子模块对学生
+    变成了白屏。调用方负责保证这是**只读**操作，写入口仍然走
+    ``require_admin`` + 调用者自己的令牌。
+    """
+    if method.upper() not in ("GET", "HEAD"):
+        raise ValueError("call_as_admin 只允许只读请求")
+    return await _http(method, path, await _admin_token(), json_body=json_body, params=params)
 
 
 async def _call_lock_retry(method: str, path: str, user: dict[str, Any], *, json_body: Any = None, attempts: int = 6) -> Any:

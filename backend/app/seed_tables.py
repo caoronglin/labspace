@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from . import baserow, db, seed_ocr
-from .security import require_admin, require_csrf
+from .config import settings
+from .security import has_role, require_admin, require_csrf, require_user
 
 log = logging.getLogger("labspace.seed_tables")
 
@@ -435,6 +437,95 @@ async def _field_list(table_id: int, user: dict[str, Any]) -> list[dict[str, Any
     ]
 
 
+# -------------------------------------------------- 全实验室共享的只读视图
+
+#: 共享台账解析结果的缓存：工作区 / 数据库 / 表三段的 (id, 名字)，5 分钟过期。
+_shared_cache: dict[str, Any] = {"at": 0.0, "ws": (0, ""), "db": (0, ""), "table": (0, "")}
+_SHARED_TTL = 300.0
+
+
+async def _shared_seed_ids() -> dict[str, tuple[int, str]]:
+    """用数据表管理员身份解析「实验室数据 / 种子 / 种子管理」。
+
+    台账是**全实验室同一份**，它建在管理员账号的工作区里；普通账号用自己的
+    令牌看过去只有一个空工作区，于是种子页对所有人 404。这里集中做一次
+    带缓存的解析，读接口共用。
+    """
+    if time.time() - float(_shared_cache["at"]) < _SHARED_TTL and _shared_cache["table"][0]:
+        return _shared_cache
+    not_found = HTTPException(status_code=404, detail="管理员还没有创建种子管理表")
+    workspaces = baserow._list(await baserow.call_as_admin("GET", "/api/workspaces/"))
+    configured = _configured_workspace_id()
+    ws = (0, "")
+    for workspace in workspaces:
+        wid = int(workspace.get("id") or 0)
+        name = _text(workspace.get("name"))
+        if configured and wid == configured:
+            ws = (wid, name or WORKSPACE_NAME)
+            break
+        if name.strip() == WORKSPACE_NAME:
+            ws = (wid, WORKSPACE_NAME)
+    if not ws[0]:
+        raise not_found
+    apps = baserow._list(
+        await baserow.call_as_admin("GET", f"/api/applications/workspace/{ws[0]}/")
+    )
+    db_id = 0
+    for app in apps:
+        if _text(app.get("type")) == "database" and _text(app.get("name")).strip() == DATABASE_NAME:
+            db_id = int(app.get("id") or 0)
+            break
+    if not db_id:
+        raise not_found
+    tables = baserow._list(
+        await baserow.call_as_admin("GET", f"/api/database/tables/database/{db_id}/")
+    )
+    table_id = 0
+    for table in tables:
+        if _text(table.get("name")).strip() == TABLE_NAME:
+            table_id = int(table.get("id") or 0)
+            break
+    if not table_id:
+        raise not_found
+    _shared_cache.update(
+        at=time.time(), ws=ws, db=(db_id, DATABASE_NAME), table=(table_id, TABLE_NAME)
+    )
+    return _shared_cache
+
+
+async def _shared_seed_table() -> tuple[int, str]:
+    return (await _shared_seed_ids())["table"]
+
+
+def _shared_seed_workspace() -> tuple[int, str]:
+    """共享台账的工作区（在同一次请求里 `_shared_seed_table()` 之后调用）。"""
+    return _shared_cache["ws"]
+
+
+def _shared_seed_database() -> tuple[int, str]:
+    return _shared_cache["db"]
+
+
+async def _shared_fields(table_id: int) -> list[dict[str, Any]]:
+    fields = baserow._list(
+        await baserow.call_as_admin("GET", f"/api/database/fields/table/{table_id}/")
+    )
+    return [
+        {
+            "id": int(f.get("id") or 0),
+            "name": _text(f.get("name")),
+            "type": _text(f.get("type")),
+            "primary": bool(f.get("primary")),
+            "select_options": [
+                {"value": _text(o.get("value")), "color": _text(o.get("color"))}
+                for o in (f.get("select_options") or [])
+                if isinstance(o, dict)
+            ],
+        }
+        for f in fields
+    ]
+
+
 async def ensure_seed_template(user: dict[str, Any]) -> dict[str, Any]:
     """建好「实验室数据 / 种子 / 种子管理」结构；重复调用只复用，不重复建。"""
     workspace_id, workspace_name = await _resolve_workspace(user, create=True)
@@ -469,23 +560,38 @@ async def create_seed_template(
 
 @router.get("/templates/seed")
 async def get_seed_template(
-    user: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
     """返回「种子管理」表的 workspace / database / table id 与字段清单。
 
-    顺带清一次全空行：Baserow 建表自带的模板行会让台账看起来像坏了，
-    而前端默认走 GET（不建表）。清理是幂等的，只删整行全空的记录。
+    **读接口**：只要登录就能看台账（学生也要查种子），写操作才要管理员。
+    之前这里挂的是 require_admin，于是非管理员打开种子页直接 403，
+    而页面又把它当作唯一入口（GET 失败就 POST 建表，也是管理员接口），
+    结果整个种子模块对所有人白屏。
+
+    台账是在**管理员账号**的工作区里建的，所以非管理员一律用数据表管理员
+    身份解析与读取（只读），写入仍然走 require_admin + 调用者自己的令牌。
+
+    顺带清一次全空行：Baserow 建表自带的模板行会让台账看起来像坏了。
+    清理是幂等的，只删整行全空的记录；但它是**写副作用**，所以只对管理员做。
     """
-    workspace_id, workspace_name = await _resolve_workspace(user, create=False)
-    if not workspace_id:
-        raise HTTPException(status_code=404, detail="尚未创建种子管理表，请先调用创建接口")
-    database_id, database_name = await _resolve_database(workspace_id, user, create=False)
-    if not database_id:
-        raise HTTPException(status_code=404, detail="尚未创建种子管理表，请先调用创建接口")
-    table_id, table_name = await _resolve_table(database_id, user, create=False)
-    if not table_id:
-        raise HTTPException(status_code=404, detail="尚未创建种子管理表，请先调用创建接口")
-    await _remove_template_rows(table_id, user)
+    if has_role(user, settings.admin_roles):
+        workspace_id, workspace_name = await _resolve_workspace(user, create=False)
+        if not workspace_id:
+            raise HTTPException(status_code=404, detail="尚未创建种子管理表，请先调用创建接口")
+        database_id, database_name = await _resolve_database(workspace_id, user, create=False)
+        if not database_id:
+            raise HTTPException(status_code=404, detail="尚未创建种子管理表，请先调用创建接口")
+        table_id, table_name = await _resolve_table(database_id, user, create=False)
+        if not table_id:
+            raise HTTPException(status_code=404, detail="尚未创建种子管理表，请先调用创建接口")
+        await _remove_template_rows(table_id, user)
+        fields = await _field_list(table_id, user)
+    else:
+        table_id, table_name = await _shared_seed_table()
+        workspace_id, workspace_name = _shared_seed_workspace()
+        database_id, database_name = _shared_seed_database()
+        fields = await _shared_fields(table_id)
     return {
         "ok": True,
         "workspaceId": workspace_id,
@@ -494,7 +600,38 @@ async def get_seed_template(
         "databaseName": database_name,
         "tableId": table_id,
         "tableName": table_name,
-        "fields": await _field_list(table_id, user),
+        "fields": fields,
+    }
+
+
+@router.get("/seed/rows")
+async def get_seed_rows(
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    search: str = Query("", max_length=200),
+    order_by: str = Query("", max_length=120),
+    user: dict[str, Any] = Depends(require_user),
+) -> dict[str, Any]:
+    """读种子台账的行（只读）。
+
+    台账是全实验室同一份数据：用数据表管理员身份读，**不接受**前端传 table id，
+    省得让人拿任意表 id 来试读别人的表。
+    """
+    table_id, _ = await _shared_seed_table()
+    params: dict[str, Any] = {"page": page, "size": size, "user_field_names": "true"}
+    if search.strip():
+        params["search"] = search.strip()
+    if order_by.strip():
+        params["order_by"] = order_by.strip()
+    payload = await baserow.call_as_admin(
+        "GET", f"/api/database/rows/table/{table_id}/", params=params
+    )
+    data = payload if isinstance(payload, dict) else {}
+    return {
+        "count": int(data.get("count") or 0),
+        "next": data.get("next"),
+        "previous": data.get("previous"),
+        "results": [r for r in (data.get("results") or []) if isinstance(r, dict)],
     }
 
 # ---------------------------------------------------------------- 标签 OCR

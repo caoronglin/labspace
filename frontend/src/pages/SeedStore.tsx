@@ -174,17 +174,10 @@ export default function SeedStore() {
 
   const tableId = template.data?.tableId ?? null;
 
-  const fieldsQuery = useQuery({
-    queryKey: ["seed", "fields", tableId],
-    queryFn: () => baserowApi.fields(tableId as number),
-    enabled: Boolean(tableId),
-    retry: false,
-  });
-
   const rowsQuery = useQuery({
     queryKey: ["seed", "rows", tableId, page, size, keyword, orderBy],
     queryFn: () =>
-      baserowApi.rows(tableId as number, {
+      baserowApi.seedRows({
         page,
         size,
         search: keyword || undefined,
@@ -195,28 +188,29 @@ export default function SeedStore() {
   });
 
   /**
-   * 字段集合以模板为准（模板定义了种子台账该有哪些字段、按什么顺序），
-   * 再用 baserowApi.fields 补上选项、是否主字段等元信息。
+   * 字段集合完全来自模板接口。
+   *
+   * 以前这里还会再打一次 `/tables/{id}/fields`（以**调用者自己的**数据表令牌），
+   * 而种子台账建在管理员账号的工作区里，所以除管理员外的人每次进页面都先
+   * 404 一次、再靠兜底渲染——选项与主字段信息也一起丢了。
+   * 模板接口现在由后端用管理员身份读（只读），字段、选项、主字段一次给全。
    */
-  const fields: BaserowField[] = useMemo(() => {
-    const rich = fieldsQuery.data?.fields ?? [];
-    const byId = new Map(rich.map((f) => [f.id, f]));
-    const templateFields = template.data?.fields ?? [];
-    if (!templateFields.length) return rich;
-    return templateFields.map((tf) => {
-      const hit = byId.get(tf.id);
-      return (
-        hit ?? {
-          id: tf.id,
-          name: tf.name,
-          type: tf.type,
-          primary: false,
-          read_only: false,
-          select_options: [],
-        }
-      );
-    });
-  }, [template.data, fieldsQuery.data]);
+  const fields: BaserowField[] = useMemo(
+    () =>
+      (template.data?.fields ?? []).map((tf) => ({
+        id: tf.id,
+        name: tf.name,
+        type: tf.type,
+        primary: Boolean(tf.primary),
+        read_only: false,
+        select_options: (tf.select_options ?? []).map((o) => ({
+          id: o.id ?? 0,
+          value: o.value,
+          color: o.color ?? 'blue',
+        })),
+      })),
+    [template.data],
+  );
   const rows: BaserowRow[] = useMemo(
     () => rowsQuery.data?.results ?? [],
     [rowsQuery.data],
@@ -449,19 +443,15 @@ export default function SeedStore() {
         />
       );
     }
-    if (fieldsQuery.isError) {
+    if (!fields.length) {
       return (
         <Alert
           type="error"
           showIcon
           title="字段读取失败"
-          description={errText(fieldsQuery.error)}
+          description="模板里没有字段信息，请刷新重试；管理员可用「修复表结构」重建。"
           action={
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              onClick={() => void fieldsQuery.refetch()}
-            >
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => void template.refetch()}>
               重试
             </Button>
           }
