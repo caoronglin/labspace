@@ -78,6 +78,34 @@ def main() -> int:
         print(f"main.py 里找不到这些名字：{missing}")
         return 1
 
+    # 闭包：把被搬代码引用到的**本模块其它顶层定义**（函数/常量）一起搬走。
+    # 不做这一步，新模块会带着一堆 NameError（_env_int / CMD_INDEX / log …），
+    # 每补一个再跑一次，来回七八轮 —— 这是前面反复失败的直接原因。
+    local_names = {n for n in defs}
+    ordered = list(wanted)
+    seen = set(wanted)
+    while True:
+        need = set()
+        for name in ordered:
+            node = defs[name]
+            for sub in ast.walk(node):
+                ident = None
+                if isinstance(sub, ast.Name):
+                    ident = sub.id
+                elif isinstance(sub, ast.Attribute):
+                    cur = sub
+                    while isinstance(cur, ast.Attribute):
+                        cur = cur.value
+                    if isinstance(cur, ast.Name):
+                        ident = cur.id
+                if ident and ident in local_names and ident not in seen:
+                    need.add(ident)
+        if not need:
+            break
+        ordered.extend(sorted(need))
+        seen |= need
+    wanted = ordered
+
     spans = []
     for name in wanted:
         node = defs[name]
