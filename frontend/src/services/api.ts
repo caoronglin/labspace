@@ -1,10 +1,14 @@
 /** D509 工作台后端 API 客户端（始终同源，走 Nginx 代理）。 */
 export * from './api-http';
 export * from './api-types';
+export * from './api-types-agent';
 export * from './api-plot';
 import { request, requestBlob, requestFileContentPut } from './api-http';
-import type { AccessPreviewResponse, AccountItem, AccountsResponse, AdminInfo, AdminTaskList, AgentAdminConfig, AgentMemory, AgentMessage, AgentModel, AgentQuota, AgentSession, AgentSkillOption, AgentStatus, AgentUsageSummary, Announcement, BackupGitStatus, BackupStatus, ColorMatchItem, ColorMeta, ColorPaletteList, CorpusItem, DailyPapersResponse, DailySub, DatabaseApiIndex, DatabaseItem, DatabaseQueryResult, EmbedInfo, FileAccessEvent, FileContent, FileEntry, FileGrant, FilePreview, FileSortKey, FileSource, FileTrashItem, FileTrashSummary, FileUsage, GroupPermissionsResponse, IngestResult, IngestSummary, KnowledgeDoc, KnowledgeFacets, KnowledgeSpace, KnowledgeSpaces, LabopsEntry, LabopsLibrary, LabopsLibraryFolder, LabopsLiterature, LabopsPublishResult, LabopsTemplate, Me, MentorBindings, OfficeContent, OfficeSavePayload, PeopleEntry, PersonalShare, RagAnswer, RagStatus, SearchResponse, ServiceItem, SharedEntry, TranslateResult, TranslateStatus, WeComConfig, WeatherReport, WorkbenchBrief, WorkbenchCapture, WorkbenchItem, WorkbenchPlan, WorkbenchProject, WorkbenchSummary } from './api-types';
+import type { AccessPreviewResponse, AccountItem, AccountsResponse, AdminInfo, AdminTaskList, Announcement, BackupGitStatus, BackupStatus, CorpusItem, DailyPapersResponse, DailySub, DatabaseApiIndex, DatabaseItem, DatabaseQueryResult, EmbedInfo, FileAccessEvent, FileContent, FileEntry, FileGrant, FilePreview, FileSortKey, FileSource, FileTrashItem, FileTrashSummary, FileUsage, GroupPermissionsResponse, IngestResult, IngestSummary, KnowledgeDoc, KnowledgeFacets, KnowledgeSpace, KnowledgeSpaces, Me, MentorBindings, OfficeContent, OfficeSavePayload, PeopleEntry, PersonalShare, RagAnswer, RagStatus, SearchResponse, ServiceItem, SharedEntry, WeComConfig, WorkbenchBrief, WorkbenchCapture, WorkbenchItem, WorkbenchPlan, WorkbenchProject, WorkbenchSummary } from './api-types';
+import type { AgentAdminConfig, AgentMemory, AgentMessage, AgentModel, AgentQuota, AgentSession, AgentSkillOption, AgentStatus, AgentUsageSummary, ColorMatchItem, ColorMeta, ColorPaletteList, LabopsEntry, LabopsLibrary, LabopsLibraryFolder, LabopsLiterature, LabopsPublishResult, LabopsTemplate, TranslateResult, TranslateStatus, WeatherReport } from './api-types-agent';
 import type { LatexAsset, LatexDocument, LatexReview, LatexReviewReply, LatexReviewStatus, LatexStatus, LatexTemplate, LatexVersion } from './api-plot';
+
+
 
 export const api = {
   me: () => request<Me>('/api/me'),
