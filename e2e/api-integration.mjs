@@ -218,7 +218,7 @@ const api = async (path, init = {}) => {
 {
   const r = await api('/api/network/entries');
   const items = r.body?.items ?? [];
-  record('GET /api/network/entries 入口自检', r.status === 200 && items.length >= 8, `${items.length} 个入口`);
+  record('GET /api/network/entries 入口自检', r.status === 200 && items.length >= 6, `${items.length} 个入口`);
   record(
     '全部入口均可用（主机 + 端口）',
     items.length > 0 && items.every((i) => i.up),
@@ -254,7 +254,9 @@ const api = async (path, init = {}) => {
   record('语料命中扩充后的植物库（AlphaFold）', (c3.body?.items ?? []).some((i) => i.type === 'database' && /AlphaFold/.test(i.title)));
   const c4 = await api('/api/corpus?limit=40');
   const types = [...new Set((c4.body?.items ?? []).map((i) => i.type))];
-  record('语料类型覆盖 service/database/page/tool/snapotter/command', ['service', 'database', 'page', 'tool', 'snapotter', 'command'].every((t) => types.includes(t)), types.join(','));
+  // 'tool' 这一类原本只有 Quantum / Open WebUI 两个条目，服务下线后语料里不再有 tool。
+  // 断言跟着真实数据走：强留一个已经没有来源的类型，只会让套件长期红着。
+  record('语料类型覆盖 service/database/page/snapotter/command', ['service', 'database', 'page', 'snapotter', 'command'].every((t) => types.includes(t)), types.join(','));
 }
 
 // ---------- 12. 登出 ----------

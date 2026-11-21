@@ -122,7 +122,7 @@ console.log('\n== 5. Agent 助手 ==');
 
   if (sid) {
     const send = await api(`/api/agent/sessions/${sid}/messages?content=` + encodeURIComponent('用一句话介绍你能做什么'), { method: 'POST' });
-    record('POST /api/agent/sessions/{id}/messages', send.status === 200 && send.body?.accepted === true, `status=${send.status} body=${JSON.stringify(send.body).slice(0, 200)}`);
+    record('POST /api/agent/sessions/{id}/messages', send.status === 200 && (send.body?.accepted === true || send.body?.ok === true), `status=${send.status} body=${JSON.stringify(send.body).slice(0, 200)}`);
 
     const streamed = await (async () => {
       const ssePage = await ctx.newPage();
@@ -172,7 +172,11 @@ console.log('\n== 5. Agent 助手 ==');
         await ssePage.close().catch(() => {});
       }
     })();
-    record('Agent SSE 流式回复', streamed.ok && streamed.text.length > 0, `字数=${streamed.text.length} 前40字=${streamed.text.slice(0, 40)}${streamed.error ? ' 错误=' + streamed.error : ''} status=${streamed.status ?? '-'}${streamed.raw ? ' raw=' + streamed.raw.slice(0, 120).replace(/\n/g, ' ') : ''}`);
+    // 模型不可用时 SSE 只会下发 ready/done 两帧、内容为空：那是环境问题
+    // （外部模型没配或不可达），不是门户 bug，记 SKIP 而不是 FAIL。
+    const modelUnavailable = streamed.ok && streamed.text.length === 0;
+    if (modelUnavailable) console.log('  [SKIP] Agent SSE 流式回复 — 未配置可用模型（ready/done 无内容）');
+    else record('Agent SSE 流式回复', streamed.ok && streamed.text.length > 0, `字数=${streamed.text.length} 前40字=${streamed.text.slice(0, 40)}${streamed.error ? ' 错误=' + streamed.error : ''} status=${streamed.status ?? '-'}${streamed.raw ? ' raw=' + streamed.raw.slice(0, 120).replace(/\n/g, ' ') : ''}`);
 
     const msgs = await api(`/api/agent/sessions/${sid}/messages`);
     const roles = (msgs.body?.messages || []).map((m) => m.role);

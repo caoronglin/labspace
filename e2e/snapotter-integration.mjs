@@ -137,9 +137,13 @@ console.log('\n== 4. 门户页面 ==');
   await page.goto(`${BASE}/snapotter`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3500);
   const bodyText = await page.locator('body').innerText();
-  record('/snapotter 页面加载', bodyText.includes('SnapOtter'), bodyText.slice(0, 60).replace(/\n/g, ' '));
+  // 页面标题是「文件工坊」，SnapOtter 只是实现名；两者任一都算加载成功
+  record('/snapotter 页面加载', /文件工坊|SnapOtter/.test(bodyText), bodyText.slice(0, 60).replace(/\n/g, ' '));
   record('页面显示在线状态', bodyText.includes('在线'), /在线|离线/.exec(bodyText)?.[0] ?? '未找到');
-  record('工具目录已渲染', (await page.locator('text=/Resize Image|resize/i').count()) > 0, `匹配 ${await page.locator('text=/Resize Image|resize/i').count()} 处`);
+  // 目录有 243 个工具、首屏只渲染一部分，所以按「页面上有若干工具卡片」判断，
+  // 而不是死磕某个具体工具名（换一批工具就会假红）。
+  const cardCount = await page.locator('[class*="ant-card"]').count();
+  record('工具目录已渲染', cardCount >= 5, `卡片 ${cardCount} 个`);
   record('页面无控制台错误', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '));
   await page.screenshot({ path: 'shots/snapotter.png', fullPage: false });
 }
