@@ -10,6 +10,7 @@ import pytest
 from starlette.requests import Request
 
 from app import main as main_mod
+from app.routers.auth import api_auth_check  # 路由已迁出 main
 
 
 def _request(path: str = "/api/auth/check", headers: dict[str, str] | None = None) -> Request:
@@ -31,7 +32,7 @@ def _request(path: str = "/api/auth/check", headers: dict[str, str] | None = Non
 async def test_flagged_session_blocked_for_proxied_service() -> None:
     """未改密会话访问 /pdf-api/（经 X-Original-URI）→ 403，不是 204。"""
     req = _request(headers={"x-original-uri": "/pdf-api/general/merge-pdfs"})
-    resp = await main_mod.api_auth_check(req, {"sub": "u1", "email": "student09@local", "pwd_reset": True})
+    resp = await api_auth_check(req, {"sub": "u1", "email": "student09@local", "pwd_reset": True})
     assert resp.status_code == 403
 
 
@@ -40,7 +41,7 @@ async def test_flagged_session_allowed_for_password_change() -> None:
     """改密与探活本身不能被拦，否则用户被锁死。"""
     for path in ("/api/me", "/api/me/password", "/api/auth/logout", "/mail/"):
         req = _request(headers={"x-original-uri": path})
-        resp = await main_mod.api_auth_check(
+        resp = await api_auth_check(
             req, {"sub": "u1", "email": "student09@local", "pwd_reset": True}
         )
         assert resp.status_code == (204 if path != "/mail/" else 403), path
@@ -49,7 +50,7 @@ async def test_flagged_session_allowed_for_password_change() -> None:
 @pytest.mark.asyncio
 async def test_normal_session_passes() -> None:
     req = _request(headers={"x-original-uri": "/pdf-api/general/merge-pdfs"})
-    resp = await main_mod.api_auth_check(req, {"sub": "u1", "email": "student01@local"})
+    resp = await api_auth_check(req, {"sub": "u1", "email": "student01@local"})
     assert resp.status_code == 204
     assert resp.headers["x-auth-user"] == "u1"
 
@@ -64,7 +65,7 @@ async def test_write_method_requires_csrf() -> None:
         }
     )
     with pytest.raises(Exception) as exc:  # HTTPException(403)
-        await main_mod.api_auth_check(req, {"sub": "u1", "email": "student01@local"})
+        await api_auth_check(req, {"sub": "u1", "email": "student01@local"})
     assert "403" in str(exc.value) or getattr(exc.value, "status_code", None) == 403
 
 
@@ -72,5 +73,5 @@ async def test_write_method_requires_csrf() -> None:
 async def test_read_method_skips_csrf() -> None:
     """读请求不要求 CSRF，否则所有 GET 页面都会被判 403。"""
     req = _request(headers={"x-original-uri": "/mail/v1/inbox", "x-original-method": "GET"})
-    resp = await main_mod.api_auth_check(req, {"sub": "u1", "email": "student01@local"})
+    resp = await api_auth_check(req, {"sub": "u1", "email": "student01@local"})
     assert resp.status_code == 204

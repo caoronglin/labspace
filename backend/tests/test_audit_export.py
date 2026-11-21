@@ -15,6 +15,7 @@ import pytest
 from starlette.requests import Request
 
 from app import audit, db, main
+from app.routers import reports
 
 
 def _request() -> Request:
@@ -56,7 +57,7 @@ def fake_rows(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_export_filters_are_parameterised(fake_rows):
-    out = await main.api_admin_audit(
+    out = await reports.api_admin_audit(
         request=_request(),
         actor="Student01",
         action="seed.",
@@ -77,7 +78,7 @@ async def test_export_filters_are_parameterised(fake_rows):
 
 @pytest.mark.asyncio
 async def test_export_csv_has_header_and_utf8(fake_rows):
-    resp = await main.api_admin_audit(
+    resp = await reports.api_admin_audit(
         request=_request(),
         actor="",
         action="",

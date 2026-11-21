@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from app import main as main_mod
 from app.config import settings
+from app.routers import deps, network
 from app.routers.deps import host_allowed
 
 
@@ -48,19 +49,19 @@ def test_whitelist_contains_dual_entry_hosts() -> None:
 def test_forged_forwarded_host_falls_back_to_default() -> None:
     """伪造 X-Forwarded-Host 指向云元数据地址 → 回落到默认入口主机。"""
     req = _make_request(host="192.0.2.10", forwarded="169.254.169.254")
-    assert main_mod._client_host(req) == settings.default_entry_host
-    assert main_mod._client_host(req) != "169.254.169.254"
+    assert deps.client_host(req) == settings.default_entry_host
+    assert deps.client_host(req) != "169.254.169.254"
 
 
 def test_forged_host_falls_back_to_default() -> None:
     req = _make_request(host="evil.example.com")
-    assert main_mod._client_host(req) == settings.default_entry_host
+    assert deps.client_host(req) == settings.default_entry_host
 
 
 def test_allowed_hosts_adapt() -> None:
     """白名单内的入口仍然按访问主机自适应（LAN 与 Tailscale 各给各的地址）。"""
-    assert main_mod._client_host(_make_request(host="192.0.2.10")) == "192.0.2.10"
-    tail = main_mod._client_host(_make_request(host="198.51.100.71:80"))
+    assert deps.client_host(_make_request(host="192.0.2.10")) == "192.0.2.10"
+    tail = deps.client_host(_make_request(host="198.51.100.71:80"))
     assert tail == "198.51.100.71"
 
 
@@ -94,12 +95,12 @@ def test_network_entries_probe_only_whitelisted_host(monkeypatch, forged: str) -
             seen.append((target, bool(self._follow)))
             return FakeResponse()
 
-    monkeypatch.setattr(main_mod.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(network.httpx, "AsyncClient", FakeClient)
 
     import asyncio
 
     req = _make_request(host="192.0.2.10", forwarded=forged)
-    result = asyncio.run(main_mod.api_network_entries(req, _={"sub": "admin01"}))
+    result = asyncio.run(network.api_network_entries(req, _={"sub": "admin01"}))
 
     assert result["host"] == settings.default_entry_host
     assert seen, "应当至少探测一次入口"
