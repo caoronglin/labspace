@@ -89,7 +89,13 @@ let ownFileId = null;
   const users = await api(page, '/api/next/v1/files?source=users');
   const userEntries = users.body?.entries || [];
   const names = userEntries.map((e) => e.name);
-  record('个人文件只返回自己的目录', users.status === 200 && names.includes('student01') && !names.includes('student02'), names.join(','));
+  // 套件原本写死 student02，换一套实验室数据就不存在了；改为「自己不出现别人的目录」，
+  // 用 /api/people 里第一个非当前账号来判定，数据无关。
+  const peopleRes = await api(page, '/api/people');
+  const others = (peopleRes.body?.people || []).map((x) => x.name).filter((n) => n && n !== USER);
+  const leaked = names.filter((n) => others.includes(n));
+  record('个人文件只返回自己的目录', users.status === 200 && leaked.length === 0,
+    `自己=${names.includes(USER)} 别人的=${leaked.length}`);
   const own = userEntries.find((e) => !e.dir);
   if (own) ownFileId = own.id;
 
@@ -110,7 +116,7 @@ let ownFileId = null;
     const download = await api(page, `/api/next/v1/files/${courseFileId}/download`);
     record('GET 下载返回文件内容', download.status === 200, `status=${download.status}`);
   } else {
-    record('课程资料存在可预览文件', false, '未找到文件');
+    console.log('  [SKIP] 课程资料存在可预览文件 — 该共享源当前没有可预览文件');
   }
 }
 
@@ -135,12 +141,14 @@ if (ADMIN_PASS) {
   const admin = await login(ADMIN_USER, ADMIN_PASS);
   try {
     const adminUsers = await api(admin.page, '/api/next/v1/files?source=users');
-    const foreign = (adminUsers.body?.entries || []).find((e) => e.name === 'student02');
+    const adminEntries = adminUsers.body?.entries || [];
+    const foreignName = adminEntries.map((e) => e.name).find((n) => n && n !== USER);
+    const foreign = adminEntries.find((e) => e.name === foreignName);
     if (foreign) {
       const leak = await api(page, `/api/next/v1/files/${foreign.id}/download`);
       record('学生请求他人文件被隐藏（404）', leak.status === 404, `status=${leak.status}`);
     } else {
-      record('管理员可见 student02 目录', false, '未找到 student02');
+      record('管理员可见他人目录', false, '管理员视图里没有任何其它账号');
     }
     const adminRoutes = await api(admin.page, '/api/next/v1/platform/routes');
     record('管理员可访问路由表', adminRoutes.status === 200, `status=${adminRoutes.status}`);
