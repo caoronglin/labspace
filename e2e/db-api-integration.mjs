@@ -88,7 +88,7 @@ for (const [id, cfg] of Object.entries(QUERIES)) {
   // 临时 5xx 都不该算门户的缺陷。按「上游不可达」归为 SKIP，只有门户自身
   // 返回结构错误（4xx 且非上游原因）才记 FAIL。
   const upstreamFaulty = !ok && (res.status >= 500 || res.status === 0
-    || /timeout|unavailable|upstream|ECONN|fetch failed|rate limit/i.test(String(res.body?.error || '')));
+    || /timeout|unavailable|upstream|ECONN|fetch failed|rate limit|超时|上游|稍后重试|限流/i.test(String(res.body?.error || '')));
   results.push({ id, ok, skip: upstreamFaulty, n: res.body?.items?.length || 0, ms: Date.now() - t0, err: res.body?.error });
   if (upstreamFaulty) {
     console.log(`  [SKIP] 查询 ${id} — 上游不可达（HTTP ${res.status}）：${String(res.body?.error || '').slice(0, 80)}`);
