@@ -103,7 +103,7 @@ async def api_admin_backup_forget(
     不做「清空全部备份」的批量入口；真正的 restic 调用留在宿主机脚本里，
     后端只做参数转发与错误透传。
     """
-    from .golink import backup_forget
+    from ..golink import backup_forget
 
     snap = (snapshot or "").strip()
     if not snap or not all(c in "0123456789abcdefABCDEF" for c in snap):
