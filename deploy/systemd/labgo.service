@@ -1,0 +1,33 @@
+# 由线上 unit 归档（systemctl cat labgo）。仓库里统一用举例账号 labuser 代替
+# 实际部署账号（通常与 /srv/lab 属主一致）在部署机改这一处即可。
+# /etc/systemd/system/labgo.service
+[Unit]
+Description=D509 工作台 Go 核心服务（LabGo：目录 / 搜索 / 平台清单 / 实验文件访问与回收站）
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=labuser
+Group=labuser
+WorkingDirectory=/opt/labspace/go-core
+EnvironmentFile=/etc/lab-go/labgo.env
+# 回收站必须在服务账号可写的前提下先建好：/srv/lab 属 root，故用特权方式建一次。
+ExecStartPre=+/usr/bin/install -d -m 0700 -o labuser -g labuser /srv/lab/.trash
+# 新增的两个共享源（课题资料 / 组会汇报）也要由特权方式预先建好：
+# 服务本身以 t25ronglin 运行且 ProtectSystem=strict，无法在 /srv/lab 下新建目录。
+ExecStartPre=+/usr/bin/install -d -m 2770 -o labuser -g labuser /srv/lab/research
+ExecStartPre=+/usr/bin/install -d -m 2770 -o labuser -g labuser /srv/lab/meeting
+ExecStart=/usr/local/bin/labgo
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/srv/lab /srv/labdata/labgo /srv/labdata/plot /etc/lab-go/acl
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
