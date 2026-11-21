@@ -3,6 +3,18 @@
 > 对应规格书 v2.0 §6/§7/§8「清理、ACL 统一与前端解耦」。
 > 本文件只写**当前真实状态**，包括没做完的部分和为什么。
 
+## 当前数字（2026-11-21 更新）
+
+| 目标文件 | 起点 | 现在 | 目标 |
+| --- | --- | --- | --- |
+| `backend/app/main.py` | 2072 | **1233**（8 个 router 已拆出） | ≤400 |
+| `frontend/src/services/api.ts` | 2790 | **832** | ≤1000 ✅ |
+| `frontend/src/pages/BaserowPage.tsx` | 3880 | 3882（未动） | ≤1000 |
+| `frontend/src/pages/Files.tsx` | 2715 | 2716（未动） | ≤1000 |
+
+已拆出的 router：`deps / misc / catalog / drawings / docs / search / snapotter / admin`。
+`api.ts` 拆分后的模块：`api-http(152) / api-types(862) / api-types-agent(337) / api-plot(169) / api-baserow(475)`。
+
 ## 已完成（6/10）
 
 | 项 | 结果 | 证据 |
