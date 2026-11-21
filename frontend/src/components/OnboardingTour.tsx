@@ -64,7 +64,7 @@ export default function OnboardingTour() {
     if (!me?.authenticated || !account) return;
     // 端到端测试账号不弹引导：Playwright 每次都是全新上下文，
     // 引导层会把「点得到的东西」全挡住，用例只能超时。
-    if (me?.e2e) return;
+    if (me?.e2e) return;  // 见 api.ts 的 Me.e2e
     // 首次：延迟弹一次。已看过就不再打扰。
     if (tourSeen(account)) return;
     const t = setTimeout(() => {

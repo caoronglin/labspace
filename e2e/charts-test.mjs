@@ -123,15 +123,18 @@ async function run() {
   ok('登录成功', `${meInfo?.name ?? LAB_USER}${isAdmin ? '（管理员）' : ''}`);
 
   // ---- 首页：服务健康分布 + 数据库分类分布
-  {
-    const page = await ctx.newPage();
+  if (!adminCtx) {
+    // 这两张图已随管理面板迁到 /admin，只有管理员能看；没有管理员会话就跳过，
+    // 否则学生会话访问 /admin 会 403，用例只能超时。
+    skip('首页图表', '图表现位于 /admin，需要管理员会话');
+  }
+  if (adminCtx) {
+    const page = await adminCtx.newPage();
     const errors = [];
     page.on('console', (m) => {
       if (m.type() === 'error') errors.push(m.text());
     });
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-    // 这两张图已随管理面板迁到 /admin（首页只保留快捷入口与常用服务）。
-    // 用例还在首页找，必然超时 —— 跟着实际位置走。
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2500);
 
