@@ -113,11 +113,14 @@ record('适配器查询无门户侧失败', failed.length === 0,
 const noApiRes = await api('/api/databases/tair/query', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'AP1' }),
 });
-record('无 API 库给出明确原因', noApiRes.status === 200 && noApiRes.body?.ok === false && /没有可用的公开 API/.test(noApiRes.body?.error || ''),
-  noApiRes.body?.error);
+// 拒绝原因在 detail 里（标准错误格式），措辞是「无公开 API」；两者都接受，
+// 但不允许「静默空结果」——那才是真正会误导用户的实现方式。
+const noApiMsg = String(noApiRes.body?.detail || noApiRes.body?.error || '');
+record('无 API 库给出明确原因', noApiRes.status === 200 && noApiRes.body?.ok === false && /无公开 API|没有可用的公开 API/.test(noApiMsg),
+  noApiMsg);
 
 // 5. 探活接口
-const probe = await api('/api/databases/ncbi/probe');
+const probe = await api('/api/databases/tair/probe');
 record('GET /api/databases/{id}/probe 可用', probe.status === 200 && typeof probe.body?.ok === 'boolean', `ok=${probe.body?.ok} ${probe.body?.detail}`);
 
 console.log(`\n结果: 通过 ${pass} / 失败 ${fail}`);
