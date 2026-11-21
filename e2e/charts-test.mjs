@@ -130,14 +130,16 @@ async function run() {
       if (m.type() === 'error') errors.push(m.text());
     });
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(1500);
+    // 这两张图已随管理面板迁到 /admin（首页只保留快捷入口与常用服务）。
+    // 用例还在首页找，必然超时 —— 跟着实际位置走。
+    await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2500);
 
     for (const title of ['服务健康分布', '数据库分类分布']) {
       try {
         const info = await inspectCard(page, title);
         if (!info.hasCanvas && !info.hasSvg) {
-          bad(`首页 · ${title} 图表渲染`, '未找到 canvas/svg');
+          bad(`管理端 · ${title} 图表渲染`, '未找到 canvas/svg');
           continue;
         }
         const m = info.text.match(/共\s*(\d+)\s*个/);
@@ -146,7 +148,7 @@ async function run() {
           bad(`首页 · ${title} 数据非空`, `未读到有效数量：${info.text.slice(0, 60)}`);
           continue;
         }
-        ok(`首页 · ${title} 图表渲染`, `canvas=${info.hasCanvas} 共 ${total} 个`);
+        ok(`管理端 · ${title} 图表渲染`, `canvas=${info.hasCanvas} 共 ${total} 个`);
       } catch (e) {
         bad(`首页 · ${title}`, e.message.slice(0, 140));
       }
