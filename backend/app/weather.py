@@ -6,9 +6,12 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
+
+log = logging.getLogger("labspace.weather")
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -95,6 +98,37 @@ async def get_weather(
     if cached and time.time() - cached["at"] < 1800:
         return cached["value"]
 
+    try:
+        return await _fetch_weather(city, days, key)
+    except Exception as exc:  # noqa: BLE001 - 天气是锦上添花，不能让它 500 掉首页
+        log.warning("天气获取失败（%s）：%s", city or DEFAULT_CITY, exc)
+        stale = _cache.get(key)
+        if stale:
+            return {**stale["value"], "stale": True}
+        return {
+            "city": city or DEFAULT_CITY,
+            "admin": "",
+            "country": "",
+            "latitude": None,
+            "longitude": None,
+            "timezone": "",
+            "current": {
+                "temperature": None,
+                "apparent": None,
+                "humidity": None,
+                "wind": None,
+                "code": None,
+                "description": "暂不可用",
+            },
+            "daily": [],
+            "updated_at": time.strftime("%Y-%m-%d %H:%M"),
+            "source": "Open-Meteo",
+            "available": False,
+        }
+
+
+async def _fetch_weather(city: str | None, days: int, key: str) -> dict[str, Any]:
+    """真正取数的那一半：失败由 get_weather 统一降级，这里只管往上抛。"""
     location = await _geocode(city or DEFAULT_CITY)
     params = {
         "latitude": location["latitude"],
@@ -107,7 +141,7 @@ async def get_weather(
     async with http_client(timeout=TIMEOUT) as client:
         resp = await client.get(FORECAST_URL, params=params)
     if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"天气服务返回 HTTP {resp.status_code}")
+        raise RuntimeError(f"天气服务返回 HTTP {resp.status_code}")
     payload = resp.json()
     current = payload.get("current") or {}
     daily = payload.get("daily") or {}
