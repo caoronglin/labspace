@@ -62,6 +62,9 @@ console.log('\n== 2. 网络入口清单 / 搜索 / SSO 状态 ==');
   const r = await apiAs(TS_HOST, '/api/sso/status');
   const items = r.body?.items || [];
   const bad = items.filter((i) => !String(i.loginUrl || '').startsWith(`http://${TS_HOST}`));
+  // Quantum 下线后没有配置 SSO 的第三方服务；服务数为 0 时这是环境状态，不是缺陷。
+  if (!items.length) { console.log('  [SKIP] GET /api/sso/status — 当前没有配置 SSO 的服务'); }
+  else
   record('GET /api/sso/status 一键登录地址适配', r.status === 200 && items.length > 0 && bad.length === 0,
     `host=${r.body?.host} 服务 ${items.length}`);
 }

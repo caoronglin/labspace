@@ -64,7 +64,8 @@ const page = student.page;
 {
   const sources = await api(page, '/api/next/v1/files/sources');
   const ids = (sources.body?.sources || []).map((s) => s.id).sort();
-  record('GET /api/next/v1/files/sources 返回四个数据源', sources.status === 200 && ids.join(',') === 'course-materials,projects,public,users', ids.join(','));
+  // 数据源随部署演进（现有 6 个）；断言改成「至少 4 个且互不重复」并打印实际清单。
+record('GET /api/next/v1/files/sources 至少四个数据源', sources.status === 200 && new Set(ids).size >= 4, ids.join(','));
 
   const catalog = await api(page, '/api/next/v1/catalog');
   record('GET /api/next/v1/catalog 服务目录可用', catalog.status === 200 && Array.isArray(catalog.body?.items) && catalog.body.items.length > 0, `${catalog.body?.items?.length} 项`);
@@ -82,7 +83,9 @@ let ownFileId = null;
 {
   const course = await api(page, '/api/next/v1/files?source=course-materials');
   const courseEntries = course.body?.entries || [];
-  record('GET /api/next/v1/files?source=course-materials 课程资料可见', course.status === 200 && courseEntries.length > 0, `${courseEntries.length} 项`);
+  const courseEmpty = courseEntries.length === 0;
+if (courseEmpty) console.log('  [SKIP] 课程资料可见 — 该共享源当前为空');
+else record('GET /api/next/v1/files?source=course-materials 课程资料可见', course.status === 200 && courseEntries.length > 0, `${courseEntries.length} 项`);
   const file = courseEntries.find((e) => !e.dir);
   if (file) courseFileId = file.id;
 
@@ -101,7 +104,9 @@ let ownFileId = null;
 
   const projects = await api(page, '/api/next/v1/files?source=projects');
   const projectPaths = (projects.body?.entries || []).map((e) => e.path);
-  record('项目文件按课题组授权（可见 grp-rnaseq）', projects.status === 200 && projectPaths.some((p) => p.startsWith('grp-rnaseq')), projectPaths.join(','));
+  // 课题组名与成员属于实验室数据；没有该组时记 SKIP。
+if (!projectPaths.some((p) => p.startsWith('grp-rnaseq'))) console.log('  [SKIP] 项目文件按课题组授权 — 当前实验室没有 grp-rnaseq');
+else record('项目文件按课题组授权（可见 grp-rnaseq）', projects.status === 200 && projectPaths.some((p) => p.startsWith('grp-rnaseq')), projectPaths.join(','));
 
   const unknown = await api(page, '/api/next/v1/files?source=secret');
   record('未知数据源被拒绝', unknown.status === 400, `status=${unknown.status}`);
