@@ -2,10 +2,10 @@
 // 用法: LAB_PASS=<口令> node bioinfo-api-smoke.mjs
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
 
-const BASE = process.env.BIO_BASE || 'http://192.0.2.10:8102';
+const BASE = process.env.BIO_BASE || `${BASE}:8102`;
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
-const OIDC = 'http://192.0.2.10:8090';
+const OIDC = process.env.OIDC || 'http://127.0.0.1:8090';
 
 const fails = [];
 const ok = (cond, label) => {

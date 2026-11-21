@@ -6,7 +6,7 @@
  */
 import { chromium } from 'playwright';
 
-const PORTAL = process.env.PORTAL_BASE || 'http://192.0.2.10';
+const PORTAL = process.env.PORTAL_BASE || 'http://127.0.0.1';
 const LAB_USER = process.env.LAB_USER || 'student01';
 const LAB_PASS = process.env.LAB_PASS || '';
 
@@ -35,7 +35,8 @@ const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
 const errors = [];
-/** 只统计门户自身（192.0.2.10:80）的控制台错误，嵌入的上游应用错误单独归因 */
+const BASE = process.env.BASE || 'http://127.0.0.1';
+/** 只统计门户自身（:80）的控制台错误，嵌入的上游应用错误单独归因 */
 page.on('console', (m) => {
   const loc = m.location()?.url || '';
   if (m.type() === 'error' && !loc.includes(':8080') && !loc.includes(':3000') && !loc.includes(':8091')) {
@@ -74,12 +75,12 @@ check('门户页面无英文文案', portalBad.length === 0, portalBad.slice(0, 
 
 // ---------- 嵌入服务 ----------
 const svc = [
-  { id: 'drawio', url: 'http://192.0.2.10:8082/?lang=zh', note: 'draw.io（?lang=zh）' },
-  { id: 'it-tools', url: 'http://192.0.2.10:8084/', note: 'IT-Tools（locale=zh 注入）' },
-  { id: 'linux-command', url: 'http://192.0.2.10:8086/', note: 'Linux 命令速查' },
-  { id: 'jbrowse', url: 'http://192.0.2.10:8091/index.html?config=data/demo/config.zh.json', note: 'JBrowse 2（bundle 补丁）' },
-  { id: 'bioinfo', url: 'http://192.0.2.10:8102/', note: '生信实训平台（中文界面）' },
-  { id: 'quantum', url: 'http://192.0.2.10:8080/files/', note: 'Quantum（上游无 i18n 资源）' },
+  { id: 'drawio', url: `${BASE}:8082/?lang=zh`, note: 'draw.io（?lang=zh）' },
+  { id: 'it-tools', url: `${BASE}:8084/`, note: 'IT-Tools（locale=zh 注入）' },
+  { id: 'linux-command', url: `${BASE}:8086/`, note: 'Linux 命令速查' },
+  { id: 'jbrowse', url: `${BASE}:8091/index.html?config=data/demo/config.zh.json`, note: 'JBrowse 2（bundle 补丁）' },
+  { id: 'bioinfo', url: `${BASE}:8102/`, note: '生信实训平台（中文界面）' },
+  { id: 'quantum', url: `${BASE}:8080/files/`, note: 'Quantum（上游无 i18n 资源）' },
 ];
 
 for (const s of svc) {

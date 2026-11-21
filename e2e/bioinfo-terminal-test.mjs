@@ -1,7 +1,7 @@
 // 生信平台终端端到端：建会话 → WebSocket 收发 → 校验 cgroup 限额 → 停止会话
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
 
-const BASE = 'http://192.0.2.10:8102';
+const BASE = process.env.BASE || 'http://127.0.0.1:8102';
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
 

@@ -21,6 +21,7 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Upload
 from . import baserow, db, seed_ocr
 from .config import settings
 from .security import has_role, require_admin, require_csrf, require_user
+from . import audit
 
 log = logging.getLogger("labspace.seed_tables")
 
@@ -538,12 +539,10 @@ async def create_seed_row(
     """
     table_id, _ = await _shared_seed_table()
     created = await baserow.admin_row_create(table_id, values)
-    log.info(
-        "seed row created: table=%s row=%s by=%s",
-        table_id,
-        created.get("id"),
-        str(user.get("email") or user.get("name") or user.get("sub") or ""),
-    )
+    actor = str(user.get("email") or user.get("name") or user.get("sub") or "").split("@")[0]
+    log.info("seed row created: table=%s row=%s by=%s", table_id, created.get("id"), actor)
+    # 审计：谁在什么时候往台账里加了什么（台账是全实验室共享的，事后必须能追）
+    audit.record(actor, "seed.create", f"table:{table_id}/row:{created.get('id')}", {"values": values})
     return created
 
 
@@ -556,12 +555,9 @@ async def update_seed_row(
     """修改一条种子记录（登录即可）。删除与结构变更仍然只有管理员能做。"""
     table_id, _ = await _shared_seed_table()
     updated = await baserow.admin_row_update(table_id, row_id, values)
-    log.info(
-        "seed row updated: table=%s row=%s by=%s",
-        table_id,
-        row_id,
-        str(user.get("email") or user.get("name") or user.get("sub") or ""),
-    )
+    actor = str(user.get("email") or user.get("name") or user.get("sub") or "").split("@")[0]
+    log.info("seed row updated: table=%s row=%s by=%s", table_id, row_id, actor)
+    audit.record(actor, "seed.update", f"table:{table_id}/row:{row_id}", {"values": values})
     return updated
 
 

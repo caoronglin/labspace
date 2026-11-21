@@ -1,7 +1,7 @@
 // iframe 嵌入页验收：不可原生重写的服务以 iframe 嵌入门户
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const USER = process.env.LAB_USER || 'student01';
 const PASS = process.env.LAB_PASS || '';
 

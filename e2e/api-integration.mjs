@@ -4,7 +4,7 @@
 // =====================================================================
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const USER = process.env.LAB_USER || 'student01';
 const PASS = process.env.LAB_PASS || '';
 
@@ -220,11 +220,11 @@ const api = async (path, init = {}) => {
   const items = r.body?.items ?? [];
   record('GET /api/network/entries 入口自检', r.status === 200 && items.length >= 8, `${items.length} 个入口`);
   record(
-    '全部入口均可用（192.0.2.10 + 端口）',
+    '全部入口均可用（主机 + 端口）',
     items.length > 0 && items.every((i) => i.up),
     items.filter((i) => !i.up).map((i) => `${i.name}:${i.detail}`).join(',') || '全部正常',
   );
-  // 允许 http://192.0.2.10/ (80) 与 http://192.0.2.10:PORT/ 两种形式，均不得含域名
+  // 允许 http://<主机>/ (80) 与 http://<主机>:PORT/ 两种形式，均不得含域名
   const noDomain = items.every((i) => /^http:\/\/192\.168\.5\.12(:\d+)?\//.test(i.url));
   record('入口地址不含任何域名', noDomain);
 }
@@ -270,12 +270,12 @@ const api = async (path, init = {}) => {
   const { chromium } = await import('playwright');
   const b = await chromium.launch({ args: ['--no-sandbox'] });
   const pg = await (await b.newContext({ locale: 'zh-CN' })).newPage();
-  await pg.goto('http://192.0.2.10/login', { waitUntil: 'domcontentloaded' });
+  await pg.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await pg.waitForTimeout(3500);
   const authUrl = pg.url();
   record(
     'OIDC 授权端点使用 IP（非域名）',
-    authUrl.startsWith('http://192.0.2.10:8090/login/oauth/authorize') && !authUrl.includes('auth.lab.internal'),
+    authUrl.startsWith(`${BASE}:8090/login/oauth/authorize`) && !authUrl.includes('auth.lab.internal'),
     authUrl.split('?')[0],
   );
   try {

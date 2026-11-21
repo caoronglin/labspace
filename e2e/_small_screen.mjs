@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
  * ③ 有没有 JS 异常 / 4xx。
  * 截图存 /tmp/small-<page>.png 供人工复核。
  */
-const BASE = 'http://198.51.100.71';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const PAGES = ['/drawio', '/plot', '/bio-tools', '/files', '/seeds', '/genomes', '/latex'];
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -19,7 +19,7 @@ const ctx = await browser.newContext({
   hasTouch: true,
   locale: 'zh-CN',
 });
-await ctx.addCookies([{ name: 'labspace_session', value: process.env.TOK, domain: '198.51.100.71', path: '/' }]);
+await ctx.addCookies([{ name: 'labspace_session', value: process.env.TOK, domain: process.env.LAB_HOST || '127.0.0.1', path: '/' }]);
 const page = await ctx.newPage();
 const problems = [];
 page.on('pageerror', (e) => problems.push(`JS ${e}`));

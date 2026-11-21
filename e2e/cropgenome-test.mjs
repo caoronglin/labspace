@@ -9,7 +9,7 @@
 // evaluate 里的 fetch 会被导航打断（"Execution context was destroyed"）。
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const USER = process.env.LAB_USER || 'student01';
 const PASS = process.env.LAB_PASS;
 
@@ -47,7 +47,7 @@ console.log('=== 1. 匿名与伪造身份 ===');
     headers: {
       Accept: 'application/json',
       'X-OIDC-Subject': 'attacker@local',
-      'X-OIDC-Issuer': 'http://192.0.2.10:8090',
+      'X-OIDC-Issuer': `${BASE}:8090`,
       'X-OIDC-Audience': 'cropgenome',
     },
   });

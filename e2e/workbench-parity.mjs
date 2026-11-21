@@ -2,7 +2,7 @@
 // 同一用户、同一数据库，检查条数与字段形状是否一致。
 import { loginContext, launch } from './_auth.mjs';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
   if (cond) { pass++; console.log(`  ✓ ${name}${extra ? ' — ' + extra : ''}`); }

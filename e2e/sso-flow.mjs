@@ -3,6 +3,7 @@ import { launch, loginContext } from './_auth.mjs';
 
 const b = await launch();
 const ctx = await loginContext(b);
+const BASE = process.env.BASE || 'http://127.0.0.1';
 console.log('门户登录 OK');
 
 async function check(name, url, clickTexts) {
@@ -38,18 +39,18 @@ async function check(name, url, clickTexts) {
   return ok;
 }
 
-const qm = await check('Quantum', 'http://192.0.2.10:8080/files/', ['OpenID Connect', 'OpenID', 'OIDC']);
+const qm = await check('Quantum', `${BASE}:8080/files/`, ['OpenID Connect', 'OpenID', 'OIDC']);
 // 备用：直接走服务端 OIDC 入口
 if (!qm) {
-  const qm2 = await check('Quantum(直连OIDC入口)', 'http://192.0.2.10:8080/files/api/auth/oidc/login', []);
+  const qm2 = await check('Quantum(直连OIDC入口)', `${BASE}:8080/files/api/auth/oidc/login`, []);
   console.log('Quantum 直连 OIDC 入口结果 =', qm2);
 }
 
 // JBrowse / draw.io / IT-Tools / Linux 命令速查：无独立账号体系，直接可用
-const jb = await check('JBrowse 2', 'http://192.0.2.10:8091/index.html?config=data/demo/config.zh.json', []);
-const draw = await check('draw.io', 'http://192.0.2.10:8082/', []);
-const it = await check('IT-Tools', 'http://192.0.2.10:8084/', []);
-const cmd = await check('Linux 命令速查', 'http://192.0.2.10:8086/', []);
+const jb = await check('JBrowse 2', `${BASE}:8091/index.html?config=data/demo/config.zh.json`, []);
+const draw = await check('draw.io', `${BASE}:8082/`, []);
+const it = await check('IT-Tools', `${BASE}:8084/`, []);
+const cmd = await check('Linux 命令速查', `${BASE}:8086/`, []);
 
 console.log(`\nSSO 汇总: Open WebUI=${owui ? '免密' : '需口令'} Quantum=${qm ? '免密' : '需口令'} `
   + `JBrowse=${jb ? '免密' : '需口令'} draw.io=${draw ? '免密' : '需口令'} `

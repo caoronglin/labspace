@@ -1,7 +1,7 @@
 // 真实 OIDC 浏览器流程验证：门户 → Casdoor(IP:8090) → 登录 → 回调 → 已登录
 import { chromium } from 'playwright';
 
-const BASE = 'http://192.0.2.10';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const user = process.env.LAB_USER || 'student01';
 const pass = process.env.LAB_PASS;
 
@@ -20,7 +20,7 @@ await p.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(4000);
 console.log('  跳转后的地址:', p.url().split('?')[0]);
 console.log('  是否含域名 auth.lab.internal:', p.url().includes('auth.lab.internal'));
-console.log('  是否为 IP 授权端点:', p.url().includes('192.0.2.10:8090/login/oauth/authorize'));
+console.log('  是否为 IP 授权端点:', p.url().includes(`${process.env.LAB_HOST || '127.0.0.1'}:8090/login/oauth/authorize`));
 
 // 在 Casdoor 登录页完成登录
 await p.waitForSelector('input[type="password"]', { timeout: 20000 });

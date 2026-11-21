@@ -5,7 +5,7 @@
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const USER = process.env.LAB_USER || 'labadmin';
 const PASS =
   process.env.LAB_PASS ||

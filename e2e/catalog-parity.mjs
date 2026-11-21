@@ -6,7 +6,7 @@
 // 用法：LAB_PASS=<student01 口令> LAB_ADMIN_PASS=<labadmin 口令> node e2e/catalog-parity.mjs
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const BACKEND = process.env.LAB_BACKEND || 'http://127.0.0.1:8088';
 
 const KEY_ORDER = [

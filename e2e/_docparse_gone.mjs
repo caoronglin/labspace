@@ -1,9 +1,9 @@
 import { chromium } from 'playwright';
 
-const BASE = 'http://198.51.100.71';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'zh-CN' });
-await ctx.addCookies([{ name: 'labspace_session', value: process.env.TOK, domain: '198.51.100.71', path: '/' }]);
+await ctx.addCookies([{ name: 'labspace_session', value: process.env.TOK, domain: process.env.LAB_HOST || '127.0.0.1', path: '/' }]);
 const page = await ctx.newPage();
 const problems = [];
 page.on('response', (r) => {

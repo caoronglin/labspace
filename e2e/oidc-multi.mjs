@@ -31,6 +31,7 @@ async function flow(base, label) {
   }
 }
 
-const r1 = await flow('http://192.0.2.10', 'lan');
-const r2 = await flow('http://198.51.100.71', 'tailscale');
+const r1 = await flow(`${BASE}`, 'lan');
+const r2 = await flow(`${BASE}`, 'tailscale');
+const BASE = process.env.BASE || 'http://127.0.0.1';
 console.log('汇总: LAN', r1.ok ? 'OK':'FAIL', '| Tailscale', r2.ok ? 'OK':'FAIL');

@@ -30,6 +30,7 @@ from . import accounts, db
 from .admin_research import labgo_admin, labgo_user_request
 from .config import settings
 from .security import has_role, require_csrf, require_user
+from . import audit
 
 log = logging.getLogger("labspace.labshared")
 
@@ -362,6 +363,13 @@ async def _grant_member(advisor: str, member: dict[str, Any]) -> tuple[bool, str
     )
     if not ok:
         return False, str(detail)
+    # 跨目录共享 = 把导师家目录里的一棵子树开给组员，属于权限变更，必须留痕
+    audit.record(
+        advisor,
+        "share.grant",
+        f"users:{path}",
+        {"member": account, "access": "upload", "delete_within_hours": DELETE_WINDOW_HOURS},
+    )
     return True, ""
 
 

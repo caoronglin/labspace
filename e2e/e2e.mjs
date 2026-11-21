@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
-const BASE = process.env.LABSPACE_BASE || 'http://192.0.2.10';
+const BASE = process.env.LABSPACE_BASE || 'http://127.0.0.1';
 const SHOT = process.env.SHOT_DIR || '/opt/labspace/e2e/shots';
 const USER = process.env.LAB_USER || 'student01';
 const PASS = process.env.LAB_PASS || '';

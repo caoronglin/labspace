@@ -2,7 +2,7 @@
 //  用法: LAB_PASS=<口令> node ip-adaptive-test.mjs
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const TS_HOST = process.env.LAB_TS_HOST || '198.51.100.71';
 const USER = process.env.LAB_USER || 'student01';
 const PASS = process.env.LAB_PASS || '';
@@ -84,7 +84,7 @@ for (const [service, port] of [['quantum', 8080]]) {
     ['quantum', 8080, '/files/api/auth/oidc/login'],
   ]) {
     const r = await apiAs('192.0.2.10', `/api/sso/${service}/prepare`, 180000);
-    record(`切回内网 192.0.2.10（${service}）`, r.status === 200 && String(r.body?.loginUrl || '').startsWith('http://192.0.2.10:'),
+    record(`切回内网 192.0.2.10（${service}）`, r.status === 200 && String(r.body?.loginUrl || '').startsWith(`${BASE}:`),
       `loginUrl=${r.body?.loginUrl} changed=${r.body?.changed}`);
     const resp = await fetch(`http://127.0.0.1:${port}${probe}`, { redirect: 'manual' });
     const loc = resp.headers.get('location') || '';
@@ -93,7 +93,7 @@ for (const [service, port] of [['quantum', 8080]]) {
 }
 
 console.log('\n== 4. 浏览器实测：两个入口页面上的 IP 外链 ==');
-for (const entry of ['http://192.0.2.10', `http://${TS_HOST}`]) {
+for (const entry of [`${BASE}`, `http://${TS_HOST}`]) {
   const host = new URL(entry).hostname;
   const other = host === '192.0.2.10' ? TS_HOST : '192.0.2.10';
   await page.goto(`${entry}/start`, { waitUntil: 'domcontentloaded' });

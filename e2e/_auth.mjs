@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 
 export const LAB_USER = process.env.LAB_USER || 'student01';
 export const LAB_PASS = process.env.LAB_PASS;
-export const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+export const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 
 export async function loginContext(browser, base = BASE) {
   const ctx = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } });

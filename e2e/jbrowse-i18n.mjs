@@ -6,7 +6,7 @@
  */
 import { chromium } from 'playwright';
 
-const BASE = process.env.JB_BASE || 'http://192.0.2.10:8091';
+const BASE = process.env.JB_BASE || `${BASE}:8091`;
 const JB_URL = `${BASE}/index.html?config=data/demo/config.zh.json`;
 const SHOT = new URL('./shots/jbrowse-i18n.png', import.meta.url).pathname;
 

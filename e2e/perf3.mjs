@@ -2,8 +2,9 @@ import { chromium } from 'playwright';
 const b = await chromium.launch({args:['--no-sandbox']});
 const ctx = await b.newContext();
 const p = await ctx.newPage();
+const BASE = process.env.BASE || 'http://127.0.0.1';
 async function go(label){
-  await p.goto('http://192.0.2.10/', {waitUntil:'domcontentloaded'});
+  await p.goto(`${BASE}/`, {waitUntil:'domcontentloaded'});
   await p.waitForTimeout(2000);
   const m = await p.evaluate(()=>{
     const rs = performance.getEntriesByType('resource');

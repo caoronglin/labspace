@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const credsFor = (email) => {
   const line = fs
     .readFileSync('/etc/labspace/casdoor-users.txt', 'utf8')

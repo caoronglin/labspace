@@ -40,6 +40,9 @@ from . import (
     account_security as account_security,
 )
 from . import (
+    audit as audit,
+)
+from . import (
     accounts as accounts_mod,
 )
 from . import (
@@ -695,6 +698,22 @@ async def _must_change_now(name: str) -> bool:
     else:
         _PWD_RESET_CACHE.pop(name, None)
     return flag
+
+
+@app.middleware("http")
+async def _stamp_audit_ip(request: Request, call_next):
+    """把客户端 IP 放进 contextvar，供 audit.record() 使用。
+
+    审计要回答「谁从哪改的」，但写接口分散在若干模块，让每个函数多接一个
+    request 参数既啰嗦又容易漏。中间件统一塞进上下文，业务侧只管调
+    audit.record(...) 即可。
+
+    取 X-Forwarded-For 的第一段（nginx 是唯一可信来源，且它会覆写这个头）。
+    """
+    forwarded = request.headers.get("x-forwarded-for") or ""
+    ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "")
+    audit.set_request_ip(ip)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -2070,3 +2089,60 @@ async def api_daily_papers_refresh(
         raise HTTPException(status_code=400, detail="topic 不能为空")
     target = _parse_day_param(str(payload.get("day") or ""))
     return await dailypapers_mod.build_daily(user["sub"], topic, target)
+
+@app.get("/api/admin/audit")
+async def api_admin_audit(
+    request: Request,
+    actor: str = Query(default=""),
+    action: str = Query(default=""),
+    since: str = Query(default=""),
+    until: str = Query(default=""),
+    limit: int = Query(default=500, ge=1, le=5000),
+    format: str = Query(default="json"),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> Any:
+    """按时间、操作人、动作导出审计日志（JSON 或 CSV）。
+
+    审计表是全实验室的写操作底账：种子台账改动、组会授权、跨目录共享、账号变更
+    都往这里写。导出走服务端过滤而不是把全表丢给前端 —— 表会一直长。
+    """
+    clauses = ["1=1"]
+    params: list[Any] = []
+    if actor:
+        clauses.append("actor = %s")
+        params.append(actor.strip().lower())
+    if action:
+        clauses.append("action LIKE %s")
+        params.append(f"{action.strip()}%")
+    if since:
+        clauses.append("created_at >= %s")
+        params.append(since)
+    if until:
+        clauses.append("created_at < %s")
+        params.append(until)
+    where = " AND ".join(clauses)
+    rows = db.query(
+        f"SELECT id, actor, action, target, detail, ip, created_at "
+        f"FROM labspace.account_audit WHERE {where} ORDER BY created_at DESC LIMIT %s",  # noqa: S608 - where 由固定子句拼成，值全走占位符
+        (*params, limit),
+    )
+    if format.lower() == "csv":
+        import csv
+        import io
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["id", "actor", "action", "target", "detail", "ip", "created_at"])
+        for r in rows:
+            writer.writerow([
+                r["id"], r["actor"], r["action"], r["target"],
+                json.dumps(r["detail"], ensure_ascii=False), r["ip"], r["created_at"],
+            ])
+        from fastapi.responses import PlainTextResponse
+
+        return PlainTextResponse(
+            buf.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"content-disposition": 'attachment; filename="labspace-audit.csv"'},
+        )
+    return {"items": rows, "count": len(rows)}

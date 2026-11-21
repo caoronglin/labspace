@@ -38,6 +38,7 @@ from .admin_research import (
 from .config import settings
 from .security import has_role, require_csrf, require_user
 from .uploads import read_upload_capped
+from . import audit
 
 log = logging.getLogger("labspace.meetings")
 
@@ -372,6 +373,13 @@ async def grant_week(
     if not ok:
         raise HTTPException(status_code=502, detail=f"组会目录授权写入失败：{detail}")
     await asyncio.to_thread(_db_add_grant, week, target_id, _actor(user))
+    # 组会授权 = 把某人放进「能看这周材料」的圈子，属于权限变更，必须留痕
+    audit.record(
+        _actor(user),
+        "meeting.grant",
+        f"week:{week}/user:{target_id}",
+        {"account": str(account.get("name") or "")},
+    )
     return {
         "ok": True,
         "yearWeek": week,

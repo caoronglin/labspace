@@ -2,7 +2,7 @@
 // 用法: LAB_PASS=<口令> node db-api-integration.mjs
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const USER = process.env.LAB_USER || 'student01';
 const PASS = process.env.LAB_PASS || '';
 

@@ -2,16 +2,17 @@ import { chromium } from 'playwright';
 const b = await chromium.launch({args:['--no-sandbox']});
 const p = await (await b.newContext({locale:'zh-CN', viewport:{width:1500,height:950}}));
 const pg = await p.newPage();
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const targets = [
-  ['门户', 'http://192.0.2.10/'],
-  ['统一认证', 'http://192.0.2.10:8090/'],
-  ['生信实训平台', 'http://192.0.2.10:8102/'],
-  ['Quantum', 'http://192.0.2.10:8080/files/'],
-  ['draw.io', 'http://192.0.2.10:8082/'],
-  ['IT-Tools', 'http://192.0.2.10:8084/'],
-  ['Linux Command', 'http://192.0.2.10:8086/'],
-  ['JBrowse', 'http://192.0.2.10:8091/index.html?config=data/demo/config.zh.json'],
-  ['植物数据库(门户页)', 'http://192.0.2.10/databases'],
+  ['门户', `${BASE}/`],
+  ['统一认证', `${BASE}:8090/`],
+  ['生信实训平台', `${BASE}:8102/`],
+  ['Quantum', `${BASE}:8080/files/`],
+  ['draw.io', `${BASE}:8082/`],
+  ['IT-Tools', `${BASE}:8084/`],
+  ['Linux Command', `${BASE}:8086/`],
+  ['JBrowse', `${BASE}:8091/index.html?config=data/demo/config.zh.json`],
+  ['植物数据库(门户页)', `${BASE}/databases`],
 ];
 for (const [name, url] of targets) {
   const fails=[];

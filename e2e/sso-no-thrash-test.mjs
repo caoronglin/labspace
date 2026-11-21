@@ -9,8 +9,8 @@
 import { execSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
-const BASE = process.env.LAB_BASE || 'http://192.0.2.10';
-const TS_HOST = process.env.LAB_TS_HOST || '198.51.100.71';
+const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
+const TS_HOST = process.env.LAB_TS_HOST || '127.0.0.1';
 const CONTAINERS = ['lab-quantum'];
 
 let pass = 0;

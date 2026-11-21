@@ -1,7 +1,7 @@
 // 重置初始化后验收：门户可用、目录可查、工作台可写、Agent 可建会话
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
 
-const BASE = 'http://192.0.2.10';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
 
