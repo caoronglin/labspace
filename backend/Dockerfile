@@ -67,6 +67,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   一律由人确认后才入库，不自动提交。
 
 COPY app /srv/app/app
+# 版本化迁移：建表语句在 backend/migrations/*.sql，启动时由 app/migrate.py 执行。
+# 不 COPY 进镜像的话，容器里 MIGRATIONS_DIR 不存在 → 一个迁移都不会跑（踩过）。
+COPY migrations /srv/app/migrations
 
 # compose 里实际以 1000:1000 运行（与服务账号一致，复用既有 ACL）；
 # 这里保留一个独立账号，供单独 docker run 使用
