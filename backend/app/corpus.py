@@ -258,7 +258,7 @@ class CorpusEntry:
 
 def _load_commands() -> list[dict[str, Any]]:
     """Linux 命令索引（与 /api/commands 同源）。"""
-    from .main import _load_cmd_index  # 延迟导入，避免循环依赖
+    from .routers.docs import _load_cmd_index  # 延迟导入，避免循环依赖
 
     try:
         return list(_load_cmd_index().values())

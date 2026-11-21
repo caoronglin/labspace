@@ -81,7 +81,11 @@ def main() -> int:
     # 闭包：把被搬代码引用到的**本模块其它顶层定义**（函数/常量）一起搬走。
     # 不做这一步，新模块会带着一堆 NameError（_env_int / CMD_INDEX / log …），
     # 每补一个再跑一次，来回七八轮 —— 这是前面反复失败的直接原因。
-    local_names = {n for n in defs}
+    # app / log 这类「框架装配」名字不能跟着闭包搬走：
+    # 被搬的代码里有 @app.get 装饰器，闭包会把 `app = FastAPI(...)` 一起切走，
+    # main.py 就变成 `name 'app' is not defined`（踩过两次）。
+    NEVER_MOVE = {'app', 'log'}
+    local_names = {n for n in defs if n not in NEVER_MOVE}
     ordered = list(wanted)
     seen = set(wanted)
     while True:
