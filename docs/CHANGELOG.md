@@ -269,7 +269,7 @@ rust-bio 生态停更、`/usr/local/bin/cropgenome` 没有源码无法升级，�
 
 ## 2026-11-20 — 使用说明与互动引导同步
 
-- 新增 [docs/USER_GUIDE.md](docs/USER_GUIDE.md)：面向实验室成员的完整使用说明，
+- 新增 [docs/USER_GUIDE.md](USER_GUIDE.md)：面向实验室成员的完整使用说明，
   覆盖登录入口、导航、文件/课题资料/组会/共享目录、PDF 工具箱、AI 与文献、
   种子与多维表格、邮件、防火墙两档与常见问题。
 - README 增加用户指南链接；入口表补齐 primer、PDF 工具箱、邮件；账号表改为真实的

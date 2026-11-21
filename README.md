@@ -10,18 +10,24 @@
 React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验室的 AI、文件、科研绘图、文献与科研数据库，
 以 Casdoor 作为唯一身份源。**全部入口使用 `192.0.2.10 + 端口`，不依赖任何域名或 DNS。**
 
+> **文档只有一个真源：`docs/`。** 根目录只保留本 README，其他文档一律在
+> `docs/` 下（历史上根目录还有一份同名副本，两份会各自漂移，已经删掉）。
+
 | 文档 | 内容 |
 | --- | --- |
 | [USER_GUIDE.md](docs/USER_GUIDE.md) | **面向实验室成员的使用说明**：每天怎么用、文件/组会/种子/PDF/邮件/联动 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 拓扑、网络、端口、身份流、数据流、防火墙 |
-| [DEPLOY.md](DEPLOY.md) | 从零部署步骤与命令 |
-| [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | 设计令牌、组件规范、主题 |
-| [SERVICE_INTEGRATION.md](SERVICE_INTEGRATION.md) | 各第三方服务的集成方式与限制 |
-| [SECURITY.md](SECURITY.md) | 威胁面、鉴权边界、已知风险 |
-| [TEST.md](TEST.md) | 实际执行的验证与结果 |
-| [ROLLBACK.md](ROLLBACK.md) | 回滚路径 |
-| [CHANGELOG.md](CHANGELOG.md) | 变更记录 |
-| [IMAGES_LOCK.md](IMAGES_LOCK.md) | 镜像与 digest |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 拓扑、网络、端口、身份流、数据流、防火墙 |
+| [DEPLOY.md](docs/DEPLOY.md) | 从零部署步骤与命令 |
+| [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | 设计令牌、组件规范、主题 |
+| [SERVICE_INTEGRATION.md](docs/SERVICE_INTEGRATION.md) | 各第三方服务的集成方式与限制 |
+| [SECURITY.md](docs/SECURITY.md) | 威胁面、鉴权边界、已知风险 |
+| [TEST.md](docs/TEST.md) | 实际执行的验证与结果 |
+| [ROLLBACK.md](docs/ROLLBACK.md) | 回滚路径 |
+| [CHANGELOG.md](docs/CHANGELOG.md) | 变更记录 |
+| [IMAGES_LOCK.md](docs/IMAGES_LOCK.md) | 镜像与 digest |
+| [PHASE1_SECURITY_HARDENING.md](docs/PHASE1_SECURITY_HARDENING.md) | Phase 1 安全止血的验收证据 |
+
+文档内的相对链接可用 `ops/check-docs-links.py` 校验（CI 与本地都能跑）。
 
 ## 入口（IP + 端口）
 
