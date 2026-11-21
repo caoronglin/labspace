@@ -700,6 +700,40 @@ async def _must_change_now(name: str) -> bool:
     return flag
 
 
+#: 已被 Go 核心（labgo :8122）接管、Python 侧只作兼容备份的路由前缀。
+#: 还在被访问说明有调用方没切过去，所以先计数 + 打 Deprecation 头，
+#: 等观测到一整轮发布周期零命中，再从 main.py 里删实现（别凭感觉删）。
+_DEPRECATED_PREFIXES = (
+    "/api/services",
+    "/api/corpus",
+    "/api/search",
+    "/api/favorites",
+    "/api/recent",
+)
+_DEPRECATED_HITS: dict[str, int] = {}
+
+
+@app.middleware("http")
+async def _mark_deprecated_routes(request: Request, call_next):
+    path = request.url.path
+    if any(path.startswith(p) for p in _DEPRECATED_PREFIXES):
+        _DEPRECATED_HITS[path] = _DEPRECATED_HITS.get(path, 0) + 1
+        response = await call_next(request)
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = '</api/admin/deprecated-hits>; rel="successor-version"'
+        return response
+    return await call_next(request)
+
+
+@app.get("/api/admin/deprecated-hits")
+async def api_deprecated_hits(_admin: dict = Depends(require_admin)) -> dict[str, Any]:
+    """管理员看：还有谁在打 Python 侧的兼容路由（决定何时能删实现）。"""
+    return {
+        "prefixes": list(_DEPRECATED_PREFIXES),
+        "items": [{"path": k, "hits": v} for k, v in sorted(_DEPRECATED_HITS.items(), key=lambda kv: -kv[1])],
+    }
+
+
 @app.middleware("http")
 async def _stamp_audit_ip(request: Request, call_next):
     """把客户端 IP 放进 contextvar，供 audit.record() 使用。
