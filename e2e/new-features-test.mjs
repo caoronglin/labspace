@@ -104,14 +104,8 @@ await checkPage(ctx, '/weather', {
   },
 });
 
-await checkPage(ctx, {
-  label: '文档解析',
-  expect: async (page, text) => {
-    const has = /文档解析|上传|拖拽/.test(text);
-    const hasUpload = await page.locator('.ant-upload-drag').count();
-    return { pass: has && hasUpload > 0, detail: `拖拽区 ${hasUpload} 个` };
-  },
-});
+// 文档解析页已下线（服务移除，见 _docparse_gone.mjs 的反向断言），
+// 这里原本还调 checkPage(ctx, {…}) 漏了 path，会拼出 http://<host>[object Object]。
 
 await checkPage(ctx, '/', {
   label: '新版首页',
