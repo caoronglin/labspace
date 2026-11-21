@@ -1,6 +1,6 @@
 """文献库（多库 + 文件夹）接口契约。
 
-跟真实 PostgreSQL 对话：建表用生产 DDL（``app.db.SCHEMA``），因此这份测试同时
+跟真实 PostgreSQL 对话：建表用生产 DDL（``app/migrations/*.sql``），因此这份测试同时
 守住「历史文献无需迁移」和「删除非空库/文件夹必须显式指定去处」这两条底线。
 
 需要一个可写的 PostgreSQL：默认连本机开发库，可用 ``LABSPACE_TEST_DSN`` 覆盖；
@@ -19,7 +19,7 @@ import psycopg2
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, main
+from app import db, migrate, main
 from app.config import settings
 
 CSRF = "csrf-token-for-test"
@@ -43,7 +43,7 @@ def pg() -> Iterator[Any]:
         cur.execute("DROP DOMAIN IF EXISTS public.vector")
         # pgvector 不一定装得上，用文本域顶替 embedding 列，保证 DDL 能整体跑通
         cur.execute("CREATE DOMAIN public.vector AS text")
-        cur.execute(db.SCHEMA)
+        cur.execute(migrate.migrations_sql())
     yield conn
     conn.close()
 
