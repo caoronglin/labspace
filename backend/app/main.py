@@ -2090,6 +2090,33 @@ async def api_daily_papers_refresh(
     target = _parse_day_param(str(payload.get("day") or ""))
     return await dailypapers_mod.build_daily(user["sub"], topic, target)
 
+#: 历史重定向命中计数（进程内）。目的是「敢不敢删」，不是精确统计 ——
+#: 重启归零没关系，运维看的是「一天里还有没有在跳」。
+_LEGACY_HITS: dict[str, int] = {}
+
+
+@app.post("/api/legacy-hit")
+async def api_legacy_hit(request: Request) -> Response:
+    """记录一次旧路径命中（前端跳转前打点）。
+
+    隐私上只记路径，不记用户、不记来源页：这里要回答的是「这条重定向还有人用吗」。
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - 打点坏数据不该报错
+        body = {}
+    path = str((body or {}).get("path") or "")[:200]
+    if path:
+        _LEGACY_HITS[path] = _LEGACY_HITS.get(path, 0) + 1
+    return Response(status_code=204)
+
+
+@app.get("/api/admin/legacy-hits")
+async def api_legacy_hits(_admin: dict = Depends(require_admin)) -> dict[str, Any]:
+    """给管理员看：哪些旧路径还在被访问（决定什么时候能从重定向表里删）。"""
+    return {"items": [{"path": k, "hits": v} for k, v in sorted(_LEGACY_HITS.items(), key=lambda kv: -kv[1])]}
+
+
 @app.get("/api/admin/audit")
 async def api_admin_audit(
     request: Request,

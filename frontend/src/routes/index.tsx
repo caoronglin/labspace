@@ -4,6 +4,7 @@ import { Card, Flex, Skeleton, Typography } from 'antd';
 import AppLayout from '../app/AppLayout';
 import { useAuth } from '../app/AuthContext';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { LEGACY_REDIRECTS, LegacyRedirectRoute } from './legacyRedirects';
 
 // 路由级懒加载：首屏只加载需要的代码块
 const Home = lazy(() => import('../pages/Home'));
@@ -110,12 +111,14 @@ export function AppRoutes() {
           <Route path="/start" element={<Start />} />
           <Route element={<AppLayout />}>
             <Route index element={<Home />} />
-            <Route path="/services" element={<Navigate to="/start" replace />} />
-            <Route path="/nav" element={<Navigate to="/start" replace />} />
+            {/* 历史重定向债：统一在 routes/legacyRedirects.tsx 登记 + 埋点，
+                攒够 30 天零命中就删表里那一行，路由表不用动。 */}
+            {LEGACY_REDIRECTS.map((item) => (
+              <Route key={item.from} path={item.from} element={<LegacyRedirectRoute item={item} />} />
+            ))}
             <Route path="/services/:id" element={<ServiceDetail />} />
             <Route path="/embed/:id" element={<EmbedPage />} />
             <Route path="/sso/:serviceId" element={<SsoLogin />} />
-            <Route path="/favorites" element={<Navigate to="/start" replace />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/literature" element={<Literature />} />
             <Route path="/pdf" element={<PdfTools />} />
@@ -126,22 +129,18 @@ export function AppRoutes() {
             <Route path="/tools" element={<ToolsRedirect />} />
             <Route path="/drawio" element={<Drawio />} />
             {/* 我的图形已并入流程图页的右侧面板；旧书签直接打开面板。 */}
-            <Route path="/drawings" element={<Navigate to="/drawio?panel=drawings" replace />} />
             <Route path="/colors" element={<Colors />} />
             <Route path="/plot" element={<PlotStudio />} />
             {/* 多维表格已并入 /lab（多维表格空间） */}
-            <Route path="/baserow" element={<Navigate to="/lab?tab=tables" replace />} />
             <Route path="/translate" element={<Translate />} />
             <Route path="/commands" element={<Commands />} />
             <Route path="/bioinfo" element={<Bioinfo />} />
             {/* 文本翻译已并入翻译中心（/translate 内含页签），旧路径重定向避免两个入口 */}
-            <Route path="/translation" element={<Navigate to="/translate" replace />} />
             <Route path="/weather" element={<Weather />} />
             <Route path="/workbench" element={<Workbench />} />
             <Route path="/latex" element={<LatexStudio />} />
             <Route path="/agent" element={<Agent />} />
             {/* 能力中心已并入 /agent：旧深链重定向，避免外部链接失效 */}
-            <Route path="/agent/hub" element={<Navigate to="/agent?mode=hub" replace />} />
             <Route path="/databases" element={<Databases />} />
             <Route path="/genomes" element={<Genomes />} />
             <Route path="/bio-tools" element={<BioTools />} />
@@ -168,7 +167,6 @@ export function AppRoutes() {
             />
             <Route path="*" element={<NotFound />} />
           </Route>
-          <Route path="/index.html" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     </ErrorBoundary>
