@@ -49,6 +49,8 @@ import ElnPanel from './lab/ElnPanel';
 import MarkdownView from '../components/MarkdownView';
 import PageShell from '../components/PageShell';
 import AgentHub from './agent/hub/AgentHub';
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 
 dayjs.extend(relativeTime);
 dayjs.locale('zh-cn');
@@ -1010,7 +1012,7 @@ export default function Agent() {
   const suggestionItems = [
     ...skills.map((s) => ({
       key: `skill:${s.name}`,
-      icon: <ThunderboltOutlined style={{ color: '#2B5CE6' }} />,
+      icon: <ThunderboltOutlined style={{ color: tokens.colorPrimary }} />,
       label: s.name,
       description: s.description,
     })),
@@ -1095,13 +1097,13 @@ export default function Agent() {
               },
             }}
           >
-            <Button icon={<ThunderboltOutlined style={{ color: '#2B5CE6' }} />}>
+            <Button icon={<ThunderboltOutlined style={{ color: tokens.colorPrimary }} />}>
               可用技能{skills.length ? ` (${skills.length})` : ''}
             </Button>
           </Dropdown>
           <Tooltip title="长期记忆：跨会话保留的结论、偏好与方法">
             <Button
-              icon={<SaveOutlined style={{ color: '#2B5CE6' }} />}
+              icon={<SaveOutlined style={{ color: tokens.colorPrimary }} />}
               onClick={() => setMemoryOpen(true)}
             >
               记忆{status?.memoryCount ? ` (${status.memoryCount})` : ''}
@@ -1181,10 +1183,10 @@ export default function Agent() {
   const hitlPanel = pendingHitl ? (
     <Card
       size="small"
-      style={{ marginBottom: 10, borderColor: '#FAAD14' }}
+      style={{ marginBottom: 10, borderColor: palette.brand.amber500 }}
       title={
         <Flex align="center" gap={8}>
-          <SafetyCertificateOutlined style={{ color: '#FAAD14' }} />
+          <SafetyCertificateOutlined style={{ color: palette.brand.amber500 }} />
           <Typography.Text strong style={{ fontSize: 13 }}>
             {pendingHitl.kind === 'confirm' ? '需要你确认工具调用' : '助手需要你做选择'}
           </Typography.Text>
@@ -1297,7 +1299,7 @@ export default function Agent() {
       ),
       loading: m.streaming && !m.content,
       streaming: m.streaming,
-      avatar: isUser ? undefined : <RobotOutlined style={{ color: '#2B5CE6' }} />,
+      avatar: isUser ? undefined : <RobotOutlined style={{ color: tokens.colorPrimary }} />,
       footer: isAi ? (
         <Flex vertical gap={6} align="flex-start">
           <CitationList citations={parseCitations(tools)} />
@@ -1368,7 +1370,7 @@ export default function Agent() {
           />
         </Tooltip>
       </Flex>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ant-color-border-secondary, #EEF0F4)', borderRadius: 10, padding: 4 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ant-color-border-secondary)', borderRadius: 10, padding: 4 }}>
         <Conversations
           items={conversationItems}
           activeKey={activeId ?? undefined}
@@ -1410,7 +1412,7 @@ export default function Agent() {
         styles={{ body: { padding: 16, display: 'flex', flexDirection: 'column', minHeight: narrow ? 480 : 'calc(100vh - 220px)' } }}
         title={
           <Space orientation="horizontal" size={8}>
-            <RobotOutlined style={{ color: '#2B5CE6' }} />
+            <RobotOutlined style={{ color: tokens.colorPrimary }} />
             <Typography.Text strong>Agent 助手</Typography.Text>
           </Space>
         }
@@ -1529,7 +1531,7 @@ export default function Agent() {
           ) : (
             <Flex vertical align="center" justify="center" style={{ flex: 1 }}>
               <Empty
-                image={<RobotOutlined style={{ fontSize: 48, color: '#C7CDD6' }} />}
+                image={<RobotOutlined style={{ fontSize: 48, color: palette.neutral.n250 }} />}
                 description="从上方选择一个会话开始对话"
               />
             </Flex>
@@ -1556,7 +1558,7 @@ export default function Agent() {
               <Flex vertical align="center" justify="center" style={{ flex: 1, gap: 16, padding: '24px 0' }}>
                 <Welcome
                   variant="borderless"
-                  icon={<RobotOutlined style={{ fontSize: 40, color: '#2B5CE6' }} />}
+                  icon={<RobotOutlined style={{ fontSize: 40, color: tokens.colorPrimary }} />}
                   title="今天想研究什么？"
                   description="我可以做多步深度调研、检索植物与生物医学数据库、查阅文献，并把结论沉淀到知识库与 D509 工作台。"
                 />
@@ -1668,7 +1670,7 @@ export default function Agent() {
           styles={{ body: { padding: 16 } }}
           title={
             <Space size={8}>
-              <ExperimentOutlined style={{ color: '#2B5CE6' }} />
+              <ExperimentOutlined style={{ color: tokens.colorPrimary }} />
               <Typography.Text strong>实验记录</Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 电子实验记录已并入个人助手，可直接沉淀为任务或知识库条目
@@ -1684,7 +1686,7 @@ export default function Agent() {
           styles={{ body: { padding: 16 } }}
           title={
             <Space size={8}>
-              <RobotOutlined style={{ color: '#2B5CE6' }} />
+              <RobotOutlined style={{ color: tokens.colorPrimary }} />
               <Typography.Text strong>知识库问答</Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 按知识库与分类检索，回答带原文引用

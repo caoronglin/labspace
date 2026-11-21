@@ -41,6 +41,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminTask } from '../../services/api';
 import { errText } from '../../utils/err';
+import { tokens } from '../../theme/tokens';
 
 const { Text } = Typography;
 
@@ -159,7 +160,7 @@ export default function TasksAdmin() {
       render: (v: string) =>
         v ? (
           <Space size={4}>
-            <ClockCircleOutlined style={{ color: '#2B5CE6' }} />
+            <ClockCircleOutlined style={{ color: tokens.colorPrimary }} />
             <Text>{fmt(v)}</Text>
           </Space>
         ) : (
@@ -247,7 +248,7 @@ export default function TasksAdmin() {
             title="失败项"
             value={failed}
             suffix="个"
-            valueStyle={{ color: failed ? '#DC2626' : '#16A34A' }}
+            valueStyle={{ color: failed ? tokens.colorError : tokens.colorSuccess }}
           />
         </Card>
       </Flex>

@@ -47,6 +47,7 @@ import { researchApi, type ResearchFolder } from '../services/labspaces';
 import { errText } from '../utils/err';
 
 import { formatSize } from '../utils/format';
+import { palette } from '../theme/palette';
 const { Paragraph, Text } = Typography;
 
 // 大小格式化统一走 utils/format（见该文件顶部说明）
@@ -336,7 +337,7 @@ export default function ResearchFolders() {
               title="已开通授权"
               value={stats.granted}
               suffix="个"
-              valueStyle={{ color: '#3f8600' }}
+              valueStyle={{ color: palette.brand.olive700 }}
             />
           </Card>
         </Col>

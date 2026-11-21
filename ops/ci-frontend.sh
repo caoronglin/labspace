@@ -3,10 +3,10 @@
 # 用 pnpm 而不是 npm：仓库的真源是 pnpm-workspace.yaml + pnpm-lock.yaml，
 # 用 npm install 会绕过锁文件，本地能过、CI 装到别的版本。
 set -euo pipefail
-# 脚本目录必须在 cd 之前算好：下面会 cd 到 labspace/，
-# 之后再按 BASH_SOURCE 的相对路径就变成 labspace/labspace/ops/…（已在 CI 上踩过）
+# 脚本目录必须在 cd 之前算好，之后再按 BASH_SOURCE 的相对路径会多套一层。
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$(git rev-parse --show-toplevel)/labspace"
+# 仓库根目录就是 frontend/ 的父目录（曾经多套一层 labspace/，是旧目录布局的残留）
+cd "$(git rev-parse --show-toplevel)"
 
 # 只装前端这个 workspace：pnpm-workspace.yaml 里 python.enabled 会一并处理 backend，
 # 而 CI 容器里的 python 版本未必在 python.versions 白名单内（会直接报错退出）。
@@ -40,3 +40,16 @@ for bin in "$TSC" "$VITE"; do
 done
 "$TSC" -b
 "$VITE" build
+
+# ── 设计令牌零漂移 ──
+# 业务页面里出现裸 hex（#RRGGBB）就意味着「改一次主题要全仓库搜」，
+# 而且深色模式没法跟着变。颜色只能来自 theme/tokens.ts 或 theme/palette.ts。
+# Colors.tsx 是配色示例页（它的职责就是展示色值），单独豁免。
+HEX_HITS=$(grep -rnE "#[0-9a-fA-F]{6}" src/pages --include='*.tsx' --include='*.ts' \
+  | grep -v 'src/pages/Colors.tsx' || true)
+if [ -n "$HEX_HITS" ]; then
+  echo "❌ 业务页面出现裸 hex（请改用 tokens / palette）：" >&2
+  echo "$HEX_HITS" >&2
+  exit 1
+fi
+echo "✓ 裸 hex 检查：0 处"

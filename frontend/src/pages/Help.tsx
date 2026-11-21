@@ -37,6 +37,7 @@ import { NAV_GROUPS, visibleNavItems } from '../app/navigation';
 import { RELEASES } from '../content/releases';
 import NetworkDiagnostics from '../components/NetworkDiagnostics';
 import { requestTour } from '../components/onboardingState';
+import { tokens } from '../theme/tokens';
 
 const { Text, Paragraph, Link } = Typography;
 
@@ -280,7 +281,7 @@ export default function Help() {
                 size="small"
                 title={
                   <Flex align="center" gap={8}>
-                    <span style={{ color: '#2B5CE6' }}>{grp.icon}</span>
+                    <span style={{ color: tokens.colorPrimary }}>{grp.icon}</span>
                     <Text strong style={{ fontSize: 13 }}>
                       {grp.role}
                     </Text>
@@ -374,7 +375,7 @@ export default function Help() {
                     >
                       <Flex vertical gap={4}>
                         <Flex align="center" gap={8} style={{ fontSize: 14 }}>
-                          <span style={{ color: '#2B5CE6' }}>{it.icon}</span>
+                          <span style={{ color: tokens.colorPrimary }}>{it.icon}</span>
                           <Text strong style={{ fontSize: 13 }}>{it.label}</Text>
                         </Flex>
                         <Text type="secondary" style={{ fontSize: 12, minHeight: 32 }}>

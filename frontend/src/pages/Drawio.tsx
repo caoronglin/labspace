@@ -36,6 +36,7 @@ import { api } from '../services/api';
 import { errText } from '../utils/err';
 import { formatDateTime, formatSize } from '../utils/format';
 import PageShell from '../components/PageShell';
+import { palette } from '../theme/palette';
 
 const EMPTY_TEMPLATE = (name: string) =>
   `<mxfile host="labspace"><diagram name="${name}"><mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>`;
@@ -56,12 +57,12 @@ function templateXml(name: string, steps: string[]): string {
   const cells = steps.map((label, i) => {
     const first = i === 0;
     const last = i === steps.length - 1;
-    const fill = first ? '#e8f7ee' : last ? '#fff2e8' : '#eef4ff';
-    const stroke = first ? '#2f9e63' : last ? '#d46b08' : '#4f7cff';
+    const fill = first ? palette.tint.green50 : last ? palette.tint.orange100 : palette.tint.blue50;
+    const stroke = first ? palette.brand.green700 : last ? palette.brand.orange800 : palette.brand.blue500;
     return `<mxCell id="n${i + 1}" value="${escapeXml(label)}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=${fill};strokeColor=${stroke};fontSize=13;" vertex="1" parent="1"><mxGeometry x="${40 + i * 210}" y="90" width="160" height="64" as="geometry"/></mxCell>`;
   }).join('');
   const edges = steps.slice(1).map((_, i) =>
-    `<mxCell id="e${i + 1}" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#8c8c8c;" edge="1" parent="1" source="n${i + 1}" target="n${i + 2}"><mxGeometry relative="1" as="geometry"/></mxCell>`,
+    `<mxCell id="e${i + 1}" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=${palette.neutral.n450};" edge="1" parent="1" source="n${i + 1}" target="n${i + 2}"><mxGeometry relative="1" as="geometry"/></mxCell>`,
   ).join('');
   return `<mxfile host="labspace"><diagram name="${escapeXml(name)}"><mxGraphModel dx="1200" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="300" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}${edges}</root></mxGraphModel></diagram></mxfile>`;
 }

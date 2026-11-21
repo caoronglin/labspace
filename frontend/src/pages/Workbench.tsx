@@ -64,6 +64,8 @@ import { useAuth } from '../app/AuthContext';
 import { useUrlState } from '../hooks/useTableState';
 import { useDebounced } from '../hooks/useDebounced';
 import { errText } from '../utils/err';
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 
 dayjs.locale('zh-cn');
 
@@ -115,7 +117,7 @@ const priorityCn = (p?: string) => (p && PRIORITY_CN[p]) || '中';
 
 /* ------------------------------------------------------------------ 样式 */
 
-const GRADIENT = 'linear-gradient(135deg, #2B5CE6, #12A594)';
+const GRADIENT = `linear-gradient(135deg, ${tokens.colorPrimary}, ${tokens.colorAccent})`;
 
 
 /** 卡片外壳：左侧 3px 色条 + 圆角 16 + hover 上浮 2px */
@@ -176,7 +178,7 @@ function ItemRow({
       style={{
         padding: '10px 12px',
         borderRadius: 12,
-        border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
+        border: '1px solid var(--ant-color-border-secondary)',
         background: danger ? 'rgba(220, 38, 38, 0.05)' : 'var(--ant-color-bg-container, #fff)',
       }}
     >
@@ -819,10 +821,10 @@ export default function Workbench() {
       <Row gutter={[16, 16]} align="stretch">
         <Col xs={24} xl={15}>
           <Panel
-            color="#2B5CE6"
+            color={tokens.colorPrimary}
             title={
               <Flex gap={8} align="center">
-                <ThunderboltOutlined style={{ color: '#2B5CE6' }} />
+                <ThunderboltOutlined style={{ color: tokens.colorPrimary }} />
                 AI 指挥中心
               </Flex>
             }
@@ -862,10 +864,10 @@ export default function Workbench() {
         </Col>
         <Col xs={24} xl={9}>
           <Panel
-            color="#12A594"
+            color={tokens.colorAccent}
             title={
               <Flex gap={8} align="center">
-                <InboxOutlined style={{ color: '#12A594' }} />
+                <InboxOutlined style={{ color: tokens.colorAccent }} />
                 概览
               </Flex>
             }
@@ -973,10 +975,10 @@ export default function Workbench() {
       {/* ------------------------------------------------ 检索结果（全局） */}
             {searchActive ? (
               <Panel
-                color="#0EA5E9"
+                color={palette.brand.sky500}
                 title={
                   <Flex gap={8} align="center">
-                    <ExperimentOutlined style={{ color: '#0EA5E9' }} />
+                    <ExperimentOutlined style={{ color: palette.brand.sky500 }} />
                     检索结果
                   </Flex>
                 }

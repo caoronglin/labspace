@@ -50,6 +50,7 @@ import { useNavigate } from 'react-router-dom';
 import PageShell from '../components/PageShell';
 import { labSharedApi, type SharedMember } from '../services/labShared';
 import { errText } from '../utils/err';
+import { tokens } from '../theme/tokens';
 
 const { Paragraph, Text } = Typography;
 
@@ -429,12 +430,12 @@ export default function SharedMembers({ embedded = false }: { embedded?: boolean
         </Col>
         <Col xs={24} sm={8} lg={6}>
           <Card>
-            <Statistic title="已开通账号" value={stats.withAccount} suffix="人" valueStyle={{ color: '#16A34A' }} />
+            <Statistic title="已开通账号" value={stats.withAccount} suffix="人" valueStyle={{ color: tokens.colorSuccess }} />
           </Card>
         </Col>
         <Col xs={24} sm={8} lg={6}>
           <Card>
-            <Statistic title="待开通账号" value={stats.pending} suffix="人" valueStyle={{ color: '#D97706' }} />
+            <Statistic title="待开通账号" value={stats.pending} suffix="人" valueStyle={{ color: tokens.colorWarning }} />
           </Card>
         </Col>
         <Col xs={24} lg={6}>

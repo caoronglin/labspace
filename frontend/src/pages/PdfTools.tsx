@@ -34,6 +34,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 
 import PageShell from '../components/PageShell';
+import { tokens } from '../theme/tokens';
 
 /**
  * PDF 工具箱（Stirling PDF）—— **antd 原生自绘**，不嵌第三方界面。
@@ -483,7 +484,7 @@ export default function PdfTools() {
               onRemove={(f: UploadFile) => setFiles((prev) => prev.filter((x) => x.uid !== f.uid))}
             >
               <p className="ant-upload-drag-icon">
-                <FilePdfOutlined style={{ fontSize: 34, color: '#2B5CE6' }} />
+                <FilePdfOutlined style={{ fontSize: 34, color: tokens.colorPrimary }} />
               </p>
               <p className="ant-upload-text">点击或拖拽 PDF 到这里</p>
               <p className="ant-upload-hint">

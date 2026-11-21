@@ -82,6 +82,8 @@ import {
 import { errText } from "../utils/err";
 import { handoffToAgent } from "../utils/agentHandoff";
 import PageShell from "../components/PageShell";
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 
 /** 可编辑字段类型：其余类型（公式/查找/汇总/自动编号等）由 Baserow 计算，只读置灰。 */
 const EDITABLE = new Set([
@@ -2246,7 +2248,7 @@ export default function BaserowPage({
               size="small"
               title={
                 <Space size={6}>
-                  <Badge color={col.key === "__none" ? "#bfbfbf" : "#2B5CE6"} />
+                  <Badge color={col.key === "__none" ? palette.neutral.n300 : tokens.colorPrimary} />
                   <span>{col.label}</span>
                   <Tag>{col.rows.length}</Tag>
                 </Space>
@@ -2306,7 +2308,7 @@ export default function BaserowPage({
                       fontSize: 11,
                       lineHeight: "16px",
                       background: "rgba(43,92,230,0.10)",
-                      color: "#2B5CE6",
+                      color: tokens.colorPrimary,
                       borderRadius: 4,
                       padding: "0 4px",
                       overflow: "hidden",
@@ -3086,7 +3088,7 @@ export default function BaserowPage({
             <Welcome
               variant="borderless"
               icon={
-                <TableOutlined style={{ fontSize: 44, color: "#2B5CE6" }} />
+                <TableOutlined style={{ fontSize: 44, color: tokens.colorPrimary }} />
               }
               title="用多维表格整理实验记录"
               description="每位成员拥有独立的工作区，可自由创建数据表、字段与记录；需要协作时可邀请同组成员共享。"

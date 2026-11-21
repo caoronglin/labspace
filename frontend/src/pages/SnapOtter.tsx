@@ -45,6 +45,7 @@ import { readCookie } from '../services/api';
 import { SECTION_META, toolMeta } from './snapotterCatalog';
 
 import { formatSize } from '../utils/format';
+import { tokens } from '../theme/tokens';
 interface SoTool {
   section: string;
   id: string;
@@ -120,7 +121,7 @@ const QUICK_PICKS = [
 ];
 
 function sectionMeta(key: string) {
-  return SECTION_META[key] ?? { label: key || '通用工具', hint: '', color: '#2B5CE6' };
+  return SECTION_META[key] ?? { label: key || '通用工具', hint: '', color: tokens.colorPrimary };
 }
 
 function toolIcon(tool: SoTool) {

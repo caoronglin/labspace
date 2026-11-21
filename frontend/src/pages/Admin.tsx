@@ -55,6 +55,8 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 /* 图表组件懒加载：@ant-design/plots 不进入管理页首屏 chunk */
 import { formatSize } from '../utils/format';
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 const DiskUsagePanel = lazy(() => import('../components/charts/DiskUsagePanel'));
 const ServiceHealthDonut = lazy(() => import('../components/charts/ServiceHealthDonut'));
 
@@ -471,7 +473,7 @@ function AccountsAdmin() {
             icon={<CheckCircleOutlined />}
             title="正常使用"
             value={counts.active}
-            color="#16A34A"
+            color={tokens.colorSuccess}
             hint={`占比 ${counts.total ? Math.round((counts.active / counts.total) * 100) : 0}%`}
           />
         </Col>
@@ -480,7 +482,7 @@ function AccountsAdmin() {
             icon={<StopOutlined />}
             title="已禁用"
             value={counts.disabled}
-            color={counts.disabled ? '#DC2626' : '#64748B'}
+            color={counts.disabled ? tokens.colorError : palette.neutral.n500}
             hint="可随时恢复"
           />
         </Col>
@@ -489,7 +491,7 @@ function AccountsAdmin() {
             icon={<SafetyCertificateOutlined />}
             title="管理员"
             value={counts.admins}
-            color="#7C3AED"
+            color={palette.brand.violet600}
             hint="拥有后台权限"
           />
         </Col>
@@ -1416,7 +1418,7 @@ function BackupAdmin() {
             icon={<DatabaseOutlined />}
             title="备份盘可用"
             value={disk ? formatBytes(disk.free) : '-'}
-            color="#16A34A"
+            color={tokens.colorSuccess}
             hint={disk?.mount ?? '/srv/labbackup'}
           />
         </Col>
@@ -1434,7 +1436,7 @@ function BackupAdmin() {
             title="保留策略"
             value={data?.keep_within ?? '3d'}
             hint={data?.outcome === 'failed' ? '最近一次备份失败' : '后台自动增量备份'}
-            color={data?.outcome === 'failed' ? '#DC2626' : '#2563EB'}
+            color={data?.outcome === 'failed' ? tokens.colorError : palette.brand.blue600}
           />
         </Col>
       </Row>
@@ -1672,7 +1674,7 @@ export default function Admin() {
                     icon={<CloudServerOutlined />}
                     title="已使用"
                     value={formatBytes(disk.used)}
-                    color="#2563EB"
+                    color={palette.brand.blue600}
                     hint={`占用 ${disk.total ? Math.round((disk.used / disk.total) * 100) : 0}%`}
                   />
                 </Col>
@@ -1681,7 +1683,7 @@ export default function Admin() {
                     icon={<CheckCircleOutlined />}
                     title="可用"
                     value={formatBytes(disk.free)}
-                    color="#16A34A"
+                    color={tokens.colorSuccess}
                     hint="建议保留 10% 以上余量"
                   />
                 </Col>

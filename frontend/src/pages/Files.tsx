@@ -91,6 +91,7 @@ import {
   isImageFile,
   isTextEditable,
 } from '../components/files/fileMeta';
+import { tokens } from '../theme/tokens';
 
 /** 缩略图：只有图片走 <img>，其余保持图标。
  *  preview 接口本身已按会话鉴权，且带 maxPreviewBytes 限制，不会把大图拖进列表。 */
@@ -116,7 +117,7 @@ function FileThumb({ id, name, size = 26 }: { id: string; name: string; size?: n
         height: size,
         objectFit: 'cover',
         borderRadius: 6,
-        border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
+        border: '1px solid var(--ant-color-border-secondary)',
         background: 'var(--ant-color-fill-quaternary, rgba(0,0,0,0.03))',
         flex: '0 0 auto',
       }}
@@ -2543,7 +2544,7 @@ export default function Files() {
                 render: (name: string, r) => (
                   <Space size={8}>
                     {r.dir ? (
-                      <FolderOpenOutlined style={{ color: '#D97706' }} />
+                      <FolderOpenOutlined style={{ color: tokens.colorWarning }} />
                     ) : (
                       <FileOutlined style={{ color: 'var(--ant-color-text-tertiary)' }} />
                     )}

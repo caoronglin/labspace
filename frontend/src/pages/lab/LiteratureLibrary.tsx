@@ -35,6 +35,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { api, type LabopsLibrary, type LabopsLibraryFolder, type LabopsLiterature } from '../../services/api';
+import { palette } from '../../theme/palette';
 
 const STATUS: Record<string, { color: string; label: string }> = {
   unread: { color: 'default', label: '未读' },
@@ -42,7 +43,7 @@ const STATUS: Record<string, { color: string; label: string }> = {
   read: { color: 'green', label: '已读' },
 };
 
-const LIBRARY_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#722ed1', '#eb2f96', '#13c2c2'];
+const LIBRARY_COLORS = [palette.brand.antBlue, palette.brand.green500, palette.brand.orange400, palette.brand.purple600, palette.brand.pink600, palette.brand.cyan400];
 
 /** 文件夹树的三个固定节点：全部文献 / 未分类 / 用户自建文件夹。 */
 const ALL_KEY = '__all__';

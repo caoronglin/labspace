@@ -1,4 +1,6 @@
-export interface SnapOtterToolMeta { name: string; desc: string; }
+
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';export interface SnapOtterToolMeta { name: string; desc: string; }
 
 /** SnapOtter 工具目录中文化：按 section/id 索引，未收录的工具回退到服务端英文名。 */
 export const TOOL_META: Record<string, SnapOtterToolMeta> = {
@@ -248,11 +250,11 @@ export const TOOL_META: Record<string, SnapOtterToolMeta> = {
 };
 
 export const SECTION_META: Record<string, { label: string; hint: string; color: string }> = {
-  image: { label: '图片处理', hint: '压缩、裁剪、抠图、格式互转与 AI 增强', color: '#2B5CE6' },
-  pdf: { label: 'PDF 处理', hint: '合并拆分、压缩、OCR 与安全加密', color: '#E5484D' },
-  files: { label: '文档表格', hint: 'Word / Excel / Markdown / EPUB 与数据格式转换', color: '#12A594' },
-  video: { label: '视频处理', hint: '剪辑、压缩、抽帧、字幕与水印', color: '#8E4EC6' },
-  audio: { label: '音频处理', hint: '转码、降噪、响度统一与语音转文字', color: '#F76B15' },
+  image: { label: '图片处理', hint: '压缩、裁剪、抠图、格式互转与 AI 增强', color: tokens.colorPrimary },
+  pdf: { label: 'PDF 处理', hint: '合并拆分、压缩、OCR 与安全加密', color: palette.brand.red500 },
+  files: { label: '文档表格', hint: 'Word / Excel / Markdown / EPUB 与数据格式转换', color: tokens.colorAccent },
+  video: { label: '视频处理', hint: '剪辑、压缩、抽帧、字幕与水印', color: palette.brand.violet500 },
+  audio: { label: '音频处理', hint: '转码、降噪、响度统一与语音转文字', color: palette.brand.orange600 },
 };
 
 export function toolMeta(section: string, id: string, fallbackName: string, fallbackDesc: string): SnapOtterToolMeta {

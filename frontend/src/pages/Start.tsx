@@ -45,14 +45,16 @@ import { redirectSafely } from '../utils/safeNavigate';
 import { api } from '../services/api';
 import { useAuth } from '../app/AuthContext';
 import { useThemeMode } from '../theme/ThemeContext';
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 
 /** 背景方案：全部为本地 CSS 渐变/纹理，离线可用，不拉外链图片 */
 const BACKGROUNDS = [
-  { key: 'lab', name: '实验蓝', css: 'linear-gradient(135deg,#E8F0FE 0%,#F6F8FB 45%,#E6F7F5 100%)' },
-  { key: 'teal', name: '松石绿', css: 'linear-gradient(135deg,#E6F7F5 0%,#F6F8FB 50%,#EAF2FF 100%)' },
-  { key: 'dawn', name: '晨曦', css: 'linear-gradient(135deg,#FFF7ED 0%,#F6F8FB 55%,#EFF6FF 100%)' },
-  { key: 'graph', name: '网格', css: 'linear-gradient(135deg,#F6F8FB 0%,#F6F8FB 100%)' },
-  { key: 'dark', name: '深空', css: 'linear-gradient(135deg,#0F172A 0%,#111C33 55%,#0B2B2B 100%)' },
+  { key: 'lab', name: '实验蓝', css: `linear-gradient(135deg,${palette.tint.blue100} 0%,${palette.neutral.n75} 45%,${palette.tint.teal50} 100%)` },
+  { key: 'teal', name: '松石绿', css: `linear-gradient(135deg,${palette.tint.teal50} 0%,${palette.neutral.n75} 50%,${palette.tint.blue50b} 100%)` },
+  { key: 'dawn', name: '晨曦', css: `linear-gradient(135deg,${palette.tint.orange50} 0%,${palette.neutral.n75} 55%,${palette.tint.blue25} 100%)` },
+  { key: 'graph', name: '网格', css: `linear-gradient(135deg,${palette.neutral.n75} 0%,${palette.neutral.n75} 100%)` },
+  { key: 'dark', name: '深空', css: `linear-gradient(135deg,${palette.neutral.n900} 0%,${palette.neutral.n950} 55%,${palette.tint.darkTeal} 100%)` },
 ];
 
 const SOURCES = [
@@ -99,7 +101,7 @@ export default function Start() {
 
   const current = useMemo(() => BACKGROUNDS.find((b) => b.key === bg) ?? BACKGROUNDS[0], [bg]);
   const isDarkBg = current.key === 'dark';
-  const fg = isDarkBg ? '#E2E8F0' : token.colorText;
+  const fg = isDarkBg ? palette.neutral.n175 : token.colorText;
   const sub = isDarkBg ? 'rgba(226,232,240,0.72)' : token.colorTextSecondary;
   const categories = SOURCES.find((s) => s.key === source)?.categories ?? 'general';
   const searching = submitted.trim().length > 0;
@@ -221,7 +223,7 @@ export default function Start() {
               }}
             >
               <Space style={{ cursor: 'pointer' }}>
-                <Avatar size={28} icon={<UserOutlined />} style={{ background: '#2563EB' }} />
+                <Avatar size={28} icon={<UserOutlined />} style={{ background: palette.brand.blue600 }} />
                 <Typography.Text style={{ color: fg }}>{me.displayName || me.name || me.email}</Typography.Text>
               </Space>
             </Dropdown>
@@ -278,9 +280,9 @@ export default function Start() {
               作为唯一动效焦点；周边仍是静态磨砂玻璃，避免"到处在动"。 */}
           <BorderBeam
             color={[
-              { color: '#2B5CE6', percent: 0 },
-              { color: '#12A594', percent: 50 },
-              { color: '#7C3AED', percent: 100 },
+              { color: tokens.colorPrimary, percent: 0 },
+              { color: tokens.colorAccent, percent: 50 },
+              { color: palette.brand.violet600, percent: 100 },
             ]}
             count={2}
             duration={9}
@@ -326,7 +328,7 @@ export default function Start() {
                       minWidth: 140,
                     }}
                   >
-                    <span style={{ fontSize: 16, color: '#2563EB' }}>{item.icon}</span>
+                    <span style={{ fontSize: 16, color: palette.brand.blue600 }}>{item.icon}</span>
                     <Typography.Text style={{ color: fg, fontSize: 13 }}>{item.name}</Typography.Text>
                   </div>
                 );

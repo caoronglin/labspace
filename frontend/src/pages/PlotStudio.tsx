@@ -18,6 +18,7 @@ import { defaultParams, payloadParams } from '../components/plot/plotParams';
 import {
   plotApi, type PlotChart, type PlotJob, type PlotSample,
 } from '../services/api';
+import { palette as uiPalette } from '../theme/palette';
 
 const STATUS_META: Record<PlotJob['status'], { color: string; text: string }> = {
   queued: { color: 'default', text: '排队中' },
@@ -587,7 +588,7 @@ export default function PlotStudio() {
           成品在 <Typography.Text code>outputs[].path</Typography.Text>，通过
           <Typography.Text code>/file?path=</Typography.Text> 下载。
         </Typography.Paragraph>
-        <pre style={{ background: '#f6f8fa', padding: 12, borderRadius: 8, fontSize: 12, overflow: 'auto' }}>{`POST /api/next/v1/plot/jobs
+        <pre style={{ background: uiPalette.neutral.n75, padding: 12, borderRadius: 8, fontSize: 12, overflow: 'auto' }}>{`POST /api/next/v1/plot/jobs
 Content-Type: application/json
 X-CSRF-Token: <labspace_csrf>
 

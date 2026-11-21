@@ -940,7 +940,7 @@ export default function LatexStudio() {
                                 />
                               </Col>
                             </Row>
-                            <div style={{ marginTop: 14, borderTop: '1px solid var(--ant-color-border-secondary, #EEF0F4)', paddingTop: 12 }}>
+                            <div style={{ marginTop: 14, borderTop: '1px solid var(--ant-color-border-secondary)', paddingTop: 12 }}>
                               <Flex justify="space-between" align="center" wrap gap={8}>
                                 <Text type="secondary" style={{ fontSize: 12 }}>
                                   编译素材：放 .cls/.sty/图片，编译时与源码一起进沙箱
@@ -1029,7 +1029,7 @@ export default function LatexStudio() {
                           iframe 在整屏下高度算不准，且不能翻页/缩放/选字。 */}
                       <div
                         style={{
-                          border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
+                          border: '1px solid var(--ant-color-border-secondary)',
                           borderRadius: 10,
                           overflow: 'hidden',
                           background: '#fff',
@@ -1050,7 +1050,7 @@ export default function LatexStudio() {
                       gap={12}
                       style={{
                         minHeight: fullscreen ? 'calc(100vh - 200px)' : 720,
-                        border: '1px dashed var(--ant-color-border-secondary, #EEF0F4)',
+                        border: '1px dashed var(--ant-color-border-secondary)',
                         borderRadius: 10,
                       }}
                     >
@@ -1100,7 +1100,7 @@ export default function LatexStudio() {
                     hoverable
                     onClick={() => setNewTemplate(t.id)}
                     style={{
-                      borderColor: newTemplate === t.id ? 'var(--ant-color-primary, #2B5CE6)' : undefined,
+                      borderColor: newTemplate === t.id ? 'var(--ant-color-primary)' : undefined,
                       height: '100%',
                     }}
                   >
@@ -1204,7 +1204,7 @@ export default function LatexStudio() {
                 overflow: 'auto',
                 padding: '6px 8px',
                 borderRadius: 6,
-                background: 'var(--ant-color-fill-quaternary, #F5F5F5)',
+                background: 'var(--ant-color-fill-quaternary)',
                 fontSize: 12,
                 lineHeight: 1.6,
                 whiteSpace: 'pre-wrap',
@@ -1237,7 +1237,7 @@ export default function LatexStudio() {
                 <Card
                   key={r.id}
                   size="small"
-                  style={{ borderLeft: `3px solid var(--ant-color-${meta.color}, #2B5CE6)` }}
+                  style={{ borderLeft: `3px solid var(--ant-color-${meta.color})` }}
                 >
                   <Flex vertical gap={6}>
                     <Flex gap={8} align="center" wrap>
@@ -1256,7 +1256,7 @@ export default function LatexStudio() {
                           overflow: 'auto',
                           padding: '6px 8px',
                           borderRadius: 6,
-                          background: 'var(--ant-color-fill-quaternary, #F5F5F5)',
+                          background: 'var(--ant-color-fill-quaternary)',
                           fontSize: 12,
                           lineHeight: 1.6,
                           whiteSpace: 'pre-wrap',
@@ -1301,7 +1301,7 @@ export default function LatexStudio() {
                       <Flex
                         vertical
                         gap={8}
-                        style={{ borderTop: '1px solid var(--ant-color-border-secondary, #EEF0F4)', paddingTop: 8 }}
+                        style={{ borderTop: '1px solid var(--ant-color-border-secondary)', paddingTop: 8 }}
                       >
                         {(replies[r.id] || []).map((rep) => (
                           <Flex key={rep.id} vertical gap={2}>
@@ -1373,7 +1373,7 @@ export default function LatexStudio() {
               style={{
                 maxHeight: 460,
                 overflow: 'auto',
-                border: '1px solid var(--ant-color-border-secondary, #EEF0F4)',
+                border: '1px solid var(--ant-color-border-secondary)',
                 borderRadius: 8,
               }}
             >

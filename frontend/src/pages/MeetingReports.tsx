@@ -294,9 +294,9 @@ export default function MeetingReports() {
           cursor: 'pointer',
           borderRadius: 10,
           border: active
-            ? '1px solid var(--ant-color-primary, #2B5CE6)'
-            : '1px solid var(--ant-color-border-secondary, #eef0f4)',
-          background: active ? 'var(--ant-color-primary-bg, #e6f4ff)' : 'transparent',
+            ? '1px solid var(--ant-color-primary)'
+            : '1px solid var(--ant-color-border-secondary)',
+          background: active ? 'var(--ant-color-primary-bg)' : 'transparent',
         }}
       >
         <Flex vertical gap={2}>

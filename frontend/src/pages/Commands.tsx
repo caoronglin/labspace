@@ -148,7 +148,7 @@ export default function Commands() {
                                 fontSize: 12,
                                 color: 'var(--ant-color-text-tertiary)',
                                 background: 'var(--ant-color-bg-container, #fff)',
-                                borderBottom: '1px solid var(--ant-color-border-secondary, #eef0f4)',
+                                borderBottom: '1px solid var(--ant-color-border-secondary)',
                               }}
                             >
                               {ch} · {list.length}
@@ -176,7 +176,7 @@ export default function Commands() {
                                       ? 'var(--ant-color-primary-bg, rgba(37,99,235,0.08))'
                                       : undefined,
                                     borderInlineStart: active
-                                      ? '3px solid var(--ant-color-primary, #2B5CE6)'
+                                      ? '3px solid var(--ant-color-primary)'
                                       : '3px solid transparent',
                                     outline: 'none',
                                   }}

@@ -61,6 +61,8 @@ import PlantDatabasePanel from "../components/PlantDatabasePanel";
 import { CATEGORY_LABEL } from "../components/ServiceCard";
 import { serviceTarget } from "../utils/serviceRoute";
 import { useAuth } from "../app/AuthContext";
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 
 /* ------------------------------------------------------------ 常量 */
 
@@ -99,12 +101,12 @@ const SERVICE_ICONS: Record<string, ReactNode> = {
 };
 
 const CATEGORY_ACCENT: Record<string, string> = {
-  ai: "#2B5CE6",
-  files: "#12A594",
-  research: "#0891B2",
-  learn: "#D97706",
-  draw: "#EA580C",
-  dev: "#2B5CE6",
+  ai: tokens.colorPrimary,
+  files: tokens.colorAccent,
+  research: palette.brand.cyan700,
+  learn: tokens.colorWarning,
+  draw: palette.brand.orange700,
+  dev: tokens.colorPrimary,
 };
 
 /** 首页优先展示的常用服务（按 id），其余服务自动补位 */
@@ -130,7 +132,7 @@ const QUICK_ENTRIES = [
     desc: "对话 · 检索 · 技能",
     icon: <RobotOutlined />,
     path: "/agent",
-    color: "#2B5CE6",
+    color: tokens.colorPrimary,
   },
   {
     key: "files",
@@ -138,7 +140,7 @@ const QUICK_ENTRIES = [
     desc: "个人 · 共享 · 公共",
     icon: <FolderOpenOutlined />,
     path: "/files",
-    color: "#12A594",
+    color: tokens.colorAccent,
   },
   {
     key: "research",
@@ -146,7 +148,7 @@ const QUICK_ENTRIES = [
     desc: "进组时间-姓名 · 个人目录",
     icon: <ProfileOutlined />,
     path: "/research",
-    color: "#7C3AED",
+    color: palette.brand.violet600,
   },
   {
     key: "meetings",
@@ -154,7 +156,7 @@ const QUICK_ENTRIES = [
     desc: "按周归档 · 逐周授权",
     icon: <ScheduleOutlined />,
     path: "/meetings",
-    color: "#0891B2",
+    color: palette.brand.cyan700,
   },
   {
     key: "seeds",
@@ -162,7 +164,7 @@ const QUICK_ENTRIES = [
     desc: "入库 · 存放 · 备份台账",
     icon: <ExperimentOutlined />,
     path: "/seeds",
-    color: "#16A34A",
+    color: tokens.colorSuccess,
   },
   {
     key: "literature",
@@ -170,7 +172,7 @@ const QUICK_ENTRIES = [
     desc: "统一检索 · 每日论文",
     icon: <BookOutlined />,
     path: "/literature",
-    color: "#2B5CE6",
+    color: tokens.colorPrimary,
   },
   {
     key: "latex",
@@ -178,7 +180,7 @@ const QUICK_ENTRIES = [
     desc: "选刊 · 撰写 · 编译",
     icon: <FileTextOutlined />,
     path: "/latex",
-    color: "#D97706",
+    color: tokens.colorWarning,
   },
   {
     key: "commands",
@@ -186,7 +188,7 @@ const QUICK_ENTRIES = [
     desc: "Linux 命令速查表",
     icon: <ConsoleSqlOutlined />,
     path: "/commands",
-    color: "#12A594",
+    color: tokens.colorAccent,
   },
   {
     key: "pdf",
@@ -194,7 +196,7 @@ const QUICK_ENTRIES = [
     desc: "合并 · 拆分 · 压缩",
     icon: <FilePdfOutlined />,
     path: "/pdf",
-    color: "#EA580C",
+    color: palette.brand.orange700,
   },
 ];
 
@@ -218,7 +220,8 @@ function useHeroBackdrop(): CSSProperties {
     img.decoding = "async";
     img.src = "/api/background/daily";
     img.onload = () => {
-      let accent = "#9EC1FF";
+      // 显式 string：下面会赋 hsl() 模板串，不能让它锁成字面量类型
+      let accent: string = palette.brand.blue200;
       let scrim = 0.58;
       try {
         const size = 32;
@@ -337,7 +340,7 @@ function ServiceTile({
   const navigate = useNavigate();
   const [hover, setHover] = useState(false);
   const status = service.health?.status;
-  const accent = CATEGORY_ACCENT[service.category] ?? "#2B5CE6";
+  const accent = CATEGORY_ACCENT[service.category] ?? tokens.colorPrimary;
   const dotClass =
     status === "up"
       ? "d509-dot d509-dot-up d509-pulse"
@@ -371,7 +374,7 @@ function ServiceTile({
         transition:
           "transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 0.22s ease, border-color 0.22s ease",
         boxShadow: hover ? "0 10px 26px rgba(16, 24, 40, 0.09)" : "none",
-        border: "1px solid var(--ant-color-border-secondary, #eef0f4)",
+        border: "1px solid var(--ant-color-border-secondary)",
         background: "var(--ant-color-bg-container, #fff)",
         height: "100%",
         minHeight: 104,
@@ -428,7 +431,7 @@ function ServiceTile({
                   size="small"
                   icon={
                     favorited ? (
-                      <StarFilled style={{ color: "#D97706" }} />
+                      <StarFilled style={{ color: tokens.colorWarning }} />
                     ) : (
                       <StarOutlined />
                     )
@@ -776,7 +779,7 @@ export default function Home() {
                             padding: 0,
                             cursor: "pointer",
                             fontSize: 12,
-                            color: "var(--hero-accent, #9EC1FF)",
+                            color: "var(--hero-accent)",
                             maxWidth: 150,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -869,7 +872,7 @@ export default function Home() {
                   >
                     <b
                       style={{
-                        color: "var(--hero-accent, #9EC1FF)",
+                        color: "var(--hero-accent)",
                         fontSize: 19,
                         marginRight: 3,
                       }}
@@ -883,7 +886,7 @@ export default function Home() {
                   >
                     <b
                       style={{
-                        color: overdue ? "#FFB3A7" : "#8EE7C0",
+                        color: overdue ? palette.brand.coral200 : palette.tint.green200,
                         fontSize: 19,
                         marginRight: 3,
                       }}
@@ -906,7 +909,7 @@ export default function Home() {
                     {nextTasks.map((t) => (
                       <Flex key={t.id} gap={6} align="center">
                         <ClockCircleOutlined
-                          style={{ fontSize: 11, color: "#FFD08A" }}
+                          style={{ fontSize: 11, color: palette.brand.amber200 }}
                         />
                         <Typography.Text ellipsis style={{ fontSize: 12 }}>
                           {t.title}
@@ -930,13 +933,13 @@ export default function Home() {
                     label="可用服务"
                     value={services.length}
                     suffix="个"
-                    accent="var(--hero-accent, #9EC1FF)"
+                    accent="var(--hero-accent)"
                   />
                   <Metric
                     label="当前在线"
                     value={online}
                     suffix={`/ ${services.length}`}
-                    accent="#8EE7C0"
+                    accent={palette.tint.green200}
                   />
                 </Flex>
               </div>
@@ -1112,7 +1115,7 @@ export default function Home() {
                         <div
                           style={{
                             border:
-                              "1px solid var(--ant-color-border-secondary, #EEF0F4)",
+                              "1px solid var(--ant-color-border-secondary)",
                             borderRadius: 10,
                             padding: "10px 12px",
                             background:

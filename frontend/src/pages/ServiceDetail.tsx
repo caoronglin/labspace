@@ -8,6 +8,7 @@ import { nativeRouteOf } from '../utils/serviceRoute';
 import { CATEGORY_LABEL } from '../components/ServiceCard';
 import EmbedFrame from '../components/EmbedFrame';
 import SsoButton from '../components/SsoButton';
+import { tokens } from '../theme/tokens';
 
 export default function ServiceDetail() {
   const { id = '' } = useParams();
@@ -99,7 +100,7 @@ export default function ServiceDetail() {
           </Button>
           {service.ssoUrl ? <SsoButton ssoUrl={service.ssoUrl} serviceId={service.id} size="middle" /> : null}
           <Button
-            icon={favorited ? <StarFilled style={{ color: '#D97706' }} /> : <StarOutlined />}
+            icon={favorited ? <StarFilled style={{ color: tokens.colorWarning }} /> : <StarOutlined />}
             onClick={() => favMutation.mutate({ sid: service.id, on: !favorited })}
           >
             {favorited ? '已收藏' : '收藏'}

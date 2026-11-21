@@ -5,6 +5,7 @@ import { InboxOutlined, TranslationOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import PageShell from '../components/PageShell';
 import Translation from './Translation';
+import { palette } from '../theme/palette';
 
 interface JobStatus {
   status: 'queued' | 'processing' | 'done' | 'failed';
@@ -92,7 +93,7 @@ export default function Translate() {
       <Card
         title={
           <Space>
-            <TranslationOutlined style={{ color: '#2563EB' }} />
+            <TranslationOutlined style={{ color: palette.brand.blue600 }} />
             PDF 论文翻译
           </Space>
         }

@@ -52,6 +52,8 @@ import type {
   AgentSkillOption,
   AgentUsageRow,
 } from '../../services/api';
+import { tokens } from '../../theme/tokens';
+import { palette } from '../../theme/palette';
 
 /** 该组件由 /admin 以 Tab 形式嵌入，故接收一个可选 prop，但不自行处理路由。 */
 export interface AgentAdminProps {
@@ -921,11 +923,11 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                 {statusOk ? '网关在线' : '网关不可用'}
               </Tag>
               <span>
-                <span style={{ color: '#5B6675' }}>网关地址：</span>
+                <span style={{ color: tokens.colorTextSecondary }}>网关地址：</span>
                 <span style={{ fontFamily: 'monospace' }}>{status?.gateway || '未配置'}</span>
               </span>
               <span>
-                <span style={{ color: '#5B6675' }}>当前默认模型：</span>
+                <span style={{ color: tokens.colorTextSecondary }}>当前默认模型：</span>
                 <span style={{ fontFamily: 'monospace' }}>{status?.model || '未配置'}</span>
               </span>
             </Space>
@@ -1002,7 +1004,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
       >
         <Flex vertical gap={16}>
           <Flex vertical gap={8}>
-            <span style={{ color: '#5B6675', fontSize: 13 }}>默认模型</span>
+            <span style={{ color: tokens.colorTextSecondary, fontSize: 13 }}>默认模型</span>
             <Select
               style={{ maxWidth: 320 }}
               placeholder="请选择默认模型"
@@ -1060,7 +1062,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                 value={form.quotas.messages_per_hour}
                 onChange={(v) => setQuota('messages_per_hour', v)}
               />
-              <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+              <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
                 单个用户在 1 小时内最多发送的消息条数，超出后提示稍后再试。
               </span>
             </Flex>
@@ -1076,7 +1078,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                 value={form.quotas.messages_per_day}
                 onChange={(v) => setQuota('messages_per_day', v)}
               />
-              <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+              <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
                 单个用户在 24 小时内最多发送的消息条数，按自然日滚动重置。
               </span>
             </Flex>
@@ -1092,7 +1094,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                 value={form.quotas.tokens_per_day}
                 onChange={(v) => setQuota('tokens_per_day', v)}
               />
-              <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+              <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
                 单个用户每天可消耗的 token 总量（输入 + 输出），用于控制算力成本。
               </span>
             </Flex>
@@ -1108,7 +1110,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                 value={form.quotas.max_sessions}
                 onChange={(v) => setQuota('max_sessions', v)}
               />
-              <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+              <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
                 单个用户同时保持的对话会话数量上限，超出后需关闭旧会话。
               </span>
             </Flex>
@@ -1143,7 +1145,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                 align="center"
                 style={{
                   padding: '10px 12px',
-                  border: '1px solid #E6E9EF',
+                  border: `1px solid ${tokens.colorBorder}`,
                   borderRadius: 10,
                 }}
               >
@@ -1186,7 +1188,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                   gap={12}
                   style={{
                     padding: '10px 12px',
-                    border: '1px solid #E6E9EF',
+                    border: `1px solid ${tokens.colorBorder}`,
                     borderRadius: 10,
                   }}
                 >
@@ -1197,7 +1199,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                         {skill.enabled ? '已启用' : '已停用'}
                       </Tag>
                     </Space>
-                    <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+                    <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
                       {skill.description || '未提供描述'}
                     </span>
                     <Typography.Text
@@ -1277,7 +1279,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
             showCount
             maxLength={8000}
           />
-          <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+          <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
             这是给 Agent 助手的全局指令，会追加到每次对话的系统提示中，建议写明角色定位、语言偏好与输出格式要求。
           </span>
         </Flex>
@@ -1321,15 +1323,15 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
           position: 'sticky',
           bottom: 0,
           zIndex: 5,
-          background: '#FFFFFF',
-          border: '1px solid #E6E9EF',
+          background: palette.white,
+          border: `1px solid ${tokens.colorBorder}`,
           borderRadius: 14,
           padding: 12,
           boxShadow: '0 -4px 16px rgba(16, 24, 40, 0.06)',
         }}
       >
         <Flex justify="space-between" align="center" wrap gap={12}>
-          <span style={{ color: '#5B6675', fontSize: 13 }}>
+          <span style={{ color: tokens.colorTextSecondary, fontSize: 13 }}>
             {dirty ? '有未保存的修改' : '当前配置已与后端一致'}
           </span>
           <Space orientation="horizontal" size={12}>
@@ -1402,13 +1404,13 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                       gap={12}
                       style={{
                         padding: '10px 12px',
-                        border: '1px solid #E6E9EF',
+                        border: `1px solid ${tokens.colorBorder}`,
                         borderRadius: 10,
                       }}
                     >
                       <Flex vertical gap={2} style={{ minWidth: 0 }}>
                         <span style={{ fontWeight: 500 }}>{option.name}</span>
-                        <span style={{ color: '#5B6675', fontSize: 12.5 }}>
+                        <span style={{ color: tokens.colorTextSecondary, fontSize: 12.5 }}>
                           {option.description || '未提供描述'}
                         </span>
                         <Typography.Text
@@ -1605,7 +1607,7 @@ export default function AgentAdmin(_props?: AgentAdminProps) {
                   {fields.map(({ key, name: fieldName }) => (
                     <div
                       key={key}
-                      style={{ border: '1px solid #E6E9EF', borderRadius: 10, padding: 12 }}
+                      style={{ border: `1px solid ${tokens.colorBorder}`, borderRadius: 10, padding: 12 }}
                     >
                       <Row gutter={12} align="middle">
                         <Col xs={24} md={7}>

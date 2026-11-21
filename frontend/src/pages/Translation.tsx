@@ -30,6 +30,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { errText } from '../utils/err';
+import { tokens } from '../theme/tokens';
+import { palette } from '../theme/palette';
 
 const HISTORY_KEY = 'labspace-translate-history';
 const HISTORY_LIMIT = 10;
@@ -170,7 +172,7 @@ export default function Translation() {
       <Flex align="center" justify="space-between" wrap gap={8}>
         <Typography.Title level={3} style={{ margin: 0, fontSize: 22 }}>
           <Space>
-            <TranslationOutlined style={{ color: '#2B5CE6' }} />
+            <TranslationOutlined style={{ color: tokens.colorPrimary }} />
             文本翻译
           </Space>
         </Typography.Title>
@@ -298,8 +300,8 @@ export default function Translation() {
               <Flex vertical gap={12}>
                 <div
                   style={{
-                    background: '#FFFFFF',
-                    border: '1px solid #E6E9EF',
+                    background: palette.white,
+                    border: `1px solid ${tokens.colorBorder}`,
                     borderRadius: 10,
                     padding: 16,
                     whiteSpace: 'pre-wrap',
