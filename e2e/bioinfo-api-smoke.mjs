@@ -1,8 +1,8 @@
 // 生信实训平台后端冒烟：以 student01 登录，验证 /api/v1/courses 与 /api/v1/users/me 不再 500
 // 用法: LAB_PASS=<口令> node bioinfo-api-smoke.mjs
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
-
 const BASE = process.env.BIO_BASE || `${BASE}:8102`;
+
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
 const OIDC = process.env.OIDC || 'http://127.0.0.1:8090';

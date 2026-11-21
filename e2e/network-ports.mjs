@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const b = await chromium.launch({args:['--no-sandbox']});
 const ctx = await b.newContext({locale:'zh-CN', viewport:{width:1500,height:1000}});
 const p = await ctx.newPage();
@@ -12,7 +13,6 @@ await p.waitForTimeout(6000);
 await p.goto(`${BASE}/network`, {waitUntil:'networkidle'});
 await p.waitForTimeout(2500);
 const t=(await p.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ');
-const BASE = process.env.BASE || 'http://127.0.0.1';
 console.log('  含域名残留:', /lab\.internal/.test(t) ? '有 ✗' : '无 ✓');
 console.log('  入口自检:', (t.match(/全部入口探测正常|\d+ 个入口异常/)||[])[0]);
 const HOST = process.env.LAB_HOST || '127.0.0.1';

@@ -5,8 +5,8 @@
  * 3. 无控制台错误、页面关键内容渲染正常
  */
 import { chromium } from 'playwright';
-
 const BASE = process.env.JB_BASE || `${BASE}:8091`;
+
 const JB_URL = `${BASE}/index.html?config=data/demo/config.zh.json`;
 const SHOT = new URL('./shots/jbrowse-i18n.png', import.meta.url).pathname;
 

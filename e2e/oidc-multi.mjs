@@ -1,5 +1,6 @@
 // 多入口 OIDC 验证：LAN IP / Tailscale IP / 域名别名
 import { chromium } from 'playwright';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const user = process.env.LAB_USER || 'student01';
 const pass = process.env.LAB_PASS;
 
@@ -33,5 +34,4 @@ async function flow(base, label) {
 
 const r1 = await flow(`${BASE}`, 'lan');
 const r2 = await flow(`${BASE}`, 'tailscale');
-const BASE = process.env.BASE || 'http://127.0.0.1';
 console.log('汇总: LAN', r1.ok ? 'OK':'FAIL', '| Tailscale', r2.ok ? 'OK':'FAIL');

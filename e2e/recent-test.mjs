@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const b = await chromium.launch({args:['--no-sandbox']});
 const p = await (await b.newContext({locale:'zh-CN', viewport:{width:1500,height:1000}})).newPage();
 await p.goto(`${BASE}/api/auth/login`, {waitUntil:'domcontentloaded'});
@@ -18,7 +19,6 @@ await p.goto(`${BASE}/`, {waitUntil:'networkidle'});
 await p.waitForTimeout(1500);
 const t=(await p.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ');
 const i=t.indexOf('最近访问');
-const BASE = process.env.BASE || 'http://127.0.0.1';
 console.log('  首页最近访问区块:', t.slice(i, i+90));
 await p.screenshot({path:'/opt/labspace/e2e/shots/home-recent.png'});
 await b.close();

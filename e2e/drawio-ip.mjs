@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const b = await chromium.launch({args:['--no-sandbox']});
 const ctx = await b.newContext({locale:'zh-CN', viewport:{width:1500,height:1000}});
 const p = await ctx.newPage();
@@ -16,7 +17,6 @@ await p.waitForTimeout(4000);
 const frames = p.frames().map(f=>f.url().split('?')[0]);
 console.log('  门户内 iframe 源:', frames.filter(u=>u.includes('draw')).join(' | ') || '无');
 const inner = p.frames().find(f=>f.url().includes('draw'));
-const BASE = process.env.BASE || 'http://127.0.0.1';
 if (inner) { const t=(await inner.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ').slice(0,90); console.log('  iframe 内文本:', t); }
 console.log('  失败请求:', fails.slice(0,4));
 await p.screenshot({path:'/opt/labspace/e2e/shots/drawio-ip.png'});

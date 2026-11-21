@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+const BASE = process.env.BASE || 'http://127.0.0.1';
 const b = await chromium.launch({args:['--no-sandbox']});
 const p = await (await b.newContext({locale:'zh-CN', viewport:{width:1400,height:950}})).newPage();
 await p.goto(`${BASE}/api/auth/login`, {waitUntil:'domcontentloaded'});
@@ -25,5 +26,4 @@ for (let i=0;i<40;i++){
 }
 await p.screenshot({path:'/opt/labspace/e2e/shots/translate-result.png'});
 const files = await p.evaluate(async()=> (await fetch('/api/drawings',{credentials:'include'})).text());
-const BASE = process.env.BASE || 'http://127.0.0.1';
 await b.close();
