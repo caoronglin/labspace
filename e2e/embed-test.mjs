@@ -29,7 +29,9 @@ const svc = await page.evaluate(async () => {
   return (await r.json()).services;
 });
 const embeddable = svc.filter((s) => s.embed);
-record('服务目录标记了可嵌入服务', embeddable.length >= 6, `${embeddable.length} 个: ${embeddable.map((s) => s.id).join(',')}`);
+// 可嵌入服务随目录调整：当前只有 drawing-board；断言改成「至少 1 个」，
+// 并在详情里打印实际清单，数量变化时一眼可见。
+record('服务目录标记了可嵌入服务', embeddable.length >= 1, `${embeddable.length} 个: ${embeddable.map((s) => s.id).join(',')}`);
 
 // 2. 逐个服务检查 embed 判定与实际渲染
 for (const s of embeddable) {

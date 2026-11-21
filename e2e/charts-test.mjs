@@ -122,6 +122,9 @@ async function run() {
   const isAdmin = !!meInfo?.isAdmin;
   ok('登录成功', `${meInfo?.name ?? LAB_USER}${isAdmin ? '（管理员）' : ''}`);
 
+  // 这两张图现位于 /admin，只有管理员会话能看；包成函数，等 adminCtx 建立后再调，
+  // 否则在模块顶层就引用 adminCtx 会触发 TDZ（Cannot access before initialization）。
+  async function checkAdminCharts() {
   // ---- 首页：服务健康分布 + 数据库分类分布
   if (!adminCtx) {
     // 这两张图已随管理面板迁到 /admin，只有管理员能看；没有管理员会话就跳过，
@@ -183,6 +186,8 @@ async function run() {
     await page.screenshot({ path: `${SHOTS}charts-home.png` });
     await page.close();
   }
+  }
+
 
   // ---- 工作台：任务状态分布
   {
@@ -254,6 +259,8 @@ async function run() {
   } else {
     skip('管理员登录', '未提供 LAB_ADMIN_PASS，且本机账号文件不可读');
   }
+
+  await checkAdminCharts();
 
   if (adminCtx) {
     const page = await adminCtx.newPage();

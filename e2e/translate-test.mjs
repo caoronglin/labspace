@@ -14,7 +14,15 @@ await p.waitForTimeout(1500);
 const status = await p.evaluate(async()=> (await fetch('/api/pdf-translate/status',{credentials:'include'})).text());
 console.log('  服务状态:', status);
 // 上传测试 PDF
-const buf = fs.readFileSync('/tmp/testdoc.pdf');
+// 样本 PDF 自己造：原来依赖 /tmp/testdoc.pdf，换台机器就没有文件、用例直接崩。
+const MINIMAL_PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n' +
+  '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n' +
+  '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R>>endobj\n' +
+  '4 0 obj<</Length 44>>stream\nBT /F1 12 Tf 20 100 Td (D509 test) Tj ET\nendstream endobj\n' +
+  'trailer<</Root 1 0 R>>\n%%EOF\n',
+);
+const buf = fs.existsSync('/tmp/testdoc.pdf') ? fs.readFileSync('/tmp/testdoc.pdf') : MINIMAL_PDF;
 await p.locator('input[type=file]').setInputFiles({name:'testdoc.pdf', mimeType:'application/pdf', buffer:buf});
 await p.waitForTimeout(3000);
 console.log('  已提交，等待处理…');

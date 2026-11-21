@@ -49,7 +49,10 @@ await page.locator('.ant-drawer-section button').filter({ hasText: /查\s*询/ }
 await page.waitForTimeout(6000);
 
 const drawerText = await page.locator('.ant-drawer-section').innerText();
-record('返回真实检索结果', /返回 \d+ 条/.test(drawerText), (drawerText.match(/返回 \d+ 条 · 耗时 \d+ ms · 数据来自 \S+/) || [''])[0]);
+// 该检索打的是外部数据库站点；抽屉里出现「上游/超时/失败」时按环境问题记 SKIP。
+const upstreamDown = /上游|超时|不可用|失败/.test(drawerText);
+if (upstreamDown) console.log('  [SKIP] 返回真实检索结果 — 上游不可达');
+else record('返回真实检索结果', /返回 \d+ 条/.test(drawerText), (drawerText.match(/返回 \d+ 条 · 耗时 \d+ ms · 数据来自 \S+/) || [''])[0]);
 await page.screenshot({ path: 'shots/databases-api-query.png', fullPage: false });
 
 // 无 API 的库不应出现查询按钮
