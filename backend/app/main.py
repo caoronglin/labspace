@@ -206,6 +206,15 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-CSRF-Token", "Authorization", "X-Lab-Service-Token"],
 )
 
+from .routers.deps import (
+    client_host as _client_host,
+    host_allowed as _host_allowed,
+    safe_component as _safe_component,
+)
+
+from .routers.misc import router as misc_router
+
+app.include_router(misc_router)
 app.include_router(workbench_mod.router)
 app.include_router(accounts_mod.router)
 app.include_router(background_mod.router)
@@ -259,10 +268,6 @@ async def _auto_sso_follow(request: Request, call_next):
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._\-一-鿿]+")
 
 
-def _safe_component(name: str, fallback: str = "user") -> str:
-    name = (name or "").strip().replace("/", "-")
-    name = SAFE_NAME.sub("-", name).strip("-.")
-    return name[:64] or fallback
 
 
 def _user_dir(user: dict[str, Any]) -> str:
@@ -548,34 +553,12 @@ async def api_translate_result(job_id: str, user: dict = Depends(require_user)):
 # ------------------------------------------------------------------ 公告
 
 @app.get("/api/announcements")
-async def api_announcements(_: dict = Depends(require_user)) -> dict[str, Any]:
-    return {"announcements": db.list_announcements()}
 
 
 @app.post("/api/announcements")
-async def api_add_announcement(
-    request: Request,
-    user: dict = Depends(require_admin),
-    _: None = Depends(require_csrf),
-) -> dict[str, Any]:
-    payload = await request.json()
-    title = str(payload.get("title") or "").strip()[:120]
-    content = str(payload.get("content") or "").strip()[:4000]
-    level = str(payload.get("level") or "info")[:16]
-    if not title or not content:
-        raise HTTPException(status_code=400, detail="标题与内容不能为空")
-    row = db.add_announcement(title, content, level, user.get("email") or user.get("name") or "admin")
-    # 企业微信推送是尽力而为：失败只记日志，不能让公告发布跟着失败。
-    asyncio.create_task(wecom_mod.notify_announcement(title, content, level))
-    return {"ok": True, "announcement": row}
 
 
 @app.delete("/api/announcements/{aid}")
-async def api_delete_announcement(
-    aid: str, user: dict = Depends(require_admin), _: None = Depends(require_csrf)
-) -> dict[str, Any]:
-    db.delete_announcement(_safe_component(aid, "a"))
-    return {"ok": True}
 
 
 # ------------------------------------------------------------------ 基础
@@ -1006,37 +989,8 @@ def _safe_back(raw: str, request: Request | None = None) -> str:
     return ""
 
 
-def _host_allowed(host: str) -> bool:
-    """入口主机是否在白名单内。
-
-    只采信 ``LABSPACE_ALLOWED_HOSTS`` 里的主机名：门户坚持 IP + 端口直连，
-    合法入口就那几个 IP / localhost，没必要把任意 Host 当成可拼接入站地址的输入。
-    白名单为空（未配置）时退回“只认默认入口主机”，宁严不宽。
-    """
-    h = (host or "").lower().strip().strip(".")
-    if not h:
-        return False
-    allowed = tuple(x.lower().strip() for x in settings.allowed_hosts) or (
-        settings.default_entry_host.lower(),
-    )
-    return h in allowed
 
 
-def _client_host(request: Request) -> str:
-    """用户当前实际访问的主机名（不含端口）。
-
-    用于“服务地址自适应”：从 192.0.2.10 进来就给出 192.0.2.10 的服务地址，
-    从 Tailscale IP 进来就给出 Tailscale IP 的服务地址。
-
-    只采信白名单内的主机：``X-Forwarded-Host`` / ``Host`` 是客户端可控的头，
-    未经校验就拼进后续出站 URL 会变成 SSRF（比如伪造 ``169.254.169.254``）。
-    非法值一律回落到默认入口主机。
-    """
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
-    name = host.split(":")[0].strip()
-    if _host_allowed(name):
-        return name
-    return settings.default_entry_host
 
 
 
