@@ -19,8 +19,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from starlette.concurrency import run_in_threadpool
-
 from fastapi import (
     Body,
     Depends,
@@ -35,12 +33,10 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
 
 from . import (
     account_security as account_security,
-)
-from . import (
-    audit as audit,
 )
 from . import (
     accounts as accounts_mod,
@@ -56,6 +52,9 @@ from . import (
 )
 from . import (
     agentscope_router as agentscope_router_mod,
+)
+from . import (
+    audit as audit,
 )
 from . import (
     background as background_mod,
@@ -131,9 +130,9 @@ from . import (
 from . import (
     workbench as workbench_mod,
 )
-from .catalog import adapt_host, load_catalog, visible_services
+from .catalog import adapt_host, load_catalog
 from .config import settings
-from .databases import CATEGORIES, PLANT_DATABASES, search_databases
+from .databases import search_databases
 from .golink import corpus_query as go_corpus_query
 from .golink import corpus_suggest as go_corpus_suggest
 from .golink import portal_search as go_portal_search
@@ -156,6 +155,13 @@ from .security import (
     verify_csrf,
 )
 from .uploads import read_upload_capped as _read_upload_capped
+
+from .routers.catalog import router as catalog_router
+from .routers.deps import (
+    client_host as _client_host,
+    safe_component as _safe_component,
+)
+from .routers.misc import router as misc_router
 
 log = logging.getLogger("labspace.main")
 
@@ -206,15 +212,8 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-CSRF-Token", "Authorization", "X-Lab-Service-Token"],
 )
 
-from .routers.deps import (
-    client_host as _client_host,
-    host_allowed as _host_allowed,
-    safe_component as _safe_component,
-)
-
-from .routers.misc import router as misc_router
-
 app.include_router(misc_router)
+app.include_router(catalog_router)
 app.include_router(workbench_mod.router)
 app.include_router(accounts_mod.router)
 app.include_router(background_mod.router)
@@ -1041,7 +1040,7 @@ async def api_callback(
         claims = casdoor.verify_id_token(id_token, nonce, issuer)
     info = await casdoor.fetch_userinfo(access_token, id_token, issuer)
     merged = {**info, **claims}
-    user = casdoor.normalize_user(merged)  # noqa: F841  (供会话签发使用)
+    user = casdoor.normalize_user(merged)
     if not user["email"]:
         raise HTTPException(status_code=400, detail="OIDC 未返回邮箱，无法建立身份")
 
@@ -1075,42 +1074,14 @@ async def api_logout_redirect(request: Request) -> RedirectResponse:
 
 @app.get("/api/services")
 @app.get("/v1/services")
-async def api_services(request: Request, user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
-    """服务目录。
-
-    已由 Go 核心接管：nginx 将 ``/api/services`` 转发到 LabGo 的 ``/v1/services``。
-    本路由保留仅为兼容直连后端端口（127.0.0.1:8088）的旧客户端。
-    """
-    services = visible_services(user, host=_client_host(request))
-    return {"services": services, "count": len(services)}
 
 
 @app.get("/api/services/{service_id}/health")
 @app.get("/v1/services/{service_id}/health")
-async def api_service_health(service_id: str) -> dict[str, Any]:
-    """单服务健康状态（由 Go 核心 ``internal/health`` 执行探测）。"""
-    if not any(s.id == service_id for s in load_catalog()):
-        raise HTTPException(status_code=404, detail="服务不存在")
-    if not settings.enable_health:
-        return {"status": "unknown", "detail": "健康检查已关闭"}
-    return await go_service_health(service_id)
 
 
 @app.get("/api/services/health")
 @app.get("/v1/services/health")
-async def api_services_health(request: Request, user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
-    """批量健康状态（外部服务故障归外部主机）。"""
-    import asyncio
-
-    services = visible_services(user, host=_client_host(request))
-    results = await asyncio.gather(*[go_service_health(svc["id"]) for svc in services])
-    out = []
-    for svc, health in zip(services, results, strict=True):
-        # 外部内网服务的故障归外部主机，不计入本机巡检失败
-        if svc.get("external") and health.get("status") == "down":
-            health = {**health, "status": "external-down", "detail": (health.get("detail") or "") + "（外部内网服务，需在 192.0.2.29 上恢复）"}
-        out.append({**svc, "health": health})
-    return {"services": out}
 
 
 # ------------------------------------------------------------------ 收藏 / 最近
@@ -1118,80 +1089,30 @@ async def api_services_health(request: Request, user: dict[str, Any] | None = De
 
 @app.get("/api/favorites")
 @app.get("/v1/favorites")
-async def api_favorites(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
-    return {"favorites": db.list_favorites(user["sub"])}
 
 
 @app.post("/api/favorites/{service_id}")
 @app.post("/v1/favorites/{service_id}")
-async def api_add_favorite(service_id: str, user: dict = Depends(require_user), __: None = Depends(require_csrf)) -> dict[str, Any]:
-    if not any(s.id == service_id for s in load_catalog()):
-        raise HTTPException(status_code=404, detail="服务不存在")
-    db.add_favorite(user["sub"], service_id)
-    return {"ok": True, "favorites": db.list_favorites(user["sub"])}
 
 
 @app.delete("/api/favorites/{service_id}")
 @app.delete("/v1/favorites/{service_id}")
-async def api_remove_favorite(
-    service_id: str, user: dict[str, Any] = Depends(require_user), __: None = Depends(require_csrf)
-) -> dict[str, Any]:
-    db.remove_favorite(user["sub"], service_id)
-    return {"ok": True, "favorites": db.list_favorites(user["sub"])}
 
 
 @app.get("/api/recent")
 @app.get("/v1/recent")
-async def api_recent(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
-    return {"recent": db.list_recent(user["sub"])}
 
 
 @app.post("/api/recent/{service_id}")
 @app.post("/v1/recent/{service_id}")
-async def api_touch_recent(
-    service_id: str, user: dict[str, Any] = Depends(require_user), __: None = Depends(require_csrf)
-) -> dict[str, Any]:
-    db.touch_recent(user["sub"], service_id)
-    return {"ok": True}
 
 
 # ------------------------------------------------------------------ 植物数据库目录
 
 @app.get("/api/databases")
-async def api_databases(
-    q: str = Query("", max_length=100),
-    category: str = Query(""),
-    _: dict = Depends(require_user_or_service),
-) -> dict[str, Any]:
-    """植物领域数据库/资源目录检索（本地数据，不出网）。"""
-    items = search_databases(q, category)
-    api_map = {entry["id"]: entry for entry in db_apis.api_index()}
-    for item in items:
-        entry = api_map.get(item["id"])
-        item["api"] = {
-            "hasApi": bool(entry and entry["hasApi"]),
-            "name": entry["api"]["name"] if entry and entry["api"] else "",
-            "summary": entry["api"]["summary"] if entry and entry["api"] else "",
-            "queryHint": entry["api"]["queryHint"] if entry and entry["api"] else "",
-            "kind": entry["api"]["kind"] if entry and entry["api"] else "",
-            "note": entry["note"] if entry else "",
-        }
-    return {"total": len(PLANT_DATABASES), "matched": len(items), "categories": CATEGORIES, "items": items}
 
 
 @app.get("/api/databases/apis")
-async def api_databases_apis(_: dict = Depends(require_user_or_service)) -> dict[str, Any]:
-    """数据库 API 能力清单（含无 API 的原因说明）。"""
-    entries = db_apis.api_index()
-    statuses = await db_apis.probe_all()
-    for entry in entries:
-        if entry["hasApi"]:
-            ok, detail = statuses.get(entry["id"], (False, "未探测"))
-            entry["api"]["available"] = ok
-            entry["api"]["statusDetail"] = detail
-    summary = db_apis.api_summary()
-    summary["items"] = entries
-    return summary
 
 
 @app.post("/api/databases/{db_id}/query")
@@ -1488,7 +1409,7 @@ async def api_search(
                 }
                 for r in (data.get("results") or [])[:20]
             ]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             web_error = f"检索服务暂时不可用（{type(exc).__name__}）"
             if scope == "web":
                 raise HTTPException(status_code=502, detail=web_error) from exc
@@ -1643,7 +1564,7 @@ async def api_snapotter_tools(_: dict = Depends(require_user)) -> dict[str, Any]
     """工具目录（原生 REST 调用，不使用 iframe）。"""
     try:
         tools = await snapotter_mod.get_tool_catalog()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"SnapOtter 工具目录不可用（{type(exc).__name__}）") from exc
     return {"tools": tools, "count": len(tools)}
 
@@ -1673,7 +1594,7 @@ async def api_snapotter_run(
         )
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"SnapOtter 处理失败（{type(exc).__name__}）") from exc
     _remember_snapotter_owner(str(result.get("jobId") or result.get("job_id") or ""), user)
     return result
@@ -1688,7 +1609,7 @@ async def api_snapotter_job(job_id: str, user: dict = Depends(require_user)) -> 
         raise HTTPException(status_code=404, detail="作业不存在")
     try:
         return await snapotter_mod.job_status(job_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"任务状态查询失败（{type(exc).__name__}）") from exc
 
 
@@ -1697,7 +1618,7 @@ async def api_snapotter_pipelines(_: dict = Depends(require_user)) -> dict[str, 
     """流水线列表。"""
     try:
         return await snapotter_mod.list_pipelines()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"流水线查询失败（{type(exc).__name__}）") from exc
 
 
@@ -1708,7 +1629,7 @@ async def api_snapotter_download(url: str = Query(..., min_length=1), _: dict = 
         content, name = await snapotter_mod.download(url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"结果下载失败（{type(exc).__name__}）") from exc
     return Response(
         content=content,
@@ -1741,7 +1662,7 @@ async def api_literature(
             resp = await client.get("http://lab-research-api:8000" + path, params=params)
             resp.raise_for_status()
             return resp.json()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=502, detail=f"文献服务不可用: {type(exc).__name__}") from exc
 
 
@@ -2140,7 +2061,7 @@ async def api_admin_audit(
     where = " AND ".join(clauses)
     rows = db.query(
         f"SELECT id, actor, action, target, detail, ip, created_at "
-        f"FROM labspace.account_audit WHERE {where} ORDER BY created_at DESC LIMIT %s",  # noqa: S608 - where 由固定子句拼成，值全走占位符
+        f"FROM labspace.account_audit WHERE {where} ORDER BY created_at DESC LIMIT %s",  # noqa: S608
         (*params, limit),
     )
     if format.lower() == "csv":

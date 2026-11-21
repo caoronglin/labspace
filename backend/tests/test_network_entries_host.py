@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from app import main as main_mod
 from app.config import settings
+from app.routers.deps import host_allowed
 
 
 def _make_request(host: str | None, forwarded: str | None = None) -> Request:
@@ -64,11 +65,11 @@ def test_allowed_hosts_adapt() -> None:
 
 
 def test_host_allowed_edge_cases() -> None:
-    assert main_mod._host_allowed("192.0.2.10") is True
-    assert main_mod._host_allowed("192.0.2.10.") is True
-    assert main_mod._host_allowed("") is False
-    assert main_mod._host_allowed("169.254.169.254") is False
-    assert main_mod._host_allowed("192.0.2.10.evil.com") is False
+    assert host_allowed("192.0.2.10") is True
+    assert host_allowed("192.0.2.10.") is True
+    assert host_allowed("") is False
+    assert host_allowed("169.254.169.254") is False
+    assert host_allowed("192.0.2.10.evil.com") is False
 
 
 @pytest.mark.parametrize("forged", ["169.254.169.254", "10.0.0.1", "metadata.google.internal"])

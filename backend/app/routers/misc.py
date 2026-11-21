@@ -1,48 +1,30 @@
 """misc 路由（由 ops/split_main_module.py 从 main.py 搬出）。"""
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+)
+
 from .. import (
-    casdoor,
     db,
-    db_apis,
 )
 from .. import (
     wecom as wecom_mod,
 )
 from ..routers.deps import (
-    client_host as _client_host,
-    host_allowed as _host_allowed,
     safe_component as _safe_component,
 )
 from ..security import (
-    clear_session_cookies,
-    current_user,
-    has_role,
-    issue_session,
-    read_session,
     require_admin,
     require_csrf,
     require_user,
-    require_user_or_service,
-    session_pwd_reset,
-    set_session_cookies,
-    verify_csrf,
 )
-from fastapi import (
-    Body,
-    Depends,
-    FastAPI,
-    File,
-    Form,
-    HTTPException,
-    Query,
-    Request,
-    Response,
-    UploadFile,
-)
-from typing import Any
-import asyncio
-from fastapi import APIRouter
 
 router = APIRouter()
 
