@@ -641,6 +641,10 @@ export interface FileAccessEvent {
 export interface FilePreview {
   kind: string;
   format: string;
+  /** 源码预览的语言标识（如 python / typescript），由后端按扩展名给出 */
+  language?: string;
+  /** 源码行数（前端算一次即可，避免逐行 split） */
+  lines?: number;
   dataUrl?: string;
   rows?: string[][];
   records?: Record<string, unknown>[];

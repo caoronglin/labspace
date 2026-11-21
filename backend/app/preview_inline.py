@@ -36,6 +36,24 @@ BIOINFO = {
 }
 TABLE = {".gff", ".gff3", ".gtf", ".vcf", ".bed", ".csv", ".tsv"}
 TEXT = {".txt", ".md", ".log", ".json", ".yaml", ".yml"}
+
+#: 源码文件的扩展名 → 语言标识（前端据此上色/标注；不做运行时高亮依赖）
+CODE_LANG = {
+    ".py": "python", ".ipynb": "json", ".ts": "typescript", ".tsx": "tsx",
+    ".js": "javascript", ".jsx": "jsx", ".mjs": "javascript", ".cjs": "javascript",
+    ".go": "go", ".rs": "rust", ".java": "java", ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".hpp": "cpp", ".cs": "csharp", ".rb": "ruby", ".php": "php",
+    ".sh": "bash", ".bash": "bash", ".zsh": "bash", ".ps1": "powershell",
+    ".sql": "sql", ".css": "css", ".scss": "scss", ".html": "html", ".vue": "vue",
+    ".toml": "toml", ".ini": "ini", ".cfg": "ini", ".conf": "nginx",
+    ".dockerfile": "dockerfile", ".mk": "makefile", ".lua": "lua", ".r": "r",
+    ".pl": "perl", ".kt": "kotlin", ".swift": "swift", ".scala": "scala",
+}
+#: 无扩展名但按文件名识别的
+CODE_NAMES = {"dockerfile": "dockerfile", "makefile": "makefile", "cmakelists.txt": "cmake",
+              "requirements.txt": "text", "pyproject.toml": "toml"}
+#: 源码可能很长，但预览只给前若干字符（行号与截断提示由前端渲染）
+MAX_CODE = 60_000
 IMAGE = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 OFFICE = {".docx", ".pptx", ".xlsx"}
 WORKER = {".pdf", ".bam", ".cram", ".bai", ".crai", ".bw", ".bigwig"}
@@ -212,6 +230,12 @@ def render(name: str, raw: bytes) -> dict[str, Any]:
         result.update({"fasta": _fasta, "fastq": _fastq, "sam": _sam}[fmt](data))
     elif ext in TABLE:
         result.update(_table(data, ext))
+    elif ext in CODE_LANG or lower in CODE_NAMES:
+        lang = CODE_LANG.get(ext) or CODE_NAMES.get(lower, "text")
+        text = _short(_text(data), MAX_CODE)
+        lines = text.count("\n") + 1
+        result.update({"kind": "code", "format": lang, "language": lang, "text": text,
+                       "lines": lines, "truncated": len(_text(data)) > MAX_CODE})
     elif ext in TEXT:
         text = _short(_text(data), MAX_TEXT)
         result.update({"kind": "text", "text": text,

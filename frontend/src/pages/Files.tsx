@@ -163,6 +163,76 @@ function ExtTag({ name }: { name: string }) {
   );
 }
 
+/** 源码预览：等宽 + 行号 + 换行开关 + 一键复制。
+ *
+ * 不引高亮库：代码预览的价值在「看得清、能复制」，语法着色交给编辑器；
+ * 引一个 highlighter（几百 KB）只为了预览里的颜色，不划算。
+ */
+function CodePreview({
+  text,
+  language,
+  truncated,
+}: {
+  text: string;
+  language?: string;
+  truncated?: boolean;
+}) {
+  const [wrap, setWrap] = useState(false);
+  const lines = useMemo(() => text.split('\n'), [text]);
+  return (
+    <Flex vertical gap={8}>
+      <Flex justify="space-between" align="center" gap={8}>
+        <Typography.Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
+          {(language || 'code').toUpperCase()} · {lines.length} 行{truncated ? '（已截断）' : ''}
+        </Typography.Text>
+        <Space size={4}>
+          <Button size="small" onClick={() => setWrap((v) => !v)}>
+            {wrap ? '不换行' : '自动换行'}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              void navigator.clipboard?.writeText(text);
+            }}
+          >
+            复制
+          </Button>
+        </Space>
+      </Flex>
+      <pre
+        style={{
+          margin: 0,
+          maxHeight: 520,
+          overflow: 'auto',
+          padding: 12,
+          borderRadius: 8,
+          fontSize: 12,
+          lineHeight: 1.6,
+          background: 'var(--d509-fill, rgba(0,0,0,0.03))',
+          border: '1px solid var(--d509-border)',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        }}
+      >
+        {lines.map((line, i) => (
+          <div key={i} style={{ display: 'flex', gap: 12 }}>
+            <span
+              style={{
+                color: 'var(--d509-text-tertiary, rgba(0,0,0,0.45))',
+                userSelect: 'none',
+                minWidth: 34,
+                textAlign: 'right',
+              }}
+            >
+              {i + 1}
+            </span>
+            <span style={{ whiteSpace: wrap ? 'pre-wrap' : 'pre' }}>{line || ' '}</span>
+          </div>
+        ))}
+      </pre>
+    </Flex>
+  );
+}
+
 function PreviewBody({ data }: { data: FilePreview }) {
   if (data.kind === 'image' && data.dataUrl) {
     return (
@@ -177,6 +247,9 @@ function PreviewBody({ data }: { data: FilePreview }) {
         </Typography.Text>
       </Flex>
     );
+  }
+  if (data.kind === 'code' && typeof data.text === 'string') {
+    return <CodePreview text={data.text} language={data.language} truncated={data.truncated} />;
   }
   if (data.kind === 'table' && data.rows?.length) {
     const [head, ...body] = data.rows;
