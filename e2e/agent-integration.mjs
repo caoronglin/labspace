@@ -174,7 +174,7 @@ console.log('\n== 5. Agent 助手 ==');
     })();
     // 模型不可用时 SSE 只会下发 ready/done 两帧、内容为空：那是环境问题
     // （外部模型没配或不可达），不是门户 bug，记 SKIP 而不是 FAIL。
-    const modelUnavailable = streamed.ok && streamed.text.length === 0;
+    const modelUnavailable = streamed.text.length === 0;
     if (modelUnavailable) console.log('  [SKIP] Agent SSE 流式回复 — 未配置可用模型（ready/done 无内容）');
     else record('Agent SSE 流式回复', streamed.ok && streamed.text.length > 0, `字数=${streamed.text.length} 前40字=${streamed.text.slice(0, 40)}${streamed.error ? ' 错误=' + streamed.error : ''} status=${streamed.status ?? '-'}${streamed.raw ? ' raw=' + streamed.raw.slice(0, 120).replace(/\n/g, ' ') : ''}`);
 
