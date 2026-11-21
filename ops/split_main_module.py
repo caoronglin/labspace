@@ -81,7 +81,10 @@ def main() -> int:
     spans = []
     for name in wanted:
         node = defs[name]
-        start = node.lineno - 1
+        # 装饰器行必须一起搬走：只从 def 开始切，会把 @app.get(...) 留在 main.py 里，
+        # 它就会「挂」到下一个函数上（或直接语法错误）。这条是踩过两次的坑。
+        decorators = [d.lineno for d in getattr(node, "decorator_list", [])]
+        start = (min(decorators) if decorators else node.lineno) - 1
         # 把紧贴在上面的注释/空行一起带走（注释属于这段代码的解释）
         while start > 0 and (lines[start - 1].startswith("#") or lines[start - 1].strip() == ""):
             if lines[start - 1].strip() == "" and (start - 2 < 0 or lines[start - 2].strip() == ""):
