@@ -18,6 +18,7 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.routers import search as search_router_mod  # 路由已迁出 main
 from app import dailypapers, db
 from app.config import settings
 from app.literature_sources import Paper, SearchResult
@@ -428,7 +429,7 @@ def test_search_papers_category_maps_papers_into_results(api: TestClient, monkey
             attempts=[{"source": "openalex", "status": "ok: 1"}],
         )
 
-    monkeypatch.setattr(main, "go_portal_search", fake_go_search)
+    monkeypatch.setattr(search_router_mod, "go_portal_search", fake_go_search)
     monkeypatch.setattr(literature_sources, "search", fake_lit_search)
 
     resp = api.get("/api/search?q=maize&categories=papers", cookies=_session_cookies("u1"))
@@ -462,7 +463,7 @@ def test_search_papers_category_degrades_without_breaking_search(api: TestClient
     async def failing_lit_search(query: str, limit: int = 20, **kwargs: Any) -> SearchResult:
         return SearchResult(papers=[], source="none", attempts=[{"source": "openalex", "status": "error: Timeout"}])
 
-    monkeypatch.setattr(main, "go_portal_search", fake_go_search)
+    monkeypatch.setattr(search_router_mod, "go_portal_search", fake_go_search)
     monkeypatch.setattr(literature_sources, "search", failing_lit_search)
 
     resp = api.get("/api/search?q=maize&categories=papers", cookies=_session_cookies("u1"))
@@ -480,7 +481,7 @@ def test_search_without_papers_category_is_unchanged(api: TestClient, monkeypatc
     async def fake_go_search(q: str, categories: str, scope: str) -> dict[str, Any]:
         return {"query": q, "results": [{"title": "网页命中", "url": "https://x", "content": "c", "kind": "web"}], "count": 1}
 
-    monkeypatch.setattr(main, "go_portal_search", fake_go_search)
+    monkeypatch.setattr(search_router_mod, "go_portal_search", fake_go_search)
 
     resp = api.get("/api/search?q=maize&categories=general", cookies=_session_cookies("u1"))
     assert resp.status_code == 200, resp.text
