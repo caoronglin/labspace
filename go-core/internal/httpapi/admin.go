@@ -107,6 +107,17 @@ func (s *Server) serveAdmin(w http.ResponseWriter, r *http.Request, a actor) {
 			return
 		}
 		jsonResponse(w, 200, map[string]any{"ok": true, "scopes": scopes})
+	case r.URL.Path == "/v1/admin/acl/audit" && r.Method == http.MethodPost:
+		// 只读巡检：把「授权对象没了 / 目录没了 / 非教师组能写课题目录」找出来。
+		// 不改任何数据，所以 POST 也只需要服务令牌，不需要 CSRF。
+		report := s.Files.AuditACL()
+		jsonResponse(w, 200, map[string]any{
+			"identities": report.Identities,
+			"groups":     report.Groups,
+			"findings":   report.Findings,
+			"checkedAt":  report.CheckedAt,
+			"clean":      !report.HasFindings(),
+		})
 	case r.URL.Path == "/v1/admin/file-groups" && r.Method == http.MethodGet:
 		jsonResponse(w, 200, map[string]any{"groups": s.Files.FileGroups()})
 	case strings.HasPrefix(r.URL.Path, "/v1/admin/file-groups/") && r.Method == http.MethodPut:
