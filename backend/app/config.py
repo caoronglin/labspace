@@ -47,6 +47,12 @@ class Settings:
     )
     default_entry_host: str = os.getenv("LABSPACE_DEFAULT_ENTRY_HOST", "192.0.2.10")
 
+    # 端到端测试账号（逗号分隔）。这些账号会：跳过新手引导、不在巡检里算「真人」。
+    # 为什么要专门标出来：Playwright 每个浏览器上下文都是新的，localStorage 里
+    # 没有「已看过引导」的标记，于是每个用例都被引导层挡在前面点不动。
+    # 与其让 28 个脚本各自去写 localStorage，不如让服务端告诉前端「这是测试账号」。
+    e2e_accounts: tuple[str, ...] = tuple(x.lower() for x in _list("LABSPACE_E2E_ACCOUNTS", ""))
+
     # 数据库
     db_dsn: str = os.getenv("LABSPACE_DB_DSN", "")
 

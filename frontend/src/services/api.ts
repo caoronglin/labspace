@@ -746,6 +746,8 @@ export interface Me {
   canDispatch?: boolean;
   /** 初始口令还没改：前端必须弹不可关闭的改密框。 */
   mustChangePassword?: boolean;
+  /** 端到端测试账号：前端据此跳过新手引导 */
+  e2e?: boolean;
 }
 
 // ---------------- 个人工作台 ----------------

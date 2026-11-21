@@ -10,6 +10,8 @@ interface AuthCtx {
   isSuperAdmin: boolean;
   /** 初始口令还没改：全站弹不可关闭的改密框。 */
   mustChangePassword: boolean;
+  /** 端到端测试账号（跳过新手引导） */
+  e2e?: boolean;
   loading: boolean;
   refetch: () => void;
 }
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isTeacher: !!data?.isTeacher,
     isSuperAdmin: !!data?.isSuperAdmin,
     mustChangePassword: !!data?.mustChangePassword,
+    e2e: !!data?.e2e,
     loading: isLoading,
     refetch: () => void refetch(),
   };

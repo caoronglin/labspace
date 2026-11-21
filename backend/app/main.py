@@ -850,6 +850,8 @@ async def api_me(user: dict[str, Any] | None = Depends(current_user)) -> dict[st
         "canDispatch": _can_dispatch(roles),
         # 初始口令未改时前端必须弹不可关闭的改密框；存量账号走不到这里。
         "mustChangePassword": account_security.must_change_password(_account_name(user)),
+        # 端到端测试账号：前端据此跳过新手引导（见 config.e2e_accounts 的说明）
+        "e2e": _account_name(user).lower() in settings.e2e_accounts,
     }
 
 
