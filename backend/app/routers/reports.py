@@ -27,6 +27,16 @@ from ..security import (
     require_user,
 )
 
+#: 已被 Go 核心接管、Python 侧只作兼容备份的路由前缀（中间件也用它打 Deprecation 头）
+_DEPRECATED_PREFIXES = (
+    "/api/services",
+    "/api/corpus",
+    "/api/search",
+    "/api/favorites",
+    "/api/recent",
+)
+_DEPRECATED_HITS: dict[str, int] = {}
+
 router = APIRouter()
 
 

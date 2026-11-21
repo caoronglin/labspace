@@ -49,6 +49,7 @@ from urllib.parse import urlsplit
 import asyncio
 import httpx
 import time
+import urllib.parse
 from fastapi import APIRouter
 
 log = logging.getLogger("labspace.routers.auth")
@@ -72,7 +73,7 @@ router = APIRouter()
 
 @router.get("/api/health")
 async def api_health() -> dict[str, Any]:
-    return {"status": "ok", "service": "labspace-backend", "version": app.version}
+    return {"status": "ok", "service": "labspace-backend", "version": "1.0.0"}
 
 _DISPATCH_ROLES = {"lab-teacher", "lab-postdoc", "lab-phd", "lab-master", "lab-undergrad"}
 
