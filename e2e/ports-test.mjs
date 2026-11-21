@@ -7,7 +7,6 @@ const targets = [
   ['门户', `${BASE}/`],
   ['统一认证', `${BASE}:8090/`],
   ['生信实训平台', `${BASE}:8102/`],
-  ['Quantum', `${BASE}:8080/files/`],
   ['draw.io', `${BASE}:8082/`],
   ['IT-Tools', `${BASE}:8084/`],
   ['Linux Command', `${BASE}:8086/`],

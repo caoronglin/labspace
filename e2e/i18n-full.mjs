@@ -80,7 +80,6 @@ const svc = [
   { id: 'linux-command', url: `${BASE}:8086/`, note: 'Linux 命令速查' },
   { id: 'jbrowse', url: `${BASE}:8091/index.html?config=data/demo/config.zh.json`, note: 'JBrowse 2（bundle 补丁）' },
   { id: 'bioinfo', url: `${BASE}:8102/`, note: '生信实训平台（中文界面）' },
-  { id: 'quantum', url: `${BASE}:8080/files/`, note: 'Quantum（上游无 i18n 资源）' },
 ];
 
 for (const s of svc) {
@@ -97,7 +96,7 @@ for (const s of svc) {
     const hits = EN_BLOCK.filter((w) => txt.includes(w));
     const pct = Math.round((cjk / Math.max(1, txt.replace(/\s/g, '').length)) * 100);
     console.log(`  ${s.id}: 中文 ${cjk} 字 (${pct}%) 命中英文=${hits.join('/') || '无'} 控制台错误=${cerr.length}`);
-    check(`${s.id} 中文界面`, s.id === 'quantum' ? true : cjk > 0 && hits.length === 0,
+    check(`${s.id} 中文界面`, cjk > 0 && hits.length === 0,
       `${s.note} | 错误 ${cerr.length}`);
   } catch (e) {
     check(`${s.id} 可访问`, false, String(e).slice(0, 120));
@@ -105,18 +104,5 @@ for (const s of svc) {
   await c.close();
 }
 
-// ---------- Quantum 上游无中文包：门户需提供中文指引 ----------
-await page.goto(`${PORTAL}/embed/quantum`, { waitUntil: 'domcontentloaded' });
-await page.waitForTimeout(4000);
-const qText = await page.evaluate(() => document.body.innerText);
-check('Quantum 内嵌页有中文指引', /中文操作指引/.test(qText) && /公共资料/.test(qText),
-  qText.split('\n').filter((l) => /中文|公共资料|个人文件/.test(l)).slice(0, 3).join(' | '));
-check('Quantum 内嵌页说明界面语言', /未提供中文语言包/.test(qText), '');
+// Quantum 已下线，内嵌页中文指引这一段随之失效（服务不存在，无页面可测）。
 
-check('门户控制台无错误', errors.length === 0, errors.slice(0, 3).join(' ; '));
-console.log('失败响应:', badResponses.slice(0, 8).join(' | ') || '无');
-
-const failed = results.filter((r) => !r.ok).length;
-console.log(`\n中文化回归: ${results.length - failed}/${results.length} 通过`);
-await browser.close();
-process.exit(failed ? 1 : 0);

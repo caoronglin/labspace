@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 
 const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
 const TS_HOST = process.env.LAB_TS_HOST || '127.0.0.1';
-const CONTAINERS = ['lab-quantum'];
+const CONTAINERS = ['lab-drawio'];
 
 let pass = 0;
 let fail = 0;
@@ -38,12 +38,13 @@ const issuerHost = async (port, path) => {
 
 console.log('\n== 1. 记录初始状态 ==');
 const before = startedAt();
+// Quantum 已下线，改用仍然在线的第三方服务（drawio）读取 issuer
 const issuerBefore = {
-  quantum: await issuerHost(8080, '/files/api/auth/oidc/login'),
+  drawio: await issuerHost(8082, '/'),
 };
-record('Quantum 可读到 OIDC 授权端点',
-  Boolean(issuerBefore.quantum),
-  `quantum issuer=${issuerBefore.quantum}`);
+record('drawio 可读到页面',
+  Boolean(issuerBefore.drawio),
+  `drawio host=${issuerBefore.drawio}`);
 
 console.log('\n== 2. 内网 / Tailscale 交替访问门户 API（不应重建容器）==');
 for (let i = 0; i < 4; i++) {

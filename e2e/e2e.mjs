@@ -101,7 +101,7 @@ console.log('== 页面巡检 ==');
 const pages = [
   ['/', 'home'],
   ['/services', 'services'],
-  ['/services/quantum', 'service-detail'],
+  ['/services/linux-command', 'service-detail'],
   ['/favorites', 'favorites'],
   ['/search?q=fastp', 'search'],
   ['/literature', 'literature'],

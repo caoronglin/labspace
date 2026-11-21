@@ -67,30 +67,8 @@ console.log('\n== 2. 网络入口清单 / 搜索 / SSO 状态 ==');
 }
 
 console.log('\n== 3. 一键登录准备（切换第三方服务 OIDC 到当前主机） ==');
-for (const [service, port] of [['quantum', 8080]]) {
-  const r = await apiAs(TS_HOST, `/api/sso/${service}/prepare`, 180000);
-  const okUrl = String(r.body?.loginUrl || '').startsWith(`http://${TS_HOST}:${port}`);
-  record(`${service} 切换到 ${TS_HOST}`, r.status === 200 && r.body?.ready === true && okUrl,
-    `loginUrl=${r.body?.loginUrl} changed=${r.body?.changed}`);
-  // 验证服务本身的 OIDC 跳转确实指向新 issuer
-  const resp = await fetch(`http://127.0.0.1:${port}/files/api/auth/oidc/login`, { redirect: 'manual' });
-  const loc = resp.headers.get('location') || '';
-  record(`${service} 的 OIDC 授权端点已切到 ${TS_HOST}`, loc.includes(`${TS_HOST}:8090/login/oauth/authorize`),
-    loc.slice(0, 90));
-}
-{
-  // 收尾：把 issuer 切回内网，避免影响后续回归脚本
-  for (const [service, port, probe] of [
-    ['quantum', 8080, '/files/api/auth/oidc/login'],
-  ]) {
-    const r = await apiAs('192.0.2.10', `/api/sso/${service}/prepare`, 180000);
-    record(`切回内网 192.0.2.10（${service}）`, r.status === 200 && String(r.body?.loginUrl || '').startsWith(`${BASE}:`),
-      `loginUrl=${r.body?.loginUrl} changed=${r.body?.changed}`);
-    const resp = await fetch(`http://127.0.0.1:${port}${probe}`, { redirect: 'manual' });
-    const loc = resp.headers.get('location') || '';
-    record(`${service} 授权端点已切回 192.0.2.10`, loc.includes('192.0.2.10:8090/login/oauth/authorize'), loc.slice(0, 90));
-  }
-}
+// Quantum 已下线（:8080 容器与网络均已清理），SSO prepare/issuer 切换这一段
+// 没有可测对象，随服务一起删掉；将来新增带 OIDC 的第三方服务时再补回。
 
 console.log('\n== 4. 浏览器实测：两个入口页面上的 IP 外链 ==');
 for (const entry of [`${BASE}`, `http://${TS_HOST}`]) {

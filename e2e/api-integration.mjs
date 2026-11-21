@@ -102,7 +102,7 @@ const api = async (path, init = {}) => {
     health.status === 200 && ownUp === own.length,
     `${ownUp}/${own.length} 本机服务 up` + (extDown.length ? `；外部服务异常 ${extDown.length} 个（${extDown.map((s) => s.name).join(',')}）` : ''),
   );
-  const one = await api('/api/services/quantum/health');
+  const one = await api('/api/services/linux-command/health');
   record('GET /api/services/{id}/health', one.status === 200 && one.body?.status === 'up');
 }
 
@@ -110,16 +110,16 @@ const api = async (path, init = {}) => {
 {
   const fav0 = await api('/api/favorites');
   record('GET /api/favorites', fav0.status === 200 && Array.isArray(fav0.body?.favorites));
-  const add = await api('/api/favorites/quantum', { method: 'POST' });
-  record('POST /api/favorites/{id}', add.status === 200 && add.body?.favorites?.includes('quantum'));
-  const del = await api('/api/favorites/quantum', { method: 'DELETE' });
-  record('DELETE /api/favorites/{id}', del.status === 200 && !del.body?.favorites?.includes('quantum'));
+  const add = await api('/api/favorites/linux-command', { method: 'POST' });
+  record('POST /api/favorites/{id}', add.status === 200 && add.body?.favorites?.includes('linux-command'));
+  const del = await api('/api/favorites/linux-command', { method: 'DELETE' });
+  record('DELETE /api/favorites/{id}', del.status === 200 && !del.body?.favorites?.includes('linux-command'));
   const rec = await api('/api/recent');
   record('GET /api/recent', rec.status === 200 && Array.isArray(rec.body?.recent));
-  const touch = await api('/api/recent/quantum', { method: 'POST' });
+  const touch = await api('/api/recent/linux-command', { method: 'POST' });
   record('POST /api/recent/{id} 记录访问', touch.status === 200);
   const rec2 = await api('/api/recent');
-  record('最近访问已写入', rec2.body?.recent?.includes('quantum'));
+  record('最近访问已写入', rec2.body?.recent?.includes('linux-command'));
 }
 
 // ---------- 5. 检索 / 文献 ----------
@@ -210,7 +210,7 @@ const api = async (path, init = {}) => {
 
 // ---------- 11. CSRF 防护 ----------
 {
-  const noCsrf = await api('/api/favorites/quantum', { method: 'POST', skipCsrf: true });
+  const noCsrf = await api('/api/favorites/linux-command', { method: 'POST', skipCsrf: true });
   record('缺少 CSRF 头的写操作被拒绝(403)', noCsrf.status === 403, `HTTP ${noCsrf.status}`);
 }
 
