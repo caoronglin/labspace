@@ -33,13 +33,13 @@
 | 版本化迁移 | ✅ `backend/migrations/0001_init.sql` + 0002 审计 IP；`migrate.py` 账本单事务、不重放 |
 | `api.ts` 2790 → ≤1000 | ✅ **832 行**，拆出 `api-http.ts` / `api-types.ts` / `api-types-agent.ts` / `api-plot.ts` / `api-baserow.ts` |
 | `main.py` 2072 → ≤1000 | ✅ **497 行**（用户选 A 放宽到 ≤500）；11 个 `routers/` 模块；Deprecation 头 + `/api/admin/deprecated-hits` 命中计数实测生效 |
-| `BaserowPage` 3882 → ≤1000 | ⚠️ **2931 行**：已抽出 `baserow/fieldComponents.tsx`（907 行，含全部辅助函数与字段控件）。剩余主组件的渲染区块引用 55 个闭包变量，强拆风险高；按用户选择 A 延后下一期 |
-| `Files` 2715 → ≤1000 | ⚠️ **2789 行**：按用户选择 A 延后下一期（同批已纳入下一期拆分计划） |
+| `BaserowPage` 3882 → ≤1000 | ✅ **646 行**，拆出 `baserow/` 六模块（fieldComponents 907 / useBaserowPage 865 / useBaserowMutations 527 / viewRenderers 305 / filterPanel 244 / contentViews 810） |
+| `Files` 2715 → ≤1000 | ✅ **82 行**，拆出 `files/` 六模块（useFilesState 514 / actions 681 / presenters 366 / toolbar 331 / views 564 / modals 568） |
 
-**关于两个延后项**：用户明确选择方案 A，将 `BaserowPage` / `Files` 的深度组件化延后到下一期。
-本轮已完成 `BaserowPage` 的第一层解耦（字段组件层独立成文件），是净改进且 `tsc` 0 error，
-不阻塞任何功能与门禁。剩余两个文件超过 1000 行是**已知的、经用户确认的技术债**，
-不是回归或门禁失败。
+**拆分方法**（两文件同法）：连续区块逐字搬移、字符串感知的引用分析生成精确 import、
+闭包依赖用 ctx 对象传参（类型由 `ReturnType` 推断，零手写接口）、`tsc -b` 迭代剪枝到 0 error。
+`Files` 拆分由子代理在隔离 worktree 完成，difflib 逐块比对确认 2667 行逐字符一致，
+`CodePreview`（代码预览）完整保留。
 
 ## e2e 收敛过程（r14 → r18）
 
@@ -76,9 +76,8 @@
 | `cfd4a86` | 移除 CropGenome 下线脚本 |
 | `2ffbe8b` / `cb66048` | design-selfcheck 去抖 + biomed 重试 |
 | `5559bff` | BaserowPage 抽出 fieldComponents（3882→2931） |
+| `a924d77` | BaserowPage→646 / Files→82 全量拆分（全部模块 ≤907 行） |
 
 ## 下一期待办（不在本期范围）
 
-1. `BaserowPage.tsx` 2931 / `Files.tsx` 2789 深度拆分至 ≤1000（建议按 ctx 对象传参的展示组件方式，避免 55 个闭包变量逐个透传）
-2. `split-backend` 契约中的 create_app 工厂（用户选 A 未要求）
-3. Phase 3：`lab_jobs` 任务中心、ELN 血缘、模型降级配额（规格书明确不在本期）
+1. Phase 3：`lab_jobs` 任务中心、ELN 血缘、模型降级配额（规格书明确不在本期）
