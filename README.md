@@ -26,6 +26,8 @@ React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验
 | [CHANGELOG.md](docs/CHANGELOG.md) | 变更记录 |
 | [IMAGES_LOCK.md](docs/IMAGES_LOCK.md) | 镜像与 digest |
 | [PHASE1_SECURITY_HARDENING.md](docs/PHASE1_SECURITY_HARDENING.md) | Phase 1 安全止血的验收证据 |
+| [PHASE2_ACCEPTANCE.md](docs/PHASE2_ACCEPTANCE.md) | Phase 2 验收记录（门禁结果与目标对照） |
+| [PHASE2_STATUS.md](docs/PHASE2_STATUS.md) | Phase 2 中间踩坑记录（历史） |
 
 文档内的相对链接可用 `ops/check-docs-links.py` 校验（CI 与本地都能跑）。
 
