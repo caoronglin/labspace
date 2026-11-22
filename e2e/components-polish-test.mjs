@@ -151,18 +151,18 @@ try {
     const bag = attachConsole(page, '空状态');
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    // /services 搜索无结果
-    await page.goto(`${BASE}/services`, { waitUntil: 'domcontentloaded' });
+    // /services 已重定向到 /start（服务目录合并为统一搜索入口）。
+    // 统一搜索聚合的是网页/学术源，乱码关键词也会命中上游结果，空状态不可稳定触发；
+    // 这里改测「提交后进入结果模式」——出现「返回起始页」按钮即算入口行为正常。
+    await page.goto(`${BASE}/start`, { waitUntil: 'domcontentloaded' });
     await settle(page);
-    const search = page.locator('.ant-layout-content input[placeholder*="筛选"]').first();
-    await search.fill('zzz-not-exist-service');
-    await page.waitForTimeout(600);
-    const clearBtn = page.getByRole('button', { name: /清除筛选/ }).first();
-    if (await clearBtn.count()) pass('空状态', '/services 空状态含「清除筛选」行动按钮');
-    else fail('空状态', '/services 空状态缺少行动按钮');
-    const allBtn = page.getByRole('button', { name: /查看全部服务/ }).first();
-    if (await allBtn.count()) pass('空状态', '/services 空状态含「查看全部服务」');
-    else note('空状态', '/services 空状态未渲染「查看全部服务」按钮');
+    const search = page.locator('input[placeholder*="搜索网页"]').first();
+    await search.fill('zzz-not-exist-service', { timeout: 20000 });
+    await search.press('Enter');
+    await page.waitForTimeout(2500);
+    const backBtn = page.getByRole('button', { name: /返回起始页/ }).first();
+    if (await backBtn.count()) pass('空状态', '/start 提交后进入结果模式（出现返回起始页）');
+    else fail('空状态', '/start 提交后未进入结果模式');
     await page.screenshot({ path: `${SHOTS}polish-services-empty.png`, fullPage: false });
 
     // /databases 搜索无结果
@@ -193,7 +193,8 @@ try {
     if (searchCount) pass('404 页', '存在站内搜索框');
     else fail('404 页', '缺少站内搜索框');
 
-    for (const entry of ['工作台', '全部服务', '我的收藏']) {
+    // 404 页常用入口现为：工作台 / 起始页 / 统一搜索（「全部服务」并入起始页，「我的收藏」已下线）。
+    for (const entry of ['工作台', '起始页', '统一搜索']) {
       const c = await page.getByText(entry, { exact: true }).count();
       if (c) pass('404 页', `常用入口「${entry}」存在`);
       else fail('404 页', `缺少常用入口「${entry}」`);
@@ -243,11 +244,14 @@ try {
     });
     const page = await lctx.newPage();
     const bag = attachConsole(page, '登录页');
-    // 阻止 300ms 后的自动跳转（否则立即跳 Casdoor），页面本身渲染逻辑不变
+    // 阻止自动跳转（否则 400ms 后立即跳 Casdoor），页面本身渲染逻辑不变。
+    // Login.tsx 的门控：sessionStorage['labspace.login.auto']==='1' 时不再自动跳，
+    // 兜底再拦一次 300/400ms 的 setTimeout（旧版 300ms、新版 400ms）。
     await page.addInitScript(() => {
+      try { sessionStorage.setItem('labspace.login.auto', '1'); } catch { /* ignore */ }
       const orig = window.setTimeout;
       window.setTimeout = function (fn, delay, ...args) {
-        if (delay === 300) return 0;
+        if (delay === 300 || delay === 400) return 0;
         return orig.call(window, fn, delay, ...args);
       };
     });
@@ -262,8 +266,10 @@ try {
     if (sso) pass('登录页', 'SSO 主按钮存在');
     else fail('登录页', '缺少 SSO 主按钮');
 
-    const status = await page.getByText(/正在跳转/).count();
-    if (status) pass('登录页', '跳转状态说明存在');
+    // 新版登录页：只有真的在跳转（starting）才显示「正在跳转…」，
+    // 否则显示 SSO 说明「使用实验室统一身份认证（Casdoor）登录，不需要单独注册。」
+    const status = await page.getByText(/正在跳转到统一身份认证|统一身份认证（Casdoor）登录/).count();
+    if (status) pass('登录页', '登录状态/说明文案存在');
     else fail('登录页', '缺少跳转状态说明');
 
     for (const link of ['回到首页', '服务状态']) {

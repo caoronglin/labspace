@@ -1,51 +1,36 @@
-//  一键登录（SSO）端到端回归：从门户进入 Open WebUI / Quantum 不再要求输入口令
-//  用法: LAB_PASS=<口令> node sso-e2e-test.mjs
+// 一键登录（SSO）下线守卫。
+//
+// 历史：这个脚本原本验证「门户 → Open WebUI / Quantum 一键登录免密」。
+// 两个服务（Open WebUI :3000 / Quantum :8080）都已下线，原断言没有可测对象。
+// 现在反向守卫：这些服务的路由/端口必须确实下线，将来若重新接入带 OIDC 的
+// 服务，按 sso-flow.mjs 的「在线才判定」模式补回正向断言。
 import { chromium } from 'playwright';
 
 const BASE = process.env.LAB_BASE || 'http://127.0.0.1';
-const TS = process.env.LAB_TS_HOST || '127.0.0.1';
-const USER = process.env.LAB_USER || 'student01';
-const PASS = process.env.LAB_PASS || '';
 let pass = 0, fail = 0;
 const record = (name, ok, detail = '') => {
-  ok ? pass++ : fail++;
+  if (ok) pass++;
+  else fail++;
   console.log(`  ${ok ? '[ OK ]' : '[FAIL]'} ${name}${detail ? ' — ' + detail : ''}`);
 };
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
+const page = await browser.newPage();
 
-const login = async (base) => {
-  const ctx = await browser.newContext({ locale: 'zh-CN' });
-  const page = await ctx.newPage();
-  await page.goto(`${base}/api/auth/login`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#username', { timeout: 20000 });
-  await page.locator('#username').fill(USER);
-  await page.locator('#password').fill(PASS);
-  await page.getByRole('button', { name: '登录' }).first().click();
-  await page.waitForURL(`${base}/**`, { timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(1200);
-  return { ctx, page };
-};
-
-// Quantum 已下线：它原本是唯一支持「一键登录」的第三方服务，
-// 服务与容器都已清理，这一段没有可测对象；将来重新接入带 OIDC 的服务
-// 时，按原样补回（断言：跳转到该服务端口、且不出现密码框）。
-
-console.log('\n== 2. 门户 Tailscale 入口 → Quantum 一键登录 ==');
+// 1) Quantum 的门户路由已下线：不应再出现「一键登录」入口。
 {
-  const entry = `http://${TS}`;
-  const { ctx, page } = await login(entry);
-  await page.goto(`${entry}/services/quantum`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('button:has-text("一键登录")', { timeout: 20000 });
-  await page.getByRole('button', { name: '一键登录' }).first().click();
-  await page.waitForURL(/8080|8090/, { timeout: 90000 }).catch(() => {});
-  await page.waitForTimeout(3000);
-  const url = page.url();
-  const hasPasswordBox = await page.locator('input[type="password"]').count();
-  const text = (await page.locator('body').innerText().catch(() => '')).slice(0, 160);
-  record('跳转到 Quantum', /:8080/.test(url), url.slice(0, 100));
-  record('未出现密码输入框（免密）', hasPasswordBox === 0, `密码框 ${hasPasswordBox} 个｜${text.replace(/\n/g, ' ').slice(0, 70)}`);
-  await ctx.close();
+  await page.goto(`${BASE}/services/quantum`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const body = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  const hasSsoButton = await page.locator('button:has-text("一键登录")').count().catch(() => 0);
+  record('Quantum 路由已下线（无一键登录入口）', hasSsoButton === 0,
+    hasSsoButton === 0 ? body.slice(0, 80) : `仍出现一键登录按钮`);
+}
+
+// 2) 直连端口不可达（服务确实没在跑）。
+{
+  const resp = await page.goto(`${BASE}:8080/files/`, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => null);
+  record('Quantum 端口 :8080 已关闭', resp === null, resp ? `仍返回 ${resp.status()}` : '连接失败（预期）');
 }
 
 await browser.close();

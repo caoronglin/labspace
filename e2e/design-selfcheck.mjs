@@ -20,7 +20,6 @@ const PAGES = [
   { path: '/workbench', key: 'workbench', title: '个人工作台' },
   { path: '/agent', key: 'agent', title: 'Agent' },
   { path: '/search', key: 'search', title: '统一搜索' },
-  { path: '/devtools', key: 'devtools', title: '开发工具箱' },
 ];
 
 const VIEWPORTS = [

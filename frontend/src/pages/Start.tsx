@@ -287,7 +287,6 @@ export default function Start() {
             count={2}
             duration={9}
             lineWidth={2}
-            outset={2}
             style={{ borderRadius: 14 }}
           >
             <div className="d509-glass" style={{ borderRadius: 14, padding: 6 }}>

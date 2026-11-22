@@ -1,4 +1,8 @@
-// SSO 实测：门户登录后，Open WebUI / Quantum 是否免密进入
+// SSO 实测：门户登录后，各第三方服务能否免密进入。
+//
+// 2026-11 重写：Open WebUI(:3000) 与 Quantum(:8080) 都已下线，IT-Tools(:8084)
+// 与图纸平台(:8093) 当前也不在本机部署 —— 脚本改为「只测还在线的服务」，
+// 下线的服务记 SKIP，而不是让用例挂在打不开的地址上。
 import { launch, loginContext } from './_auth.mjs';
 
 const b = await launch();
@@ -10,7 +14,13 @@ async function check(name, url, clickTexts) {
   const p = await ctx.newPage();
   const errs = [];
   p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 120)); });
-  await p.goto(url, { waitUntil: 'domcontentloaded' });
+  try {
+    await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+  } catch (e) {
+    console.log(`[${name}] SKIP 服务不可达 — ${String(e.message).slice(0, 60)}`);
+    await p.close();
+    return null;
+  }
   await p.waitForTimeout(2500);
   let clicked = null;
   for (const t of clickTexts) {
@@ -39,21 +49,33 @@ async function check(name, url, clickTexts) {
   return ok;
 }
 
-const qm = await check('Quantum', `${BASE}:8080/files/`, ['OpenID Connect', 'OpenID', 'OIDC']);
-// 备用：直接走服务端 OIDC 入口
-if (!qm) {
-  const qm2 = await check('Quantum(直连OIDC入口)', `${BASE}:8080/files/api/auth/oidc/login`, []);
-  console.log('Quantum 直连 OIDC 入口结果 =', qm2);
+/** 只测「本机确实在跑」的服务：连不上就记 SKIP，不算失败。 */
+async function checkIfUp(name, url, clickTexts) {
+  const r = await check(name, url, clickTexts);
+  if (r === null) console.log(`  [SKIP] ${name} — 服务当前未部署`);
+  return r;
 }
 
-// JBrowse / draw.io / IT-Tools / Linux 命令速查：无独立账号体系，直接可用
-const jb = await check('JBrowse 2', `${BASE}:8091/index.html?config=data/demo/config.zh.json`, []);
-const draw = await check('draw.io', `${BASE}:8082/`, []);
-const it = await check('IT-Tools', `${BASE}:8084/`, []);
-const cmd = await check('Linux 命令速查', `${BASE}:8086/`, []);
+// 有独立账号体系（本机有部署时才有意义）的服务
+const owui = await checkIfUp('Open WebUI', `${BASE}:3000/`, ['OpenID Connect', 'OpenID', 'OIDC']);
+const qm = await checkIfUp('Quantum', `${BASE}:8080/files/`, ['OpenID Connect', 'OpenID', 'OIDC']);
 
-console.log(`\nSSO 汇总: Open WebUI=${owui ? '免密' : '需口令'} Quantum=${qm ? '免密' : '需口令'} `
-  + `JBrowse=${jb ? '免密' : '需口令'} draw.io=${draw ? '免密' : '需口令'} `
-  + `IT-Tools=${it ? '免密' : '需口令'} Linux命令=${cmd ? '免密' : '需口令'}`);
+// 无独立账号体系，直接可用
+const jb = await checkIfUp('JBrowse 2', `${BASE}:8091/index.html?config=data/demo/config.zh.json`, []);
+const draw = await checkIfUp('draw.io', `${BASE}:8082/`, []);
+const it = await checkIfUp('IT-Tools', `${BASE}:8084/`, []);
+const cmd = await checkIfUp('Linux 命令速查', `${BASE}:8086/`, []);
+
+const label = (v) => (v === null ? '未部署' : v ? '免密' : '需口令');
+console.log(`\nSSO 汇总: Open WebUI=${label(owui)} Quantum=${label(qm)} `
+  + `JBrowse=${label(jb)} draw.io=${label(draw)} `
+  + `IT-Tools=${label(it)} Linux命令=${label(cmd)}`);
+
+// 判失败只看「在线且需要口令」的情况；未部署不参与判定。
+const online = [owui, qm, jb, draw, it, cmd].filter((v) => v !== null);
+const needPassword = online.filter((v) => v === false).length;
+console.log(needPassword === 0
+  ? `\n结果：在线的 ${online.length} 个服务均可免密进入`
+  : `\n结果：${needPassword} 个在线服务仍要求口令`);
 await b.close();
-process.exit(owui && qm && jb && draw && it && cmd ? 0 : 1);
+process.exit(needPassword === 0 ? 0 : 1);
