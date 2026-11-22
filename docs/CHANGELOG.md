@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-11-22 — v2026.11.22.1 帮助中心重构
+
+- 帮助内容（`QUICK_START` / `ROLE_STARTS` / `FAQ`）抽到 `frontend/src/content/helpContent.tsx`，
+  `Help.tsx` 480→338 行，只管渲染与交互；与 `releases.ts`（版本日志）形成「内容 / 页面」分离。
+- FAQ 新增「代码预览」「多维表格」两节；删除已下线 CropGenome 的旧说明，
+  序列分析改为指向现存的公共基因组 / 比对工具；双入口说明不再写死示例地址。
+- 角色入口补齐「数据表格 / ACL 巡检」；顶栏搜索 placeholder 更新为当前检索能力。
+- 版本号统一升到 `2026.11.22.1`（releases / package.json / FastAPI version），
+  更新弹窗与帮助中心「当前版本」自动指向新条目。
+
 ## 2026-11-22 — v2026.11.22 代码预览与体验加固
 
 面向用户的功能更新已同步到帮助中心 / 更新弹窗的数据源 `frontend/src/content/releases.ts`，
