@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## 2026-11-22 — v2026.11.22 代码预览与体验加固
+
+面向用户的功能更新已同步到帮助中心 / 更新弹窗的数据源 `frontend/src/content/releases.ts`，
+版本号 `CURRENT_VERSION` 自动指向首条记录，老用户下次进入工作台会看到一次性更新介绍。
+
+**新增功能**
+- **代码预览**：文件空间为 30+ 源码扩展名（`.py/.ts/.go/.rs/...`）与 Dockerfile / Makefile 等
+  返回 `kind=code` + 语言 + 行数；前端等宽展示、行号、换行开关与一键复制，超 60k 字符服务端截断。
+  线上 `/api/files/{id}/preview` 走 Go（labgo）优先，Python 侧作 fallback——两侧口径已对齐。
+- **ACL 巡检与审计导出**：`/api/admin/acl/audit` 报孤儿身份 / 悬空目录授权 / 越权组可写三类异常；
+  `/api/admin/audit` 支持按时间、操作人导出 JSON / CSV，写操作全落 `labspace.account_audit`。
+
+**稳定性与体验**
+- 统一身份认证：改密后强制校验（pwd_reset claim）、登录回跳与 SSO 链路修复。
+- 路由与导航：10 条旧别名集中重定向并带埋点；侧栏按「工作区 / 文件与课题 / 分析与写作 / 科研工具 / 系统」分组。
+- 多端布局：修复起始页 `BorderBeam outset` 导致的三档视口 2px 横向溢出。
+- 双入口自适应：Host 受白名单约束，LAN / Tailscale 入口自动跟随。
+
+**工程侧（详见 docs/PHASE2_ACCEPTANCE.md）**
+- 巨石拆分：`BaserowPage` 3882→646、`Files` 2789→82、`api.ts` 2790→832、`main.py` 2072→497。
+- 回归套件：一次性探针 167→2，`run-regression.sh` 全绿；新增 `code-preview-test.mjs`（8 项）。
+- 门禁：tsc 0 error / vite ✓ / pytest 307 / go test -race 25 包 / 裸 hex 0 / e2e r19 全绿。
+
 ## 2026-11-20 晚 — 镜像拆分瘦身 / 台账写权限 / HITL 策略 / 前端清理
 
 ### 3. 科学计算栈拆出独立镜像（后端 3.24 GB → 1.32 GB）
