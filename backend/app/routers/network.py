@@ -10,6 +10,7 @@ from fastapi import (
     Body,
     Depends,
     HTTPException,
+    Query,
     Request,
 )
 
@@ -68,10 +69,40 @@ router = APIRouter()
 # ------------------------------------------------------------------ 植物数据库目录
 
 @router.get("/api/databases")
-
+async def api_databases(
+    q: str = Query("", max_length=100),
+    category: str = Query(""),
+    _: dict = Depends(require_user_or_service),
+) -> dict[str, Any]:
+    """植物领域数据库/资源目录检索（本地数据，不出网）。"""
+    from ..databases import CATEGORIES, PLANT_DATABASES, search_databases
+    items = search_databases(q, category)
+    api_map = {entry["id"]: entry for entry in db_apis.api_index()}
+    for item in items:
+        entry = api_map.get(item["id"])
+        item["api"] = {
+            "hasApi": bool(entry and entry["hasApi"]),
+            "name": entry["api"]["name"] if entry and entry["api"] else "",
+            "summary": entry["api"]["summary"] if entry and entry["api"] else "",
+            "queryHint": entry["api"]["queryHint"] if entry and entry["api"] else "",
+            "kind": entry["api"]["kind"] if entry and entry["api"] else "",
+            "note": entry["note"] if entry else "",
+        }
+    return {"total": len(PLANT_DATABASES), "matched": len(items), "categories": CATEGORIES, "items": items}
 
 @router.get("/api/databases/apis")
-
+async def api_databases_apis(_: dict = Depends(require_user_or_service)) -> dict[str, Any]:
+    """数据库 API 能力清单（含无 API 的原因说明）。"""
+    entries = db_apis.api_index()
+    statuses = await db_apis.probe_all()
+    for entry in entries:
+        if entry["hasApi"]:
+            ok, detail = statuses.get(entry["id"], (False, "未探测"))
+            entry["api"]["available"] = ok
+            entry["api"]["statusDetail"] = detail
+    summary = db_apis.api_summary()
+    summary["items"] = entries
+    return summary
 
 @router.post("/api/databases/{db_id}/query")
 async def api_databases_query(

@@ -18,6 +18,18 @@ PLANT_DATABASES: list[dict] = [
         "tags": ["序列", "文献", "通用", "GenBank", "Entrez"],
     },
     {
+        # 中科院 PubScholar 公益学术平台：以合规的外部深度链接接入。
+        # 其检索页接受 ?query=<词> 预填搜索框（已实测）；不做爬虫 / 不逆向
+        # 私有 API —— 平台服务条款明确禁止自动化访问，且签名算法会随时变更。
+        "id": "pubscholar", "featured": True,
+        "name": "PubScholar",
+        "cn": "中科院公益学术平台",
+        "desc": "中国科学院建设的公益性学术资源平台，整合期刊论文、预印本、学位论文、专利、科学数据与图书等资源；支持在站内检索后带关键词跳到原站继续浏览。",
+        "url": "https://pubscholar.cn/explore?query=plant%20genomics",
+        "category": "通用",
+        "tags": ["文献", "中科院", "公益平台", "预印本", "专利", "科学数据"],
+    },
+    {
         "id": "kegg", "featured": True,
         "name": "KEGG",
         "cn": "京都基因与基因组百科全书",

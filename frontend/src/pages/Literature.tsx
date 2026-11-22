@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Empty, Flex, Input, Listy, Select, Spin, Tabs, Tag, Typography } from 'antd';
-import { BookOutlined, RobotOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { BookOutlined, ExportOutlined, RobotOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import SaveKnowledgeModal from '../components/SaveKnowledgeModal';
@@ -18,6 +18,16 @@ const SOURCES = [
 ];
 
 const labelOf = (value: string) => SOURCES.find((s) => s.value === value)?.label ?? value;
+
+/**
+ * 中科院 PubScholar 公益学术平台的深度链接。
+ * 其检索页接受 ?query=<词> 预填搜索框（已实测）；以外部跳转方式接入，
+ * 不爬取、不逆向其私有 API（平台条款明确禁止自动化访问）。
+ */
+const pubScholarUrl = (keyword: string) => {
+  const q = keyword.trim();
+  return `https://pubscholar.cn/explore${q ? `?query=${encodeURIComponent(q)}` : ''}`;
+};
 
 const itemTitle = (it: any): string =>
   String(it.title || it['Protein names'] || it.symbol || it.accession || it.gene_id || it.id || '文献条目');
@@ -75,6 +85,15 @@ function LiteratureSearch() {
             onChange={(e) => setKeyword(e.target.value)}
             value={keyword}
           />
+          <Button
+            icon={<ExportOutlined />}
+            href={pubScholarUrl(keyword || q)}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="在新窗口打开中科院 PubScholar 公益学术平台"
+          >
+            PubScholar 检索
+          </Button>
         </Flex>
       </Card>
 

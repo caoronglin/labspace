@@ -352,7 +352,10 @@ def _request_base(request: Request) -> str:
 
 def _display_name_of(user: dict[str, Any]) -> str:
     """会话用户的显示名（中文姓名）；取不到时退回会话里的 name。"""
-    from . import accounts as accounts_mod
+    # accounts 在 app 根包（不在 routers/ 子包）：拆分 main.py 时这里漏改，
+    # 旧镜像侥幸没走到；重建后立即 ImportError 让整个登录链路 403。
+    # 用绝对导入（而非相对 .. import），静态分析与运行时都能解析。
+    from app import accounts as accounts_mod
 
     fallback = str(user.get("name") or "")
     sub = str(user.get("sub") or "")

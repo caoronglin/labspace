@@ -1,7 +1,7 @@
 {
   "name": "labspace-frontend",
   "private": true,
-  "version": "2026.11.22.1",
+  "version": "2026.11.22.2",
   "type": "module",
   "engines": {
     "node": ">=26.13.0"

@@ -15,6 +15,17 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2026.11.22.2',
+    date: '2026-11-22',
+    title: '侧栏修复与 PubScholar 接入',
+    summary: '修好侧栏子菜单展开状态，新增中科院公益学术平台检索入口。',
+    highlights: [
+      '侧栏子菜单展开后鼠标离开不再自动收起，回到侧栏保持原状',
+      '文献检索页新增「PubScholar 检索」：带当前关键词直达中科院公益学术平台',
+      '数据库目录新增 PubScholar 条目，可按名称搜索并在原站打开',
+    ],
+  },
+  {
     version: '2026.11.22.1',
     date: '2026-11-22',
     title: '帮助中心重构',

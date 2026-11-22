@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-11-22 — v2026.11.22.2 侧栏修复与 PubScholar 接入
+
+- **侧栏折叠**：修复展开子菜单后鼠标离开即全部收起的问题。根因是 Sider 折叠时
+  AntD 把 Menu 从 inline 切成 vertical 并回调空数组清空 openKeys；现在 openKeys
+  始终受控且折叠态忽略那次清空。新增 `sider-collapse-test.mjs`（5 项）。
+- **中科院 PubScholar 接入**（合规方式）：数据库目录新增条目（网页访问），
+  文献检索页新增「PubScholar 检索」按钮，带当前关键词跳到
+  `https://pubscholar.cn/explore?query=<词>`（已实测预填搜索框）。
+  不爬取、不逆向其私有 API —— 平台条款明确禁止自动化访问。新增 `pubscholar-test.mjs`（6 项）。
+- **修复重建后端镜像暴露的两处拆分回归**：
+  - `routers/auth.py` 的 `from . import accounts` 改为绝对导入（重建后登录链路曾 403）；
+  - `routers/network.py` 两条裸 `@router.get` 曾把 `api_databases_query` 错误注册成
+    GET `/api/databases`（422），补回目录接口函数体后恢复。
+  两处均为 Phase 2 拆 main.py 时残留、旧镜像侥幸未暴露的问题，重建镜像后修复。
+
 ## 2026-11-22 — v2026.11.22.1 帮助中心重构
 
 - 帮助内容（`QUICK_START` / `ROLE_STARTS` / `FAQ`）抽到 `frontend/src/content/helpContent.tsx`，
