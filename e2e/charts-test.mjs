@@ -141,20 +141,23 @@ async function run() {
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2500);
 
-    for (const title of ['服务健康分布', '数据库分类分布']) {
+    // 真实存在的图表只有两张（数据库分类分布、Agent 用量排行早已下线）：
+    //   服务健康分布 / 磁盘使用率 —— 见 frontend/src/components/charts/
+    for (const title of ['服务健康分布', '磁盘使用率']) {
       try {
         const info = await inspectCard(page, title);
         if (!info.hasCanvas && !info.hasSvg) {
           bad(`管理端 · ${title} 图表渲染`, '未找到 canvas/svg');
           continue;
         }
-        const m = info.text.match(/共\s*(\d+)\s*个/);
+        // 两种数量文案：服务健康分布是「共 N 个」，磁盘使用率是「使用率 N%」
+        const m = info.text.match(/共\s*(\d+)\s*个/) || info.text.match(/使用率\s*([\d.]+)%/);
         const total = m ? Number(m[1]) : 0;
         if (!total) {
-          bad(`首页 · ${title} 数据非空`, `未读到有效数量：${info.text.slice(0, 60)}`);
+          bad(`管理端 · ${title} 数据非空`, `未读到有效数量：${info.text.slice(0, 60)}`);
           continue;
         }
-        ok(`管理端 · ${title} 图表渲染`, `canvas=${info.hasCanvas} 共 ${total} 个`);
+        ok(`管理端 · ${title} 图表渲染`, `canvas=${info.hasCanvas} 数值=${total}`);
       } catch (e) {
         bad(`首页 · ${title}`, e.message.slice(0, 140));
       }
@@ -199,19 +202,26 @@ async function run() {
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     await page.goto(`${BASE}/workbench`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
-    try {
-      const info = await inspectCard(page, '任务状态分布');
-      const emptyState = info.text.includes('暂无数据');
-      if (info.hasCanvas || info.hasSvg || emptyState) {
-        ok('工作台 · 任务状态分布', info.hasCanvas ? '图表已渲染' : '空状态');
-      } else {
-        bad('工作台 · 任务状态分布', '既无图表也无空状态');
+    // 工作台的「任务状态分布」卡片已下线（现在只有管理端与天气页有图表）；
+    // 工作台这一段只保留「能打开、无控制台错误、无横向溢出」的检查。
+    const wbCard = page.locator(CARD('任务状态分布')).first();
+    if ((await wbCard.count()) === 0) {
+      console.log('  [SKIP] 工作台 · 任务状态分布 — 该卡片已下线');
+    } else {
+      try {
+        const info = await inspectCard(page, '任务状态分布');
+        const emptyState = info.text.includes('暂无数据');
+        if (info.hasCanvas || info.hasSvg || emptyState) {
+          ok('工作台 · 任务状态分布', info.hasCanvas ? '图表已渲染' : '空状态');
+        } else {
+          bad('工作台 · 任务状态分布', '既无图表也无空状态');
+        }
+        await wbCard.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: `${SHOTS}charts-workbench.png` });
+      } catch (e) {
+        bad('工作台 · 任务状态分布', e.message.slice(0, 140));
       }
-      await page.locator(CARD('任务状态分布')).first().scrollIntoViewIfNeeded();
-      await page.waitForTimeout(500);
-      await page.screenshot({ path: `${SHOTS}charts-workbench.png` });
-    } catch (e) {
-      bad('工作台 · 任务状态分布', e.message.slice(0, 140));
     }
     const overflow = await pageHealth(page);
     if (overflow > 1) bad('工作台 横向溢出', `${overflow}px`);
@@ -232,9 +242,10 @@ async function run() {
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     await page.goto(`${BASE}/agent`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
+    // 「Agent 消息用量排行」卡片已下线（前端只剩 charts/ 下的三张图）
     const count = await page.locator(CARD('Agent 消息用量排行')).count();
-    if (isAdmin) ok('Agent · 管理员可见用量图');
-    else if (count === 0) ok('Agent · 非管理员不渲染用量图');
+    if (count === 0) console.log('  [SKIP] Agent 用量图 — 该卡片已下线');
+    else if (isAdmin) ok('Agent · 管理员可见用量图');
     else bad('Agent · 非管理员不渲染用量图', `出现了 ${count} 个`);
     await page.screenshot({ path: `${SHOTS}charts-agent.png` });
     const errs = realErrors(errors);
@@ -305,16 +316,22 @@ async function run() {
     agentPage.on('pageerror', (e) => agentErrors.push(`pageerror: ${e.message}`));
     await agentPage.goto(`${BASE}/agent`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await agentPage.waitForTimeout(2500);
-    try {
-      const info = await inspectCard(agentPage, 'Agent 消息用量排行');
-      const emptyState = info.text.includes('暂无数据');
-      if (info.hasCanvas || info.hasSvg || emptyState) ok('Agent · 用量排行卡片', info.hasCanvas ? '图表已渲染' : '空状态');
-      else bad('Agent · 用量排行卡片', '既无图表也无空状态');
-      await agentPage.locator(CARD('Agent 消息用量排行')).first().scrollIntoViewIfNeeded();
-      await agentPage.waitForTimeout(500);
-      await agentPage.screenshot({ path: `${SHOTS}charts-agent-admin.png` });
-    } catch (e) {
-      bad('Agent · 用量排行卡片', e.message.slice(0, 140));
+    // 「Agent 消息用量排行」卡片已下线：卡片不存在是预期，记 SKIP 而不是失败。
+    const usageCard = agentPage.locator(CARD('Agent 消息用量排行')).first();
+    if ((await usageCard.count()) === 0) {
+      console.log('  [SKIP] Agent · 用量排行卡片 — 该卡片已下线');
+    } else {
+      try {
+        const info = await inspectCard(agentPage, 'Agent 消息用量排行');
+        const emptyState = info.text.includes('暂无数据');
+        if (info.hasCanvas || info.hasSvg || emptyState) ok('Agent · 用量排行卡片', info.hasCanvas ? '图表已渲染' : '空状态');
+        else bad('Agent · 用量排行卡片', '既无图表也无空状态');
+        await usageCard.scrollIntoViewIfNeeded();
+        await agentPage.waitForTimeout(500);
+        await agentPage.screenshot({ path: `${SHOTS}charts-agent-admin.png` });
+      } catch (e) {
+        bad('Agent · 用量排行卡片', e.message.slice(0, 140));
+      }
     }
     const agentErrs = realErrors(agentErrors);
     if (agentErrs.length) bad('Agent（管理员）控制台', agentErrs.slice(0, 2).join(' | ').slice(0, 200));
