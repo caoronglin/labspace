@@ -113,4 +113,13 @@ else
   [ -z "${base:-}" ] || echo "  ok"
 fi
 
+# 路由装饰器绑定检查：拆分 main.py 时曾留下「孤儿装饰器链」，
+# 静默把 /api/services 绑到 api_databases（返回结构错位），旧镜像侥幸未暴露。
+echo "== 后端路由装饰器绑定"
+if python3 ops/check-route-wiring.py; then
+  echo "  ok"
+else
+  fail=1
+fi
+
 [ "$fail" -eq 0 ] && echo "== 卫生检查通过" || { echo "== 卫生检查失败"; exit 1; }

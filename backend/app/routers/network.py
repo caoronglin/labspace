@@ -31,40 +31,7 @@ from ..security import (
 router = APIRouter()
 
 
-@router.get("/api/services")
-@router.get("/v1/services")
-
-
-@router.get("/api/services/{service_id}/health")
-@router.get("/v1/services/{service_id}/health")
-
-
-@router.get("/api/services/health")
-@router.get("/v1/services/health")
-
-
-# ------------------------------------------------------------------ 收藏 / 最近
-
-
-@router.get("/api/favorites")
-@router.get("/v1/favorites")
-
-
-@router.post("/api/favorites/{service_id}")
-@router.post("/v1/favorites/{service_id}")
-
-
-@router.delete("/api/favorites/{service_id}")
-@router.delete("/v1/favorites/{service_id}")
-
-
-@router.get("/api/recent")
-@router.get("/v1/recent")
-
-
-@router.post("/api/recent/{service_id}")
-@router.post("/v1/recent/{service_id}")
-
+# 服务目录 / 收藏 / 最近的路由实现在 catalog.py（拆分时装饰器曾误留此处成孤儿链，已迁回）
 
 # ------------------------------------------------------------------ 植物数据库目录
 

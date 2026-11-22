@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-11-22 — v2026.11.22.3 后端路由拆分残留修复
+
+重建后端镜像后暴露了 Phase 2 拆 `main.py` 时残留的路由注册损伤（旧镜像侥幸未命中）：
+- `routers/auth.py` 的公告装饰器成了裸行；`routers/misc.py` 的公告函数无装饰器 → 迁移并注册。
+- `routers/drawings.py` 的 8 条绘图路由和 3 个辅助函数完全丢失 → 从拆分前版本恢复并补齐 imports。
+- `routers/network.py` 的 6 条孤儿装饰器链把 `/api/services`、`/api/favorites` 等
+  错误绑定到 `api_databases`（返回结构错位），`/api/databases` 两条又被绑定成查询接口（422）
+  → 清理孤儿链，把函数体与装饰器在 `catalog.py` 正确配对。
+- 新增 `ops/check-route-wiring.py`：扫描所有 router 的「装饰器链必须以 def 结束」，
+  防止后续拆分再次留下孤儿装饰器。
+
 ## 2026-11-22 — v2026.11.22.2 侧栏修复与 PubScholar 接入
 
 - **侧栏折叠**：修复展开子菜单后鼠标离开即全部收起的问题。根因是 Sider 折叠时

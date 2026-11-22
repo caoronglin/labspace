@@ -33,6 +33,8 @@ from ..security import (
 router = APIRouter()
 
 
+@router.get("/api/services")
+@router.get("/v1/services")
 async def api_services(request: Request, user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
     """服务目录。
 
@@ -42,6 +44,8 @@ async def api_services(request: Request, user: dict[str, Any] | None = Depends(c
     services = visible_services(user, host=_client_host(request))
     return {"services": services, "count": len(services)}
 
+@router.get("/api/services/{service_id}/health")
+@router.get("/v1/services/{service_id}/health")
 async def api_service_health(service_id: str) -> dict[str, Any]:
     """单服务健康状态（由 Go 核心 ``internal/health`` 执行探测）。"""
     if not any(s.id == service_id for s in load_catalog()):
@@ -50,6 +54,8 @@ async def api_service_health(service_id: str) -> dict[str, Any]:
         return {"status": "unknown", "detail": "健康检查已关闭"}
     return await go_service_health(service_id)
 
+@router.get("/api/services/health")
+@router.get("/v1/services/health")
 async def api_services_health(request: Request, user: dict[str, Any] | None = Depends(current_user)) -> dict[str, Any]:
     """批量健康状态（外部服务故障归外部主机）。"""
 
@@ -63,24 +69,34 @@ async def api_services_health(request: Request, user: dict[str, Any] | None = De
         out.append({**svc, "health": health})
     return {"services": out}
 
+@router.get("/api/favorites")
+@router.get("/v1/favorites")
 async def api_favorites(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
     return {"favorites": db.list_favorites(user["sub"])}
 
+@router.post("/api/favorites/{service_id}")
+@router.post("/v1/favorites/{service_id}")
 async def api_add_favorite(service_id: str, user: dict = Depends(require_user), __: None = Depends(require_csrf)) -> dict[str, Any]:
     if not any(s.id == service_id for s in load_catalog()):
         raise HTTPException(status_code=404, detail="服务不存在")
     db.add_favorite(user["sub"], service_id)
     return {"ok": True, "favorites": db.list_favorites(user["sub"])}
 
+@router.delete("/api/favorites/{service_id}")
+@router.delete("/v1/favorites/{service_id}")
 async def api_remove_favorite(
     service_id: str, user: dict[str, Any] = Depends(require_user), __: None = Depends(require_csrf)
 ) -> dict[str, Any]:
     db.remove_favorite(user["sub"], service_id)
     return {"ok": True, "favorites": db.list_favorites(user["sub"])}
 
+@router.get("/api/recent")
+@router.get("/v1/recent")
 async def api_recent(user: dict[str, Any] = Depends(require_user)) -> dict[str, Any]:
     return {"recent": db.list_recent(user["sub"])}
 
+@router.post("/api/recent/{service_id}")
+@router.post("/v1/recent/{service_id}")
 async def api_touch_recent(
     service_id: str, user: dict[str, Any] = Depends(require_user), __: None = Depends(require_csrf)
 ) -> dict[str, Any]:

@@ -140,6 +140,12 @@ async function run() {
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2500);
+    // 图表区用 LazyMount（IntersectionObserver 视口懒加载）：不滚到那里就不挂载，
+    // inspectCard 会一直等不到卡片。先把两处图表滚进视口再断言。
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => window.scrollBy(0, 400));
+    await page.waitForTimeout(1200);
 
     // 真实存在的图表只有两张（数据库分类分布、Agent 用量排行早已下线）：
     //   服务健康分布 / 磁盘使用率 —— 见 frontend/src/components/charts/

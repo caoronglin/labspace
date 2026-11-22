@@ -57,18 +57,8 @@ log = logging.getLogger("labspace.routers.auth")
 router = APIRouter()
 
 
-# ------------------------------------------------------------------ 公告
-
-@router.get("/api/announcements")
-
-
-@router.post("/api/announcements")
-
-
-@router.delete("/api/announcements/{aid}")
-
-
 # ------------------------------------------------------------------ 基础
+# 公告路由在 misc.py（拆分时装饰器误留在此处成了裸行，已迁回）
 
 
 @router.get("/api/health")

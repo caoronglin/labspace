@@ -29,9 +29,11 @@ from ..security import (
 router = APIRouter()
 
 
+@router.get("/api/announcements")
 async def api_announcements(_: dict = Depends(require_user)) -> dict[str, Any]:
     return {"announcements": db.list_announcements()}
 
+@router.post("/api/announcements")
 async def api_add_announcement(
     request: Request,
     user: dict = Depends(require_admin),
@@ -48,6 +50,7 @@ async def api_add_announcement(
     asyncio.create_task(wecom_mod.notify_announcement(title, content, level))
     return {"ok": True, "announcement": row}
 
+@router.delete("/api/announcements/{aid}")
 async def api_delete_announcement(
     aid: str, user: dict = Depends(require_admin), _: None = Depends(require_csrf)
 ) -> dict[str, Any]:
