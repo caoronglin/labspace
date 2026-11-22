@@ -15,8 +15,10 @@
 2. 被 `docs/` 或 `README` 当作复现步骤引用 → 留下（`_` 前缀，人工执行）；
 3. 两者都不是 → 删掉。历史在 git 里，需要时 `git log -- e2e/` 捞回来。
 
-那次清理删掉了 166 个 `_*.mjs` 与 3 个过期脚本（`quantum-real-flow`、`devtools-test`、
-`q-oidc-ip`：Quantum 已下线、后两个与 `oidc-ip-flow` 重复），同时把 12 个一直手工
+那次清理删掉了 166 个 `_*.mjs` 与 5 个过期脚本（`quantum-real-flow`、`devtools-test`、
+`q-oidc-ip`：Quantum 已下线、后两个与 `oidc-ip-flow` 重复；`cropgenome-test`、
+`cropgenome-rust-test`：CropGenome 服务 2026-11 已下架，替代路径 /bio-tools 由后端
+biotools 代理 pytest 覆盖），同时把 12 个一直手工
 执行、却没进 `ALL` 的脚本补进回归——有套件但没被套件覆盖，等于没有护栏。
 最终保留的 `_*.mjs` 只有两个：`_auth.mjs`（共享登录 helper，被 10+ 正式用例引用）、
 `_docparse_gone.mjs`（被 `new-features-test.mjs` 引用的下线验证探针）。
