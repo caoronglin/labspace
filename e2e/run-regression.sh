@@ -22,7 +22,7 @@ ALL=(api-integration.mjs e2e.mjs snapotter-integration.mjs agent-integration.mjs
      agent-admin-config-test.mjs agent-quota-test.mjs
      catalog-parity.mjs workbench-parity.mjs go-next-api.mjs
      recent-test.mjs translate-test.mjs code-preview-test.mjs
-     help-center-test.mjs oidc-ip-flow.mjs drawio-ip.mjs
+     help-center-test.mjs sider-collapse-test.mjs oidc-ip-flow.mjs drawio-ip.mjs
      ports-test.mjs network-ports.mjs perf3.mjs)
 TARGETS=("$@")
 [ ${#TARGETS[@]} -eq 0 ] && TARGETS=("${ALL[@]}")

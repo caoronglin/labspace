@@ -228,9 +228,20 @@ export default function AppLayout() {
         selectedKeys={[selectedKey]}
         items={menuItems}
         style={{ borderInlineEnd: 'none' }}
-        // 侧栏悬浮展开时也算「展开态」，否则当前页所属子菜单不会自动展开。
-        openKeys={siderCollapsed ? undefined : openKeys}
-        onOpenChange={(keys) => setOpenKeys(keys as string[])}
+        // 必须始终「受控」：之前传 siderCollapsed ? undefined : openKeys，
+        // 折叠↔悬浮展开之间在「非受控/受控」来回切换，AntD 会在切到
+        // undefined 时丢掉内部展开状态——用户展开子菜单、鼠标离开再回来，
+        // 子菜单就莫名其妙全收起了。传空数组而非 undefined 即可始终受控，
+        // 折叠态没有可见子菜单（inlineCollapsed 自动转成悬浮弹层），
+        // openKeys 的值不会造成视觉异常，回来时状态还在。
+        openKeys={openKeys}
+        onOpenChange={(keys) => {
+          // Sider 折叠时 AntD 把 Menu 从 inline 切成 vertical，会主动回调一次
+          // 空数组把 openKeys 清空——那不是用户「收起子菜单」的意图。
+          // 折叠态下忽略这次清空，保留展开状态；等悬浮回来仍是展开的。
+          if (siderCollapsed && keys.length === 0) return;
+          setOpenKeys(keys as string[]);
+        }}
         onClick={() => isMobile && setMobileOpen(false)}
       />
     </div>
