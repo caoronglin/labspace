@@ -26,3 +26,38 @@ func TestGzipLimit(t *testing.T) {
 		t.Fatal("expansion attack accepted")
 	}
 }
+
+func TestCodePreview(t *testing.T) {
+	// 扩展名识别：kind=code + language + 行数统计
+	r, e := Render("demo.py", []byte("import os\ndef main():\n    pass\n"))
+	if e != nil || r.Kind != "code" || r.Language != "python" || r.Format != "python" {
+		t.Fatalf("demo.py: %+v %v", r, e)
+	}
+	if r.Lines != 4 || r.Truncated {
+		t.Fatalf("demo.py lines=%d truncated=%v", r.Lines, r.Truncated)
+	}
+	// 文件名识别（无扩展名）
+	r, _ = Render("Dockerfile", []byte("FROM alpine\n"))
+	if r.Kind != "code" || r.Language != "dockerfile" {
+		t.Fatalf("Dockerfile: %+v", r)
+	}
+	// requirements.txt 扩展名是 .txt（文本类），但按文件名应识别为 code/text
+	r, _ = Render("requirements.txt", []byte("fastapi\n"))
+	if r.Kind != "code" || r.Language != "text" {
+		t.Fatalf("requirements.txt: %+v", r)
+	}
+	// 截断：超过 MaxCode 字符时 truncated=true 且文本正好 MaxCode 个字符
+	big := bytes.Repeat([]byte("x\n"), MaxCode) // 2*MaxCode 个字符
+	r, e = Render("big.go", big)
+	if e != nil {
+		t.Fatalf("big.go: %v", e)
+	}
+	if !r.Truncated || len([]rune(r.Text)) != MaxCode {
+		t.Fatalf("big.go truncated=%v len=%d", r.Truncated, len([]rune(r.Text)))
+	}
+	// 非法 UTF-8 字节不应导致预览失败
+	r, e = Render("weird.rs", []byte{0xff, 0xfe, '\n', 'A'})
+	if e != nil || r.Kind != "code" || r.Language != "rust" {
+		t.Fatalf("weird.rs: %+v %v", r, e)
+	}
+}

@@ -25,9 +25,15 @@ const MaxExpanded = 24 << 20
 const MaxRows = 20
 const MaxText = 2048
 
+// MaxCode 是源码预览的字符数上限（按字符计数，与 Python 侧 preview_inline 的口径一致）；
+// 行号与截断提示由前端 CodePreview 渲染，不在这里做行数裁剪。
+const MaxCode = 60_000
+
 type Result struct {
 	Kind      string           `json:"kind"`
 	Format    string           `json:"format"`
+	Language  string           `json:"language,omitempty"`
+	Lines     int              `json:"lines,omitempty"`
 	Rows      [][]string       `json:"rows,omitempty"`
 	Records   []map[string]any `json:"records,omitempty"`
 	Text      string           `json:"text,omitempty"`
@@ -36,6 +42,37 @@ type Result struct {
 	Notice    string           `json:"notice,omitempty"`
 	// DataURL carries a derived, downscaled thumbnail (never the source bytes).
 	DataURL string `json:"dataUrl,omitempty"`
+}
+
+// codeLang 按扩展名识别源码语言（与 backend/app/preview_inline.py 的 CODE_LANG 对齐）。
+var codeLang = map[string]string{
+	".py": "python", ".ipynb": "json", ".ts": "typescript", ".tsx": "tsx",
+	".js": "javascript", ".jsx": "jsx", ".mjs": "javascript", ".cjs": "javascript",
+	".go": "go", ".rs": "rust", ".java": "java", ".c": "c", ".h": "c",
+	".cpp": "cpp", ".hpp": "cpp", ".cs": "csharp", ".rb": "ruby", ".php": "php",
+	".sh": "bash", ".bash": "bash", ".zsh": "bash", ".ps1": "powershell",
+	".sql": "sql", ".css": "css", ".scss": "scss", ".html": "html", ".vue": "vue",
+	".toml": "toml", ".ini": "ini", ".cfg": "ini", ".conf": "nginx",
+	".dockerfile": "dockerfile", ".mk": "makefile", ".lua": "lua", ".r": "r",
+	".pl": "perl", ".kt": "kotlin", ".swift": "swift", ".scala": "scala",
+}
+
+// codeNames 处理无扩展名（或扩展名已属文本类）但按文件名应识别为源码的情况。
+var codeNames = map[string]string{
+	"dockerfile": "dockerfile", "makefile": "makefile", "cmakelists.txt": "cmake",
+	"requirements.txt": "text", "pyproject.toml": "toml",
+}
+
+// fillCodeText 截取前 MaxCode 个字符并统计行数；truncated 表示原文超过上限。
+func fillCodeText(r *Result, data []byte) {
+	text := strings.ToValidUTF8(string(data), "\ufffd")
+	runes := []rune(text)
+	if len(runes) > MaxCode {
+		runes = runes[:MaxCode]
+		r.Truncated = true
+	}
+	r.Text = string(runes)
+	r.Lines = strings.Count(r.Text, "\n") + 1
 }
 
 // MaxThumbSide bounds the long edge of an inline image thumbnail.
@@ -125,6 +162,22 @@ func Render(name string, raw []byte) (Result, error) {
 	}
 	ext := strings.ToLower(filepath.Ext(lower))
 	r := Result{Format: strings.TrimPrefix(ext, "."), Meta: map[string]any{"bytes_examined": len(data)}}
+	// 源码预览：扩展名优先，其次按文件名（Dockerfile/Makefile 等）。
+	// 判定先于下面的格式 switch，与 Python 侧 preview_inline 的分支顺序一致。
+	if lang, ok := codeLang[ext]; ok {
+		r.Kind = "code"
+		r.Format = lang
+		r.Language = lang
+		fillCodeText(&r, data)
+		return r, nil
+	}
+	if lang, ok := codeNames[lower]; ok {
+		r.Kind = "code"
+		r.Format = lang
+		r.Language = lang
+		fillCodeText(&r, data)
+		return r, nil
+	}
 	switch ext {
 	case ".fa", ".fna", ".faa", ".fasta":
 		r.Kind = "bioinfo"
