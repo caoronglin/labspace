@@ -192,6 +192,19 @@ try {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1800);
 
+      // 套件长跑后首页最慢（天气 / 今日任务 / 服务健康多个接口并发），
+      // 固定等 1800ms 时 DOM 还没渲染完：标题为空、Tab 序列里也没有可聚焦元素，
+      // 于是 title/focus 两项偶发翻红（单跑就过）。等一个可见标题出现再检查，
+      // 最多再等 8s；超时不报错，交给后面的断言如实判定。
+      await page.waitForFunction(
+        (sel) => Array.from(document.querySelectorAll(sel)).some((el) => {
+          const cs = getComputedStyle(el);
+          return cs.display !== 'none' && cs.visibility !== 'hidden' && (el.textContent || '').trim().length > 0;
+        }),
+        TITLE_QUERY,
+        { timeout: 8000 },
+      ).catch(() => {});
+
       // 构建期间 chunk 哈希可能变更导致一次性加载失败，重试一次
       if (errors.some((t) => /Failed to fetch dynamically imported module/i.test(t))) {
         errors.length = 0;
