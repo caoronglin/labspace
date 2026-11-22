@@ -49,7 +49,11 @@ console.log(`✓ 会话创建：${newSessionId ? '新会话 ' + newSessionId : '
 
 // 发送消息
 const box = page.locator('textarea').first();
-await box.fill('请帮我查一下 NCBI GenBank 里有没有 Arabidopsis thaliana 的基因组记录');
+// 原查询句会触发 NCBI 工具调用 + 模型上游重试，端到端时延可达 3-5 分钟，
+// 超出脚本轮询窗口（也超出回归套件单脚本 420s 预算）。
+// 端到端链路（发送→模型→流式→落库）用无工具的对话句即可验证；
+// 工具路径由 biotools 代理与数据库适配器的 pytest 覆盖。
+await box.fill('你好，请用一两句话介绍你能帮实验室做什么');
 await box.press('Enter');
 console.log('✓ 消息已发送，等待流式回复…');
 
