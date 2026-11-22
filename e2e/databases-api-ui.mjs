@@ -26,8 +26,10 @@ await page.locator('#password').fill(PASS);
 await page.getByRole('button', { name: '登录' }).first().click();
 await page.waitForTimeout(3500);
 
-await page.goto(`${BASE}/databases`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(1500);
+// 数据库页有持续的后台轮询（健康探测），networkidle 永远等不到；
+// 改 domcontentloaded + 定长等待。
+await page.goto(`${BASE}/databases`, { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(3500);
 
 const totalText = await page.locator('.ant-typography').filter({ hasText: '已接入真实 API' }).first().innerText().catch(() => '');
 record('统计条显示 API 接入数', /已接入真实 API/.test(totalText), totalText.replace(/\s+/g, ' '));
@@ -46,9 +48,13 @@ record('查询抽屉打开', await page.locator('.ant-drawer-section').isVisible
 await page.locator('.ant-drawer-section input.ant-input').first().fill('AP1 Arabidopsis');
 // AntD v6 会给两个汉字的按钮插入空格（「查 询」），用正则匹配
 await page.locator('.ant-drawer-section button').filter({ hasText: /查\s*询/ }).first().click();
-await page.waitForTimeout(6000);
-
-const drawerText = await page.locator('.ant-drawer-section').innerText();
+// 外部数据库站点响应慢（实测 >6s），轮询等结果文案出现，最多 30s
+let drawerText = '';
+for (let i = 0; i < 15; i++) {
+  await page.waitForTimeout(2000);
+  drawerText = await page.locator('.ant-drawer-section').innerText();
+  if (/返回 \d+ 条|上游|超时|不可用|失败/.test(drawerText)) break;
+}
 // 该检索打的是外部数据库站点；抽屉里出现「上游/超时/失败」时按环境问题记 SKIP。
 const upstreamDown = /上游|超时|不可用|失败/.test(drawerText);
 if (upstreamDown) console.log('  [SKIP] 返回真实检索结果 — 上游不可达');

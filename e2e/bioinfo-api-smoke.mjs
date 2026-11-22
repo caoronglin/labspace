@@ -1,7 +1,9 @@
 // 生信实训平台后端冒烟：以 student01 登录，验证 /api/v1/courses 与 /api/v1/users/me 不再 500
 // 用法: LAB_PASS=<口令> node bioinfo-api-smoke.mjs
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
-const BASE = process.env.BIO_BASE || 'http://127.0.0.1:8102';
+// OIDC 回调地址按主机自适应，但 Casdoor 应用只登记了 LAN 主机（192.168.5.12:8102），
+    // 127.0.0.1 入口会卡在「许可跳转列表中未找到」——必须走 LAN 主机。
+    const BASE = process.env.BIO_BASE || `http://${process.env.LAB_HOST || '127.0.0.1'}:8102`;
 
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
@@ -20,7 +22,9 @@ page.on('console', (m) => { if (m.type() === 'error') console.log('  [console.er
 
 // 1. 走平台 OIDC 登录入口 → 跳转 Casdoor
 await page.goto(`${BASE}/api/v1/auth/login?redirect=/`, { waitUntil: 'domcontentloaded' });
-await page.waitForURL(/192\.168\.5\.12:8090/, { timeout: 20000 });
+// Casdoor 地址随入口 Host 自适应（127.0.0.1 → 127.0.0.1:8090，LAN → 192.168.5.12:8090），
+    // 只按端口匹配，别写死主机。
+    await page.waitForURL(/:8090\/login\/oauth\/authorize/, { timeout: 20000 });
 await page.fill('#username', USER);
 await page.fill('#password', PASS);
 await Promise.all([

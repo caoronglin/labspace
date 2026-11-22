@@ -77,13 +77,14 @@ func itoa(n int) string {
 var itemColSpec = []col{
 	{"id", 25}, {"user_id", 25}, {"kind", 25}, {"title", 25}, {"content", 25},
 	{"status", 25}, {"priority", 25}, {"tags", 25}, {"project_id", 25}, {"plan_id", 25},
+	{"link_source", 25}, {"link_path", 25},
 	{"due_date", 25}, {"source", 25}, {"ai_class", 25}, {"ai_reason", 25},
 	{"confidence", 701}, {"created_at", 25}, {"updated_at", 25},
 }
 
 func itemRow(id, kind, title string) []any {
 	return []any{id, "u1", kind, title, "content", "active", "normal",
-		`{"tag1","tag2"}`, nil, nil, "2026-11-05", "manual", nil, nil, 0.55,
+		`{"tag1","tag2"}`, nil, nil, "users", "shared/tmp.md", "2026-11-05", "manual", nil, nil, 0.55,
 		"2026-11-01T00:00:00Z", "2026-11-02T00:00:00Z"}
 }
 
@@ -268,7 +269,8 @@ func TestCaptureHandler(t *testing.T) {
 	// The source and ai metadata travel as bound parameters (SQL injection safe),
 	// not as string literals spliced into the query.
 	bound := m.Params()[0]
-	if len(bound) < 14 || bound[10] != "capture" || bound[11] != "task" {
+	// link_source/link_path 插在 plan_id 之后（索引 9/10；捕获条目不挂文件，两个空串）
+	if len(bound) < 16 || bound[9] != "" || bound[10] != "" || bound[12] != "capture" || bound[13] != "task" {
 		t.Fatalf("capture bound params wrong: %v", bound)
 	}
 }

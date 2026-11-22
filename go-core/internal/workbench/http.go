@@ -64,6 +64,7 @@ func (h *Handler) Serve(w http.ResponseWriter, r *http.Request, userID string) {
 			Kind: body.Kind, Title: body.Title, Content: body.Content, Priority: body.Priority,
 			Status: body.Status, Tags: body.Tags, DueDate: body.DueDate,
 			ProjectID: body.ProjectID, PlanID: body.PlanID,
+			LinkSource: body.LinkSource, LinkPath: body.LinkPath,
 		}, "manual", nil)
 		if err != nil {
 			writeErr(w, 500, "条目创建失败")
@@ -326,6 +327,9 @@ type itemBody struct {
 	DueDate   *string  `json:"due_date"`
 	ProjectID *string  `json:"project_id"`
 	PlanID    *string  `json:"plan_id"`
+	// 待办挂文件存储（source 如 users/public，path 为相对路径），与 Python 契约一致
+	LinkSource string `json:"link_source"`
+	LinkPath   string `json:"link_path"`
 }
 
 // UnmarshalJSON applies the same defaults as the Pydantic models so an empty
@@ -385,7 +389,7 @@ func (b *planBody) UnmarshalJSON(data []byte) error {
 // the Python PATCH models. Unknown keys are ignored (sparse update).
 func itemPatch(raw map[string]json.RawMessage) (PatchFields, error) {
 	f := PatchFields{}
-	copyStr := []string{"kind", "title", "content", "priority", "status", "project_id", "plan_id", "due_date"}
+	copyStr := []string{"kind", "title", "content", "priority", "status", "project_id", "plan_id", "due_date", "link_source", "link_path"}
 	for _, k := range copyStr {
 		if v, ok := raw[k]; ok {
 			var s string

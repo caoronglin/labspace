@@ -174,11 +174,12 @@ func parseTags(v any) []string {
 
 func scanItemStmt(rows *sql.Rows) (Item, error) {
 	var (
-		id, userID, kind, title, content, status, priority, source                           string
+		id, userID, kind, title, content, status, priority, source string
+		linkSource, linkPath                                       string
 		tagsRaw, projectID, planID, dueDate, aiClass, aiReason, created, updated, confidence any
 	)
 	if err := rows.Scan(&id, &userID, &kind, &title, &content, &status, &priority,
-		&tagsRaw, &projectID, &planID, &dueDate, &source, &aiClass, &aiReason,
+		&tagsRaw, &projectID, &planID, &linkSource, &linkPath, &dueDate, &source, &aiClass, &aiReason,
 		&confidence, &created, &updated); err != nil {
 		return Item{}, err
 	}
@@ -187,6 +188,7 @@ func scanItemStmt(rows *sql.Rows) (Item, error) {
 		Content: def(content, ""), Status: def(status, "active"),
 		Priority: def(priority, "normal"), Tags: parseTags(tagsRaw),
 		ProjectID: nsPtr(projectID), PlanID: nsPtr(planID), DueDate: nsPtr(dueDate),
+		LinkSource: def(linkSource, ""), LinkPath: def(linkPath, ""),
 		Source: def(source, "manual"), AIClass: nsPtr(aiClass), AIReason: nsPtr(aiReason),
 		Confidence: nFloat(confidence), CreatedAt: isoTimestamp(created), UpdatedAt: isoTimestamp(updated),
 	}, nil
@@ -199,7 +201,7 @@ func def(v, d string) string {
 	return v
 }
 
-const itemCols = `id, user_id, kind, title, content, status, priority, tags, project_id, plan_id, due_date, source, ai_class, ai_reason, confidence, created_at, updated_at`
+const itemCols = `id, user_id, kind, title, content, status, priority, tags, project_id, plan_id, link_source, link_path, due_date, source, ai_class, ai_reason, confidence, created_at, updated_at`
 const projectCols = `id, name, description, status, health, progress, next_step, due_date, created_at, updated_at`
 const planCols = `id, kind, title, outcome, metrics, horizon, progress, status, next_step, due_date, created_at, updated_at`
 
@@ -308,6 +310,7 @@ type ItemCreate struct {
 	Kind, Title, Content, Priority, Status string
 	Tags                                   []string
 	DueDate, ProjectID, PlanID             *string
+	LinkSource, LinkPath                   string
 }
 
 func (s *Store) CreateItem(ctx context.Context, userID string, in ItemCreate, source string, ai *Analysis) (Item, error) {
@@ -340,10 +343,10 @@ func (s *Store) CreateItem(ctx context.Context, userID string, in ItemCreate, so
 		aiClass, aiReason, confidence = ai.Kind, ai.Reason, ai.Confidence
 	}
 	q := `INSERT INTO labspace.workbench_items
-	 (id, user_id, kind, title, content, status, priority, tags, project_id, plan_id, due_date, source, ai_class, ai_reason, confidence)
-	 VALUES (gen_random_uuid()::text, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ` + itemCols
+	 (id, user_id, kind, title, content, status, priority, tags, project_id, plan_id, link_source, link_path, due_date, source, ai_class, ai_reason, confidence)
+	 VALUES (gen_random_uuid()::text, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ` + itemCols
 	rows, err := s.DB.QueryContext(ctx, q, userID, in.Kind, title, in.Content, in.Status,
-		in.Priority, textArray(in.Tags), in.ProjectID, in.PlanID, in.DueDate, source, aiClass, aiReason, confidence)
+		in.Priority, textArray(in.Tags), in.ProjectID, in.PlanID, in.LinkSource, in.LinkPath, in.DueDate, source, aiClass, aiReason, confidence)
 	if err != nil {
 		return Item{}, err
 	}
@@ -378,7 +381,7 @@ func buildPatch(fields PatchFields, allowed []string) (string, []any, error) {
 	return strings.Join(sets, ", "), args, nil
 }
 
-var itemPatchCols = []string{"kind", "title", "content", "tags", "priority", "due_date", "project_id", "plan_id", "status"}
+var itemPatchCols = []string{"kind", "title", "content", "tags", "priority", "due_date", "project_id", "plan_id", "status", "link_source", "link_path"}
 
 func (s *Store) PatchItem(ctx context.Context, userID, id string, fields PatchFields) (Item, error) {
 	set, args, err := buildPatch(fields, itemPatchCols)

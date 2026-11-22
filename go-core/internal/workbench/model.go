@@ -21,6 +21,10 @@ type Item struct {
 	Tags       []string `json:"tags"`
 	ProjectID  *string  `json:"project_id"`
 	PlanID     *string  `json:"plan_id"`
+	// 待办可挂到文件存储里的具体文件/目录（与 Python 契约对齐：字段恒存在，默认空串）。
+	// 列由 migrations/0001_init.sql 提供（NOT NULL DEFAULT ''）。
+	LinkSource string `json:"link_source"`
+	LinkPath   string `json:"link_path"`
 	DueDate    *string  `json:"due_date"`
 	Source     string   `json:"source"`
 	AIClass    *string  `json:"ai_class"`

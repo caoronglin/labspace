@@ -8,7 +8,9 @@ await p.locator('#username').fill('student01');
 await p.locator('#password').fill(process.env.LAB_PASS);
 await p.getByRole('button', {name:'登录'}).first().click();
 await p.waitForURL(`${BASE}/**`, {timeout:25000}).catch(()=>{});
-await p.goto(`${BASE}/services`, {waitUntil:'networkidle'});
+// /services 已重定向到 /start（统一搜索入口，无 .lab-service-card）；
+// 服务卡片（含 touchRecent 埋点）在首页。
+await p.goto(`${BASE}/`, {waitUntil:'networkidle'});
 await p.waitForTimeout(1500);
 // 点第一张服务卡片
 await p.locator('.lab-service-card').first().click();
@@ -18,7 +20,8 @@ console.log('  最近访问:', rec.recent.join(', ') || '(空)');
 await p.goto(`${BASE}/`, {waitUntil:'networkidle'});
 await p.waitForTimeout(1500);
 const t=(await p.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ');
-const i=t.indexOf('最近访问');
-console.log('  首页最近访问区块:', t.slice(i, i+90));
+// 首页最近记录在「最近」标签页下（ClockCircleOutlined 最近）
+const i=t.indexOf('最近');
+console.log('  首页最近访问区块:', i>=0 ? t.slice(i, i+90) : '(未找到「最近」标签)');
 await p.screenshot({path:'/opt/labspace/e2e/shots/home-recent.png'});
 await b.close();

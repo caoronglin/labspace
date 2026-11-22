@@ -1,7 +1,11 @@
 // 生信平台终端端到端：建会话 → WebSocket 收发 → 校验 cgroup 限额 → 停止会话
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
 
-const BASE = process.env.BASE || 'http://127.0.0.1:8102';
+// OIDC 回调地址按主机自适应，但 Casdoor 应用只登记了 LAN 主机（192.168.5.12:8102），
+    // 127.0.0.1 入口会卡在「许可跳转列表中未找到」——必须走 LAN 主机。
+    // 别用 process.env.BASE：那是门户地址（无端口），拿它拼 /api/v1/... 会 404；
+    // 生信平台固定走 8102，主机跟随 LAB_HOST（Casdoor 回调白名单只登记 LAN 主机）。
+    const BASE = process.env.BIO_BASE || `http://${process.env.LAB_HOST || '127.0.0.1'}:8102`;
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
 
@@ -15,13 +19,20 @@ const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const ctx = await browser.newContext();
 const page = await ctx.newPage();
 await page.goto(`${BASE}/api/v1/auth/login?redirect=/`, { waitUntil: 'domcontentloaded' });
-await page.waitForURL(/192\.168\.5\.12:8090/, { timeout: 20000 });
+// Casdoor 地址随入口 Host 自适应（127.0.0.1 → 127.0.0.1:8090，LAN → 192.168.5.12:8090），
+    // 只按端口匹配，别写死主机。
+    await page.waitForURL(/:8090\/login\/oauth\/authorize/, { timeout: 20000 });
+// 表单渲染与提交之间存在竞态：没等 #username 可见就点登录会丢提交。
+// 先显式等表单，登录后轮询等跳回 8102（比单次 waitForURL 稳）。
+await page.waitForSelector('#username', { state: 'visible', timeout: 20000 });
 await page.fill('#username', USER);
 await page.fill('#password', PASS);
-await Promise.all([
-  page.waitForURL(/8102/, { timeout: 30000 }),
-  page.getByRole('button', { name: /登录|Log in|Login/i }).first().click(),
-]);
+await page.getByRole('button', { name: /登录|Log in|Login/i }).first().click();
+for (let i = 0; i < 15; i++) {
+  await page.waitForTimeout(2000);
+  if (page.url().includes('8102')) break;
+}
+if (!page.url().includes('8102')) throw new Error(`登录后未跳回 8102，停在 ${page.url().slice(0, 90)}`);
 await page.waitForLoadState('networkidle').catch(() => {});
 console.log('登录成功');
 
