@@ -32,7 +32,7 @@ await page.getByRole('button', { name: /登录|Login/ }).first().click();
 await page.waitForTimeout(4000);
 await page.goto(`${BASE}/databases`, { waitUntil: 'domcontentloaded' });
 
-const results = await page.evaluate(async (list) => {
+const queryAll = (list) => page.evaluate(async (list) => {
   const out = [];
   const csrf = (document.cookie.match(/labspace_csrf=([^;]+)/) || [])[1] || '';
   for (const [id, q] of list) {
@@ -58,7 +58,20 @@ const results = await page.evaluate(async (list) => {
     }
   }
   return out;
-}, NEW_ADAPTERS);
+}, list);
+
+// 外部站点偶发瞬断（r16 里 17 个里 1 个抖没）：失败的适配器延迟重试一次再定性，
+// 重试仍失败的才进入 SKIP/失败 分类。
+let results = await queryAll(NEW_ADAPTERS);
+const firstPass = new Map(results.map((r) => [r.id, r]));
+const badFirst = results.filter((r) => !(r.ok && r.n > 0)).map((r) => r.id);
+if (badFirst.length) {
+  console.log(`  首轮未达标 ${badFirst.length} 个（${badFirst.join('/')}），10s 后重试一次…`);
+  await new Promise((res) => setTimeout(res, 10_000));
+  const retried = await queryAll(NEW_ADAPTERS.filter(([id]) => badFirst.includes(id)));
+  for (const r of retried) firstPass.set(r.id, r);
+  results = NEW_ADAPTERS.map(([id]) => firstPass.get(id));
+}
 
 let pass = 0, skipped = 0;
 // 外部数据库站点（opentargets 等）从本机房访问偶尔超时，那是链路问题不是适配器缺陷：
