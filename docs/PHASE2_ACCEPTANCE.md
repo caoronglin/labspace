@@ -19,7 +19,7 @@
 | 前端构建 | `cd frontend && npx vite build` | **✓ built in 5.05s** |
 | Go 单测 + race | `cd go-core && GOPROXY=off go test -race ./...` | **全部包 ok** |
 | 裸 hex | `grep -rnE "#[0-9a-fA-F]{6}" frontend/src/pages --include='*.tsx'`（排除 `Colors.tsx`） | **0 处** |
-| e2e 全量 | `cd e2e && ./run-regression.sh`（39 个正式用例） | **全部通过，0 FAIL**（r18，`/tmp/e2e-run18.log`） |
+| e2e 全量 | `cd e2e && ./run-regression.sh`（39 个正式用例） | **全部通过，0 FAIL**（r19：BaserowPage/Files 重构后复验） |
 | 文档链接 | `python3 ops/check-docs-links.py` | **OK：28 份文档**，digest 与 compose 一致 |
 
 ## 目标达成对照
@@ -52,6 +52,7 @@
 | r16 | 2 | biomed 上游瞬断重试；agent 会话竞态 |
 | r17 | 1 | design-selfcheck 首页渲染慢 → 等标题元素出现再断言 |
 | r18 | **0** | 全绿归档 |
+| r19 | **0** | 前端巨石拆分（BaserowPage/Files）后全量复验，全部通过 |
 
 关键修复：
 - **新增真 bug 修复**：`Start.tsx` 的 `BorderBeam outset={2}` 导致 mobile/tablet/desktop 三档均横向溢出 2px，去掉 outset
