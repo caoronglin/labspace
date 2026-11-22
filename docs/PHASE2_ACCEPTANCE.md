@@ -53,6 +53,7 @@
 | r17 | 1 | design-selfcheck 首页渲染慢 → 等标题元素出现再断言 |
 | r18 | **0** | 全绿归档 |
 | r19 | **0** | 前端巨石拆分（BaserowPage/Files）后全量复验，全部通过 |
+| 最终 r2 | **0** | 侧栏折叠修复 + PubScholar 接入 + 后端重建暴露的路由损伤修复后，全量全绿 |
 
 关键修复：
 - **新增真 bug 修复**：`Start.tsx` 的 `BorderBeam outset={2}` 导致 mobile/tablet/desktop 三档均横向溢出 2px，去掉 outset
