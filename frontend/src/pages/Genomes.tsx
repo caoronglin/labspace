@@ -65,9 +65,12 @@ export default function Genomes() {
   const jbrowseConfig = jbrowseFile
     ? `/genome-api/jbrowse/config?file_id=${encodeURIComponent(jbrowseFile.id)}`
     : '';
+  // 未选中 FASTA 时加载内置 demo 配置（相对 URI，可挂在门户同源子路径下）；
+  // 裸 /jbrowse/ 会让 JBrowse 去找 config.json，拿到 404 HTML 就报
+  // "Unexpected token '<'"——必须显式带 config 参数。
   const jbrowseSrc = jbrowseConfig
     ? `/jbrowse/index.html?config=${encodeURIComponent(jbrowseConfig)}`
-    : '/jbrowse/';
+    : `/jbrowse/index.html?config=${encodeURIComponent('data/demo/config.zh.json')}`;
 
   const genomes = useQuery({
     queryKey: ['genomes-files'],
