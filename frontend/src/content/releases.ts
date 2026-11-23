@@ -15,6 +15,17 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2026.11.22.4',
+    date: '2026-11-22',
+    title: '侧栏子菜单联动修复',
+    summary: '点开一个子菜单不再把其他分组的同名子菜单一起展开。',
+    highlights: [
+      '子菜单按分组独立：点开「实用工具」只展开当前分组的那一个',
+      '折叠 / 悬浮展开来回切换，子菜单展开状态不再丢失',
+      '悬浮展开时的侧栏阴影不再盖到页头区域',
+    ],
+  },
+  {
     version: '2026.11.22.2',
     date: '2026-11-22',
     title: '侧栏修复与 PubScholar 接入',

@@ -525,7 +525,10 @@ export function sidebarSections(isAdmin: boolean, isTeacher = false): SidebarGro
           .filter((it) => it.sub === sk)
           .map((it) => ({ key: it.path, label: it.label, icon: it.icon }));
         return {
-          key: `sub:${sk}`,
+          // key 必须按分组唯一：sub 标签（如「实用工具」）会在多个分组里同名出现，
+          // 若全局共用 `sub:${sk}`，AntD 会把它们当同一逻辑子菜单——点开一个，
+          // 其他分组里的同名子菜单会同时展开（实测点一个联动开三个）。
+          key: `${group.key}:sub:${sk}`,
           label: meta?.label ?? sk,
           icon: meta?.icon,
           children,
@@ -545,7 +548,8 @@ export function sidebarSections(isAdmin: boolean, isTeacher = false): SidebarGro
 export function subKeyOfPath(pathname: string): string | undefined {
   const path = resolveNavPath(pathname);
   const item = NAV_BY_PATH.get(path);
-  return item?.sub ? `sub:${item.sub}` : undefined;
+  // 与 sidebarSections 的子菜单 key 同构（分组前缀），选中页自动展开所属子菜单。
+  return item?.sub && item?.group ? `${item.group}:sub:${item.sub}` : undefined;
 }
 
 /** 命令面板用的子集：管理员页面与过场路由都不进面板 */

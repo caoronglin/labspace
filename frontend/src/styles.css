@@ -142,7 +142,8 @@
   top: var(--d509-header-height, 60px);
   align-self: flex-start;
   height: calc(100vh - var(--d509-header-height, 60px));
-  z-index: 20;
+  /* 低于 header 的 20：悬浮展开的阴影不会盖到页头；仍高于普通内容 */
+  z-index: 15;
 }
 
 /* 折叠态只保留图标：隐藏菜单分组标题，避免出现“工…”这类截断文字 */

@@ -236,10 +236,10 @@ export default function AppLayout() {
         // openKeys 的值不会造成视觉异常，回来时状态还在。
         openKeys={openKeys}
         onOpenChange={(keys) => {
-          // Sider 折叠时 AntD 把 Menu 从 inline 切成 vertical，会主动回调一次
-          // 空数组把 openKeys 清空——那不是用户「收起子菜单」的意图。
-          // 折叠态下忽略这次清空，保留展开状态；等悬浮回来仍是展开的。
-          if (siderCollapsed && keys.length === 0) return;
+          // 折叠态（鼠标必在侧栏外，用户不可能在点子菜单）期间，AntD 在
+          // inline ↔ vertical 模式切换时会回灌空数组甚至部分 key 的快照——
+          // 都不是用户意图。一律忽略，openKeys 只信展开态下的真实操作。
+          if (siderCollapsed) return;
           setOpenKeys(keys as string[]);
         }}
         onClick={() => isMobile && setMobileOpen(false)}
@@ -275,7 +275,9 @@ export default function AppLayout() {
           top: 0,
           height: '100%',
           overflow: 'auto',
-          zIndex: 25,
+          // 低于 header(20)：悬浮展开时阴影不再染脏 header 底带；
+          // 高于内容区（无定位/低 z-index），浮层仍能盖住页面内容。
+          zIndex: 15,
           boxShadow: collapsed && siderHover ? 'var(--d509-shadow-md)' : 'none',
         }}
       >
