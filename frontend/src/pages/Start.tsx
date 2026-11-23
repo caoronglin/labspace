@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { hostUrl } from '../utils/host';
 import { Link } from 'react-router-dom';
 import {
   Avatar,
@@ -22,7 +21,6 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import AccessGuide from '../components/AccessGuide';
 import SearchResults from '../components/SearchResults';
 import {
-  ApartmentOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   BgColorsOutlined,
@@ -81,7 +79,6 @@ const QUICK = [
   { key: 'databases', name: '植物数据库', url: '/databases', icon: <DatabaseOutlined /> },
   { key: 'translate', name: '翻译中心', url: '/translate', icon: <TranslationOutlined /> },
   { key: 'baserow', name: '数据表格', url: '/baserow', icon: <TableOutlined /> },
-  { key: 'drawing', name: '图纸平台', url: hostUrl('/', 8093), icon: <ApartmentOutlined /> },
 ];
 
 export default function Start() {

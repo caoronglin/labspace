@@ -14,7 +14,6 @@ const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '生信实训', url: '/bioinfo' },
   { name: '文件工坊', url: '/snapotter' },
   { name: '流程图', url: '/drawio' },
-  { name: '图纸平台', url: hostUrl('/', 8093) },
   { name: 'Linux 命令', url: '/commands' },
   { name: '植物数据库', url: '/databases' },
   { name: '引物设计', url: hostUrl('/', 8097) },

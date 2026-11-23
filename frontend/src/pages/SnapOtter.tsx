@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { currentHost, hostUrl } from '../utils/host';
+import { currentHost } from '../utils/host';
 import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -375,7 +375,7 @@ export default function SnapOtter() {
       <Button
         size="small"
         icon={<ThunderboltOutlined />}
-        href={hostUrl('/', 8092)}
+        href="/snapotter"
         target="_blank"
         rel="noreferrer"
       >

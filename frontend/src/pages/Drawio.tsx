@@ -30,7 +30,6 @@ import {
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { hostUrl } from '../utils/host';
 import { useThemeMode } from '../theme/ThemeContext';
 import { api } from '../services/api';
 import { errText } from '../utils/err';
@@ -116,12 +115,11 @@ export default function Drawio() {
 
   nameRef.current = name;
 
+  // 走门户同源路径（nginx /apps/drawio/ 反代 8082）：浏览器只见门户入口，
+  // postMessage 同源免跨域配置；draw.io 静态资源为相对路径引用，子路径可直接挂。
   const src = useMemo(
     () =>
-      hostUrl(
-        `/?embed=1&proto=json&spin=1&lang=zh&ui=min&noSaveBtn=1&modified=unsavedChanges${resolved === 'dark' ? '&dark=1' : ''}`,
-        8082,
-      ),
+      `/apps/drawio/?embed=1&proto=json&spin=1&lang=zh&ui=min&noSaveBtn=1&modified=unsavedChanges${resolved === 'dark' ? '&dark=1' : ''}`,
     [resolved],
   );
   const frameOrigin = useMemo(() => {
@@ -405,7 +403,7 @@ export default function Drawio() {
       <Tooltip title="新窗口打开">
         <Button
           icon={<ExportOutlined />}
-          href={hostUrl('/?lang=zh', 8082)}
+          href={'/apps/drawio/?lang=zh'}
           target="_blank"
           rel="noreferrer"
         />
