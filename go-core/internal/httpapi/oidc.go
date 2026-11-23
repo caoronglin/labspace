@@ -75,13 +75,8 @@ func (s *Server) oidcAuthorize(w http.ResponseWriter, r *http.Request, p *oidc.P
 		http.Redirect(w, r, target, http.StatusFound)
 		return
 	}
-	res := p.Authorize(q, "", "")
-	if res.Error != "" {
-		jsonResponse(w, 400, map[string]any{"error": res.Error, "error_description": res.Description})
-		return
-	}
-	// Authorize 需要凭据来定位用户；这里用会话里的身份作为「凭据」。
-	res = p.AuthorizeFor(q, oidcUserFromActor(actor))
+	// 用户已由门户会话确认，直接按该身份签发授权码。
+	res := p.AuthorizeFor(q, oidcUserFromActor(actor))
 	if res.Error != "" {
 		jsonResponse(w, 400, map[string]any{"error": res.Error, "error_description": res.Description})
 		return
