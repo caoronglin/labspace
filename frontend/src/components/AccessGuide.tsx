@@ -12,6 +12,7 @@ const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '邮件（只收不发）', url: '/mail/' },
   { name: '公共基因组', url: '/genomes' },
   { name: '生信实训', url: '/bioinfo' },
+  { name: '实验室终端', url: '/bioinfo?tab=terminal' },
   { name: '文件工坊', url: '/snapotter' },
   { name: '流程图', url: '/drawio' },
   { name: 'Linux 命令', url: '/commands' },

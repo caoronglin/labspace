@@ -346,8 +346,8 @@ export const NAV_ITEMS: NavItem[] = [
     icon: <CodeOutlined />,
     group: 'tools',
     sub: 'utility',
-    hint: '课程与终端工作区',
-    keywords: ['bioinfo', '生信', '实训', '课程', '终端', 'terminal'],
+    hint: '课程与 PTY 终端工作区（统一 SSH 登录）',
+    keywords: ['bioinfo', '生信', '实训', '课程', '终端', 'terminal', 'ssh', 'pty', '实验室终端'],
   },
   {
     path: '/help',

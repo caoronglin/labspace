@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Flex, Tooltip } from 'antd';
 import { ExportOutlined, FullscreenOutlined, ReloadOutlined } from '@ant-design/icons';
-import { hostUrl } from '../utils/host';
+import { useSearchParams } from 'react-router-dom';
 import { useThemeMode } from '../theme/ThemeContext';
 
 /** 生信实训平台：纯 iframe 嵌入，平台自身的导航与登录流程完整保留。 */
@@ -11,7 +11,13 @@ export default function Bioinfo() {
   const [fullscreen, setFullscreen] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const src = useMemo(() => hostUrl('/', 8102), []);
+  const [params] = useSearchParams();
+  // 走门户同源 /apps/bioinfo/（nginx 反代），不再用 IP+端口直连。
+  // tab=terminal 直达生信平台的 PTY 工作区（统一 SSH 登录入口）。
+  const src = useMemo(() => {
+    const tab = params.get('tab');
+    return tab === 'terminal' ? '/apps/bioinfo/workspace' : '/apps/bioinfo/';
+  }, [params]);
 
   const pushTheme = useCallback(() => {
     const target = frameRef.current?.contentWindow;

@@ -172,6 +172,18 @@ export const FAQ: FaqItem[] = [
     ),
   },
   {
+    key: 'terminal',
+    keywords: '终端 ssh pty 登录 命令行 实验室终端 cgroup 限额',
+    label: '怎么使用实验室终端？',
+    children: (
+      <ParagraphText>
+        从「生信实训 → 实验室终端」进入，门户登录后自动免密进入终端工作区。
+        终端运行在资源限额容器内（CPU / 内存 / 进程数），断开重连不会丢失工作区文件；
+        请勿在共享目录写入他人数据，命令记录仅用于审计，不对外展示。
+      </ParagraphText>
+    ),
+  },
+  {
     key: 'network',
     keywords: 'tailscale 双入口 证书 地址 自适应',
     label: '内网与 Tailscale 双入口怎么用？',
