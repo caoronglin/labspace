@@ -28,6 +28,7 @@ import (
 	"labspace.local/go-core/internal/endpoints"
 	"labspace.local/go-core/internal/fileaudit"
 	"labspace.local/go-core/internal/guard"
+	"labspace.local/go-core/internal/oidc"
 	"labspace.local/go-core/internal/health"
 	"labspace.local/go-core/internal/httpapi"
 	"labspace.local/go-core/internal/labfiles"
@@ -253,9 +254,22 @@ func main() {
 		auditStore = &fileaudit.Store{DB: labDB}
 	}
 
+	// --- OpenID Connect provider (replaces Casdoor as the identity source).
+	// Clients are configured as "client_id=secret" pairs; redirect URIs as
+	// "client_id=uri1|uri2". A client with an empty secret is a public client
+	// and must use PKCE.
+	oidcProvider, err := newOIDCProvider()
+	if err != nil {
+		log.Printf("oidc: disabled (%v)", err)
+	}
+
 	server := &httpapi.Server{
 		Verify:       verifier,
 		Session:      sess,
+		OIDC:         oidcProvider,
+		PublicURL:    strings.TrimRight(os.Getenv("LABSPACE_PUBLIC_URL"), "/"),
+		AllowedHosts: splitEnv("LABSPACE_ALLOWED_HOSTS", ""),
+		DefaultEntryHost: os.Getenv("LABSPACE_DEFAULT_ENTRY_HOST"),
 		Files:        fileRegistry,
 		FileAudit:    auditStore,
 		LifeDB:       lifedb.New(),
@@ -529,4 +543,59 @@ func splitEnv(key, def string) []string {
 		}
 	}
 	return out
+}
+
+// newOIDCProvider builds the portal's OIDC provider from the environment.
+//
+// 配置（都可选；缺客户端即视为未启用，登录仍走门户自身）：
+//
+//	LABSPACE_OIDC_ISSUER              issuer，例如 https://portal.lab.example
+//	LABSPACE_OIDC_CLIENTS              "bioinfo-training=secret,other=secret2"
+//	LABSPACE_OIDC_REDIRECT_URIS        "bioinfo-training=https://x/cb|https://y/cb"
+func newOIDCProvider() (*oidc.Provider, error) {
+	issuer := strings.TrimSpace(os.Getenv("LABSPACE_OIDC_ISSUER"))
+	if issuer == "" {
+		return nil, errors.New("LABSPACE_OIDC_ISSUER not set")
+	}
+	clients := map[string]string{}
+	for _, pair := range strings.Split(os.Getenv("LABSPACE_OIDC_CLIENTS"), ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		id, secret, ok := strings.Cut(pair, "=")
+		if !ok || strings.TrimSpace(id) == "" {
+			continue
+		}
+		clients[strings.TrimSpace(id)] = strings.TrimSpace(secret)
+	}
+	if len(clients) == 0 {
+		return nil, errors.New("LABSPACE_OIDC_CLIENTS empty")
+	}
+	redirects := map[string][]string{}
+	for _, pair := range strings.Split(os.Getenv("LABSPACE_OIDC_REDIRECT_URIS"), ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		id, uris, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		var list []string
+		for _, u := range strings.Split(uris, "|") {
+			if u = strings.TrimSpace(u); u != "" {
+				list = append(list, u)
+			}
+		}
+		redirects[strings.TrimSpace(id)] = list
+	}
+	return oidc.New(oidc.Config{
+		Issuer:       issuer,
+		Clients:      clients,
+		RedirectURIs: redirects,
+		TokenTTL:     time.Hour,
+		CodeTTL:      5 * time.Minute,
+		KeyID:        env("LABSPACE_OIDC_KEY_ID", "labspace-1"),
+	}, nil)
 }

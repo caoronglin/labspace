@@ -395,6 +395,81 @@ def _safe_back(raw: str, request: Request | None = None) -> str:
         return f"{target.scheme}://{host}{port}{target.path or '/'}"[:200]
     return ""
 
+# ------------------------------------------------------------------ 直连登录
+# 自建统一认证（替代 Casdoor）：口令哈希本就在门户自己的库里（accounts.py，
+# bcrypt），会话也是门户自签的 HS256 JWT（security.issue_session）。
+# 这里只需要一个「用户名 + 口令 → 门户会话」的入口。
+
+#: 失败计数：同一账号连续失败达到上限后短暂锁定，防口令爆破。
+_LOGIN_FAILS: dict[str, list[float]] = {}
+_LOGIN_WINDOW = 900.0        # 15 分钟窗口
+_LOGIN_MAX_FAILS = 8         # 窗口内允许的失败次数
+
+
+def _login_locked(name: str) -> bool:
+    """该账号当前是否因连续失败被锁定。"""
+    now = time.time()
+    hits = [t for t in _LOGIN_FAILS.get(name, []) if now - t <= _LOGIN_WINDOW]
+    _LOGIN_FAILS[name] = hits
+    return len(hits) >= _LOGIN_MAX_FAILS
+
+
+def _login_failed(name: str) -> None:
+    _LOGIN_FAILS.setdefault(name, []).append(time.time())
+
+
+def _login_succeeded(name: str) -> None:
+    _LOGIN_FAILS.pop(name, None)
+
+
+@router.post("/api/auth/login-direct")
+async def api_login_direct(request: Request) -> JSONResponse:
+    """门户自有口令登录：``{"username": ..., "password": ...}`` → 门户会话。
+
+    账号与口令哈希来自门户自己的 accounts 模块（与 Casdoor 共用同一张表，
+    因此换 IdP 不需要迁账号）；会话是门户自签的 HS256 JWT，Go 核心与 nginx
+    都认它。口令校验走 bcrypt（``accounts.verify_password``），失败不区分
+    「账号不存在」与「口令错误」，避免账号枚举。
+    """
+    payload = await request.json()
+    username = str(payload.get("username") or "").strip().lower()
+    password = str(payload.get("password") or "")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="请输入账号与口令")
+    if _login_locked(username):
+        raise HTTPException(status_code=429, detail="失败次数过多，请稍后再试")
+
+    # 账号状态先查（禁用/删除的账号即使用对口令也不放行）。
+    try:
+        row = await run_in_threadpool(accounts_mod.get_account, username)
+    except HTTPException:
+        row = None
+    if row is None or row.get("is_forbidden") or row.get("is_deleted"):
+        _login_failed(username)
+        raise HTTPException(status_code=401, detail="账号或口令不正确")
+
+    ok = await run_in_threadpool(accounts_mod.verify_password, username, password)
+    if not ok:
+        _login_failed(username)
+        raise HTTPException(status_code=401, detail="账号或口令不正确")
+    _login_succeeded(username)
+
+    email = str(row.get("email") or "").strip().lower() or f"{username}@lab.local"
+    display = str(row.get("display_name") or "") or username
+    groups = accounts_mod.groups_of(row)
+    user = {
+        "id": str(row.get("id") or username),
+        "email": email,
+        "name": display,
+        "roles": groups,
+    }
+    # 会话 Cookie 必须挂在返回的 Response 对象上：直接 return dict 的话
+    # Set-Cookie 会丢，浏览器拿不到会话（表现为「登录成功但立刻掉线」）。
+    resp = JSONResponse({"ok": True, "user": {"email": email, "name": display, "roles": groups}})
+    set_session_cookies(resp, issue_session(user, pwd_reset=await _must_change_now(username)))
+    return resp
+
+
 @router.get("/api/auth/login")
 async def api_login(request: Request, back: str = Query(default="")) -> RedirectResponse:
     """发起 OIDC 登录；``back`` 记住登录后要回到的站内路径。

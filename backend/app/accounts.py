@@ -240,6 +240,23 @@ def _account(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_account(name: str) -> dict[str, Any] | None:
+    """按账号名取账号信息（不含口令哈希）。
+
+    直连登录要用它判断账号是否存在/被禁用；查不到返回 None 而不是抛 404，
+    让调用方自己决定如何提示（避免区分「账号不存在」与「口令错误」）。
+    """
+    try:
+        return _get_user((name or "").strip().lower())
+    except HTTPException:
+        return None
+
+
+def groups_of(account: dict[str, Any]) -> list[str]:
+    """账号所属用户组（用于会话里的 roles claim）。"""
+    return _groups_of(account.get("groups"))
+
+
 def directory() -> list[dict[str, Any]]:
     """可供指派 / 共享选择的人员目录（仅返回启用账号，不含敏感字段）。
 

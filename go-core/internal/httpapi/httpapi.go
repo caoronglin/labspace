@@ -20,6 +20,7 @@ import (
 	"labspace.local/go-core/internal/endpoints"
 	"labspace.local/go-core/internal/fileaudit"
 	"labspace.local/go-core/internal/guard"
+	"labspace.local/go-core/internal/oidc"
 	"labspace.local/go-core/internal/health"
 	"labspace.local/go-core/internal/imagegen"
 	"labspace.local/go-core/internal/integrationmap"
@@ -43,6 +44,16 @@ type Server struct {
 	Verify *guard.Verifier
 	// Session authenticates browser calls with the portal session cookie.
 	Session *session.Verifier
+	// OIDC is the portal's own OpenID Connect provider (replaces Casdoor).
+	// Nil disables the endpoints.
+	OIDC *oidc.Provider
+	// PublicURL is the portal's canonical base URL (LABSPACE_PUBLIC_URL).
+	// Used for OIDC redirect targets so they never depend on client headers.
+	PublicURL string
+	// AllowedHosts lists the accepted entry hosts (LABSPACE_ALLOWED_HOSTS).
+	AllowedHosts []string
+	// DefaultEntryHost is the fallback host when none is configured.
+	DefaultEntryHost string
 	KB      *knowledge.Service
 	Images  *imagegen.Service
 	// Files is the live lab file registry (the /srv/lab tree).
@@ -221,6 +232,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// callers without a session, exactly like the Python route it replaces.
 	if strings.HasPrefix(r.URL.Path, "/v1/services") {
 		s.serveServices(w, r, r.URL.Query())
+		return
+	}
+	// OIDC 端点自己处理鉴权（授权端点需要会话、令牌端点需要客户端密钥），
+	// 因此必须挂在通用 authenticate 之前。
+	if strings.HasPrefix(r.URL.Path, "/v1/oidc") {
+		s.serveOIDC(w, r)
 		return
 	}
 	actor, aerr := s.authenticate(r, b)
