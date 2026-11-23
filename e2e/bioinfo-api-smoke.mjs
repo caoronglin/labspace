@@ -1,13 +1,14 @@
 // 生信实训平台后端冒烟：以 student01 登录，验证 /api/v1/courses 与 /api/v1/users/me 不再 500
 // 用法: LAB_PASS=<口令> node bioinfo-api-smoke.mjs
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
-// OIDC 回调地址按主机自适应，但 Casdoor 应用只登记了 LAN 主机（192.168.5.12:8102），
-    // 127.0.0.1 入口会卡在「许可跳转列表中未找到」——必须走 LAN 主机。
-    const BASE = process.env.BIO_BASE || `http://${process.env.LAB_HOST || '127.0.0.1'}:8102`;
+import { loginContext } from './_auth.mjs';
+// 生信平台已挂到门户同源 /apps/bioinfo/（不再 IP+8102 直连），
+// IdP 也从 Casdoor 换成门户自建 OIDC Provider（/oidc）。
+const PORTAL = process.env.LAB_BASE || 'http://127.0.0.1';
+const BASE = process.env.BIO_BASE || `${PORTAL}/apps/bioinfo`;
 
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
-const OIDC = process.env.OIDC || 'http://127.0.0.1:8090';
 
 const fails = [];
 const ok = (cond, label) => {
@@ -16,33 +17,32 @@ const ok = (cond, label) => {
 };
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-const page = await ctx.newPage();
+// 用共享 helper 登录门户（它用稳定选择器，避免登录页自动跳转竞态），
+// 拿到有效门户会话后再经生信 auth/login 走门户 OIDC SSO。
+const portalCtx = await loginContext(browser);
+const page = await portalCtx.newPage();
 page.on('console', (m) => { if (m.type() === 'error') console.log('  [console.error]', m.text().slice(0, 200)); });
-
-// 1. 走平台 OIDC 登录入口 → 跳转 Casdoor
-await page.goto(`${BASE}/api/v1/auth/login?redirect=/`, { waitUntil: 'domcontentloaded' });
-// Casdoor 地址随入口 Host 自适应（127.0.0.1 → 127.0.0.1:8090，LAN → 192.168.5.12:8090），
-    // 只按端口匹配，别写死主机。
-    await page.waitForURL(/:8090\/login\/oauth\/authorize/, { timeout: 20000 });
-await page.fill('#username', USER);
-await page.fill('#password', PASS);
-await Promise.all([
-  page.waitForURL(/8102/, { timeout: 30000 }),
-  page.getByRole('button', { name: /登录|Log in|Login/i }).first().click(),
-]);
-await page.waitForLoadState('networkidle').catch(() => {});
-ok(page.url().includes('8102'), `登录成功 → ${page.url().slice(0, 70)}`);
+// redirect 必须是带 basename 的站内路径：生信平台挂在 /apps/bioinfo 下，
+// 传裸 '/' 会跳回门户首页（看起来像 SSO 失败，其实是回调目标写错）。
+await page.goto(`${BASE}/api/v1/auth/login?redirect=${encodeURIComponent('/apps/bioinfo/')}`, { waitUntil: 'commit' }).catch(() => {});
+for (let i = 0; i < 15; i++) {
+  await page.waitForTimeout(1000);
+  if (page.url().includes('/apps/bioinfo/') && !page.url().includes('/auth/')) break;
+}
+ok(page.url().includes('/apps/bioinfo/'), `SSO 登录成功 → ${page.url().slice(0, 70)}`);
 
 // 2. 学生视角调接口
 const probe = async (path) => {
+  // 生信平台挂在门户 /apps/bioinfo/ 子路径：所有 API 都要带前缀，
+  // 裸 /api/v1/... 会打到门户自己的后端并返回 404。
+  const full = `/apps/bioinfo${path}`;
   const res = await page.evaluate(async (p) => {
     const r = await fetch(p, { credentials: 'include' });
     const text = await r.text();
     let body = null;
     try { body = JSON.parse(text); } catch { body = text.slice(0, 200); }
     return { status: r.status, body };
-  }, path);
+  }, full);
   return res;
 };
 

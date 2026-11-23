@@ -83,11 +83,12 @@ check('门户页面无英文文案', portalBad.length === 0, portalBad.slice(0, 
 
 // ---------- 嵌入服务 ----------
 const svc = [
-  { id: 'drawio', url: `${BASE}:8082/?lang=zh`, note: 'draw.io（?lang=zh）' },
-  { id: 'it-tools', url: `${BASE}:8084/`, note: 'IT-Tools（locale=zh 注入）' },
-  { id: 'linux-command', url: `${BASE}:8086/`, note: 'Linux 命令速查' },
-  { id: 'jbrowse', url: `${BASE}:8091/index.html?config=data/demo/config.zh.json`, note: 'JBrowse 2（bundle 补丁）' },
-  { id: 'bioinfo', url: `${BASE}:8102/`, note: '生信实训平台（中文界面）' },
+  // 应用统一走门户同源路径（nginx 反代），不再 IP+端口直连；
+  // IT-Tools 已下线（8084 无服务），按现状移除。
+  { id: 'drawio', url: `${BASE}/apps/drawio/?lang=zh`, note: 'draw.io（?lang=zh）' },
+  { id: 'linux-command', url: `${BASE}/apps/commands/`, note: 'Linux 命令速查' },
+  { id: 'jbrowse', url: `${BASE}/jbrowse/index.html?config=data/demo/config.zh.json`, note: 'JBrowse 2（bundle 补丁）' },
+  { id: 'bioinfo', url: `${BASE}/apps/bioinfo/`, note: '生信实训平台（中文界面）' },
 ];
 
 for (const s of svc) {

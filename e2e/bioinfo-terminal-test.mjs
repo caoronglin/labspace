@@ -1,11 +1,10 @@
 // 生信平台终端端到端：建会话 → WebSocket 收发 → 校验 cgroup 限额 → 停止会话
 import { chromium } from '/opt/labspace/e2e/node_modules/playwright/index.mjs';
+import { loginContext } from './_auth.mjs';
 
-// OIDC 回调地址按主机自适应，但 Casdoor 应用只登记了 LAN 主机（192.168.5.12:8102），
-    // 127.0.0.1 入口会卡在「许可跳转列表中未找到」——必须走 LAN 主机。
-    // 别用 process.env.BASE：那是门户地址（无端口），拿它拼 /api/v1/... 会 404；
-    // 生信平台固定走 8102，主机跟随 LAB_HOST（Casdoor 回调白名单只登记 LAN 主机）。
-    const BASE = process.env.BIO_BASE || `http://${process.env.LAB_HOST || '127.0.0.1'}:8102`;
+// 生信平台已挂到门户同源 /apps/bioinfo/，IdP 换成门户自建 OIDC（/oidc）。
+const PORTAL = process.env.LAB_BASE || 'http://127.0.0.1';
+const BASE = process.env.BIO_BASE || `${PORTAL}/apps/bioinfo`;
 const PASS = process.env.LAB_PASS || '';
 const USER = process.env.LAB_USER || 'student01';
 
@@ -16,32 +15,26 @@ const ok = (cond, label) => {
 };
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
-const ctx = await browser.newContext();
-const page = await ctx.newPage();
-await page.goto(`${BASE}/api/v1/auth/login?redirect=/`, { waitUntil: 'domcontentloaded' });
-// Casdoor 地址随入口 Host 自适应（127.0.0.1 → 127.0.0.1:8090，LAN → 192.168.5.12:8090），
-    // 只按端口匹配，别写死主机。
-    await page.waitForURL(/:8090\/login\/oauth\/authorize/, { timeout: 20000 });
-// 表单渲染与提交之间存在竞态：没等 #username 可见就点登录会丢提交。
-// 先显式等表单，登录后轮询等跳回 8102（比单次 waitForURL 稳）。
-await page.waitForSelector('#username', { state: 'visible', timeout: 20000 });
-await page.fill('#username', USER);
-await page.fill('#password', PASS);
-await page.getByRole('button', { name: /登录|Log in|Login/i }).first().click();
+// 用共享 helper 登录门户拿会话，再经生信 auth/login 自动走门户 OIDC SSO。
+const portalCtx = await loginContext(browser);
+const page = await portalCtx.newPage();
+// redirect 必须是带 basename 的站内路径：生信平台挂在 /apps/bioinfo 下，
+// 传裸 '/' 会跳回门户首页（看起来像 SSO 失败，其实是回调目标写错）。
+await page.goto(`${BASE}/api/v1/auth/login?redirect=${encodeURIComponent('/apps/bioinfo/')}`, { waitUntil: 'commit' }).catch(() => {});
 for (let i = 0; i < 15; i++) {
-  await page.waitForTimeout(2000);
-  if (page.url().includes('8102')) break;
+  await page.waitForTimeout(1000);
+  if (page.url().includes('/apps/bioinfo/') && !page.url().includes('/auth/')) break;
 }
-if (!page.url().includes('8102')) throw new Error(`登录后未跳回 8102，停在 ${page.url().slice(0, 90)}`);
+if (!page.url().includes('/apps/bioinfo/')) throw new Error(`SSO 未落到生信平台，停在 ${page.url().slice(0, 90)}`);
 await page.waitForLoadState('networkidle').catch(() => {});
 console.log('登录成功');
 
-const csrf = await page.evaluate(async () => (await fetch('/api/v1/auth/csrf', { credentials: 'include' })).json());
+const csrf = await page.evaluate(async () => (await fetch('/apps/bioinfo/api/v1/auth/csrf', { credentials: 'include' })).json());
 const token = csrf?.csrfToken ?? csrf?.token ?? '';
 
 // 1. 建会话
 const created = await page.evaluate(async (t) => {
-  const r = await fetch('/api/v1/terminal/sessions', {
+  const r = await fetch('/apps/bioinfo/api/v1/terminal/sessions', {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': t },
     body: JSON.stringify({ cols: 120, rows: 30 }),
@@ -57,7 +50,7 @@ ok(/^bioinfo-term-[0-9a-f]{32}$/.test(unit || ''), `systemd 单元名合法 → 
 // 2. WebSocket 收发
 const wsResult = await page.evaluate(async (id) => {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}/ws/v1/terminal/${id}`);
+  const ws = new WebSocket(`${proto}//${location.host}/apps/bioinfo/ws/v1/terminal/${id}`);
   const out = [];
   return await new Promise((resolve) => {
     const timer = setTimeout(() => { try { ws.close(); } catch {} resolve({ ok: false, out, reason: 'timeout' }); }, 20000);
@@ -87,7 +80,7 @@ ok(cpuMax === '100000 100000', `cgroup cpu.max=${cpuMax}（standard 1 核）`);
 
 // 4. 停止会话
 const stopped = await page.evaluate(async ([id, t]) => {
-  const r = await fetch(`/api/v1/terminal/sessions/${id}/stop`, {
+  const r = await fetch(`/apps/bioinfo/api/v1/terminal/sessions/${id}/stop`, {
     method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': t },
   });
   return { status: r.status, body: await r.text() };
@@ -97,7 +90,7 @@ ok(stopped.status === 200, `停止会话 → ${stopped.status}`);
 // 5. 单元已退出
 await new Promise((r) => setTimeout(r, 2000));
 const unitState = await page.evaluate(async (u) => {
-  const r = await fetch(`/api/v1/terminal/sessions/current`, { credentials: 'include' });
+  const r = await fetch(`/apps/bioinfo/api/v1/terminal/sessions/current`, { credentials: 'include' });
   return r.status;
 }, unit);
 ok(unitState === 200, `会话列表可访问 → ${unitState}`);
