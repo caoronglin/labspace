@@ -1,27 +1,42 @@
-import { chromium } from 'playwright';
-const BASE = process.env.BASE || 'http://127.0.0.1';
-const b = await chromium.launch({args:['--no-sandbox']});
-const p = await (await b.newContext({locale:'zh-CN', viewport:{width:1500,height:1000}})).newPage();
-await p.goto(`${BASE}/api/auth/login`, {waitUntil:'domcontentloaded'});
-await p.waitForSelector('#username');
-await p.locator('#username').fill('student01');
-await p.locator('#password').fill(process.env.LAB_PASS);
-await p.getByRole('button', {name:'登录'}).first().click();
-await p.waitForURL(`${BASE}/**`, {timeout:25000}).catch(()=>{});
-// /services 已重定向到 /start（统一搜索入口，无 .lab-service-card）；
-// 服务卡片（含 touchRecent 埋点）在首页。
-await p.goto(`${BASE}/`, {waitUntil:'networkidle'});
-await p.waitForTimeout(1500);
-// 点第一张服务卡片
-await p.locator('.lab-service-card').first().click();
-await p.waitForTimeout(2000);
-const rec = await p.evaluate(async()=> JSON.parse(await (await fetch('/api/recent',{credentials:'include'})).text()));
-console.log('  最近访问:', rec.recent.join(', ') || '(空)');
-await p.goto(`${BASE}/`, {waitUntil:'networkidle'});
-await p.waitForTimeout(1500);
-const t=(await p.evaluate(()=>document.body.innerText)).replace(/\s+/g,' ');
-// 首页最近记录在「最近」标签页下（ClockCircleOutlined 最近）
-const i=t.indexOf('最近');
-console.log('  首页最近访问区块:', i>=0 ? t.slice(i, i+90) : '(未找到「最近」标签)');
-await p.screenshot({path:'/opt/labspace/e2e/shots/home-recent.png'});
-await b.close();
+// 最近访问回归：登录后点击真实服务卡，确认 /api/recent 写入并展示。
+import { launch, loginContext, BASE } from './_auth.mjs';
+
+let pass = 0, fail = 0;
+const record = (name, ok, detail = '') => {
+  if (ok) pass++; else fail++;
+  console.log(`  ${ok ? '[ OK ]' : '[FAIL]'} ${name}${detail ? ` - ${detail}` : ''}`);
+};
+
+const browser = await launch();
+try {
+  const ctx = await loginContext(browser);
+  const page = ctx.pages()[0];
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  const card = page.locator('.lab-service-card').first();
+  await card.waitFor({ state: 'visible', timeout: 20000 });
+  let before = await page.evaluate(async () => (await (await fetch('/api/recent', { credentials: 'include' })).json()).recent ?? []);
+  let after = before;
+  for (let i = 0; i < 3; i++) {
+    await page.locator('.lab-service-card').nth(i).click();
+    await page.waitForTimeout(1000);
+    after = await page.evaluate(async () => (await (await fetch('/api/recent', { credentials: 'include' })).json()).recent ?? []);
+    if (JSON.stringify(after) !== JSON.stringify(before)) break;
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('.lab-service-card').first().waitFor({ state: 'visible', timeout: 20000 });
+    before = after;
+  }
+  record('点击服务卡写入最近访问', JSON.stringify(after) !== JSON.stringify(before), `${before.length} -> ${after.length}`);
+
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(800);
+  await page.getByRole('tab', { name: '动态' }).click();
+  await page.getByRole('tab', { name: /最近/ }).click();
+  const recentText = (await page.locator('.ant-tabs-content-active:visible').last().innerText()).replace(/\s+/g, ' ');
+  record('首页显示最近访问内容', recentText.length > 0 && !recentText.includes('还没有访问记录'), recentText.slice(0, 80));
+  await page.screenshot({ path: '/opt/labspace/e2e/shots/home-recent.png' });
+} finally {
+  await browser.close();
+}
+console.log(`\n结果：通过 ${pass} / 失败 ${fail}`);
+process.exit(fail ? 1 : 0);

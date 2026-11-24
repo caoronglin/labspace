@@ -1,9 +1,8 @@
 """docs 路由（由 ops/split_main_module.py 从 main.py 搬出）。"""
 from __future__ import annotations
 
-import logging
-
 import json
+import logging
 import os
 from typing import Any
 
@@ -13,8 +12,8 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
-    UploadFile,
 )
+from starlette.datastructures import UploadFile
 
 from ..config import settings
 from ..routers.deps import (
@@ -183,8 +182,8 @@ async def api_translate_job(
 
     form = await request.form()
     upload = form.get("file")
-    # request.form() 的值类型是 str | UploadFile；只接受真正的上传对象，
-    # 这样下面的 .read() 在类型检查与运行时都成立。
+    # request.form() 返回 Starlette UploadFile；FastAPI UploadFile 是其子类，
+    # 反向 isinstance 会把有效上传误判成字符串。
     if not isinstance(upload, UploadFile):
         raise HTTPException(status_code=400, detail="缺少文件")
     data = await upload.read()

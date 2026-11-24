@@ -16,7 +16,7 @@ function record(name, ok, detail = '') {
   results.push({ name, ok, detail });
   if (ok) pass++;
   else fail++;
-  console.log(`  ${ok ? '[ OK ]' : '[FAIL]'} ${name}${detail ? ' — ' + detail : ''}`);
+  console.log(`  ${ok ? '[ OK ]' : '[FAIL]'} ${name}${detail ? ` - ${detail}` : ''}`);
 }
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -40,7 +40,7 @@ const api = async (path, init = {}) => {
         const csrf = (document.cookie.split('; ').find((c) => c.startsWith('labspace_csrf=')) || '').split('=')[1] || '';
         i = { ...i, headers: { ...(i.headers || {}), 'X-CSRF-Token': decodeURIComponent(csrf) } };
       }
-      const { skipCsrf, ...rest } = i;
+      const { skipCsrf: _skipCsrf, ...rest } = i;
       const r = await fetch(p, { credentials: 'include', ...rest });
       const t = await r.text();
       try {
@@ -81,7 +81,7 @@ const api = async (path, init = {}) => {
     return j.authenticated;
   });
   record('新标签页会话可恢复', restored === true);
-  const shown = (await p2.evaluate(() => document.body.innerText)).includes(USER);
+  const shown = (await p2.evaluate(() => document.body.innerText)).includes(me.body?.name || me.body?.displayName || USER);
   record('新标签页直接显示已登录用户', shown);
   await p2.close();
 }
@@ -92,15 +92,14 @@ const api = async (path, init = {}) => {
   record('GET /api/services 返回目录', svc.status === 200 && Array.isArray(svc.body?.services) && svc.body.services.length > 0, `${svc.body?.services?.length} 项`);
   const health = await api('/api/services/health');
   const list = health.body?.services ?? [];
-  const up = list.filter((s) => s.health?.status === 'up').length;
-  // 外部内网服务（图纸平台等）故障不算本机失败，只作提示
+  // 外部内网服务故障不算本机失败，只作提示
   const extDown = list.filter((s) => s.health?.status === 'external-down');
   const own = list.filter((s) => s.health?.status !== 'external-down');
   const ownUp = own.filter((s) => s.health?.status === 'up').length;
   record(
     'GET /api/services/health 本机服务全部探测',
     health.status === 200 && ownUp === own.length,
-    `${ownUp}/${own.length} 本机服务 up` + (extDown.length ? `；外部服务异常 ${extDown.length} 个（${extDown.map((s) => s.name).join(',')}）` : ''),
+    `${ownUp}/${own.length} 本机服务 up${extDown.length ? `；外部服务异常 ${extDown.length} 个（${extDown.map((s) => s.name).join(',')}）` : ''}`,
   );
   const one = await api('/api/services/linux-command/health');
   record('GET /api/services/{id}/health', one.status === 200 && one.body?.status === 'up');
@@ -147,11 +146,11 @@ const api = async (path, init = {}) => {
 {
   const all = await api('/api/databases');
   record('GET /api/databases 全量目录', all.status === 200 && all.body?.total >= 50, `${all.body?.total} 个资源 / ${all.body?.categories?.length} 个分类`);
-  const hit = await api('/api/databases?q=' + encodeURIComponent('单细胞'));
+  const hit = await api(`/api/databases?q=${encodeURIComponent('单细胞')}`);
   record('GET /api/databases 关键词检索', hit.status === 200 && hit.body?.matched > 0, `命中 ${hit.body?.matched}`);
-  const cat = await api('/api/databases?category=' + encodeURIComponent('多组学与单细胞'));
+  const cat = await api(`/api/databases?category=${encodeURIComponent('多组学与单细胞')}`);
   record('GET /api/databases 分类筛选', cat.status === 200 && cat.body?.matched > 0 && cat.body.items.every((i) => i.category === '多组学与单细胞'));
-  const s3 = await api('/api/search?q=' + encodeURIComponent('miRNA') + '&categories=general');
+  const s3 = await api(`/api/search?q=${encodeURIComponent('miRNA')}&categories=general`);
   const local = s3.body?.local ?? [];
   record('全局搜索并入本地植物库', s3.status === 200 && local.length > 0, `本地命中 ${local.length}`);
 }
@@ -214,18 +213,22 @@ const api = async (path, init = {}) => {
   record('缺少 CSRF 头的写操作被拒绝(403)', noCsrf.status === 403, `HTTP ${noCsrf.status}`);
 }
 
-// ---------- 9.5 服务入口自检（IP + 端口） ----------
+// ---------- 9.5 服务入口自检（同源路径） ----------
 {
   const r = await api('/api/network/entries');
   const items = r.body?.items ?? [];
   record('GET /api/network/entries 入口自检', r.status === 200 && items.length >= 6, `${items.length} 个入口`);
   record(
-    '全部入口均可用（主机 + 端口）',
+    '同源入口全部可用',
     items.length > 0 && items.every((i) => i.up),
     items.filter((i) => !i.up).map((i) => `${i.name}:${i.detail}`).join(',') || '全部正常',
   );
-  // 允许 http://<主机>/ (80) 与 http://<主机>:PORT/ 两种形式，均不得含域名
-  const noDomain = items.every((i) => /^http:\/\/192\.168\.5\.12(:\d+)?\//.test(i.url));
+  // 当前部署只暴露门户同源路径，不再允许服务独立端口。
+  const baseHost = new URL(BASE).hostname;
+  const noDomain = items.every((i) => {
+    const u = new URL(i.url);
+    return u.hostname === baseHost && (!u.port || u.port === '80');
+  });
   record('入口地址不含任何域名', noDomain);
 }
 
@@ -244,13 +247,13 @@ const api = async (path, init = {}) => {
 
 // ---------- 11.6 统一语料（含 SnapOtter 工具与扩充后的植物库） ----------
 {
-  const c1 = await api('/api/corpus?limit=10&q=' + encodeURIComponent('PDF 合并'));
+  const c1 = await api(`/api/corpus?limit=10&q=${encodeURIComponent('PDF 合并')}`);
   const t1 = c1.body?.items ?? [];
   record('语料命中 SnapOtter 工具（PDF 合并）', t1.some((i) => i.type === 'snapotter' && /Merge/i.test(i.title)), t1.map((i) => i.title).join(' | ').slice(0, 80));
-  const c2 = await api('/api/corpus?limit=10&q=' + encodeURIComponent('单细胞'));
+  const c2 = await api(`/api/corpus?limit=10&q=${encodeURIComponent('单细胞')}`);
   const t2 = c2.body?.items ?? [];
   record('语料命中单细胞植物库 ≥ 5 条', t2.filter((i) => i.type === 'database').length >= 5, `${t2.filter((i) => i.type === 'database').length} 条`);
-  const c3 = await api('/api/corpus?limit=6&q=' + encodeURIComponent('AlphaFold'));
+  const c3 = await api(`/api/corpus?limit=6&q=${encodeURIComponent('AlphaFold')}`);
   record('语料命中扩充后的植物库（AlphaFold）', (c3.body?.items ?? []).some((i) => i.type === 'database' && /AlphaFold/.test(i.title)));
   const c4 = await api('/api/corpus?limit=40');
   const types = [...new Set((c4.body?.items ?? []).map((i) => i.type))];

@@ -28,10 +28,10 @@ const svc = await page.evaluate(async () => {
   const r = await fetch('/api/services', { credentials: 'include' });
   return (await r.json()).services;
 });
+// 图纸平台已下线；当前没有需要通用 embed 路由的服务。draw.io 的 iframe 由专门用例覆盖。
+record('服务目录已移除下线图纸平台', !svc.some((s) => s.id === 'drawing-board'));
 const embeddable = svc.filter((s) => s.embed);
-// 可嵌入服务随目录调整：当前只有 drawing-board；断言改成「至少 1 个」，
-// 并在详情里打印实际清单，数量变化时一眼可见。
-record('服务目录标记了可嵌入服务', embeddable.length >= 1, `${embeddable.length} 个: ${embeddable.map((s) => s.id).join(',')}`);
+console.log(`  当前可嵌入服务: ${embeddable.map((s) => s.id).join(',') || '无'}`);
 
 // 2. 逐个服务检查 embed 判定与实际渲染
 for (const s of embeddable) {

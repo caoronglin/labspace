@@ -19,10 +19,10 @@ export function currentHost(): string {
 }
 
 /**
- * 拼出「当前主机 + 端口 + 路径」的服务地址。
+ * 兼容工具：优先使用站内相对路径；仅在确需绝对地址时使用。
  *
  * @param path  路径，例如 '/files/'
- * @param port  端口，例如 8082；省略则用当前端口（门户自身 80）
+ * @param port  可选端口；当前应用均建议省略，走门户同源路径
  */
 export function hostUrl(path = '/', port?: number | string): string {
   const host = currentHost();

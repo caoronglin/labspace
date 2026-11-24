@@ -17,6 +17,11 @@
   子菜单无法展开，以及桌面折叠悬浮后子弹菜单随鼠标移入而收起的问题。
 - **Ant Design CLI**：`antd doctor` 17/17 通过，`antd lint ./src` 从 49 项清零到 0；覆盖弃用 API、
   受控上传、静态 message、表格深导入与 v6 语义样式迁移。
+- **回归修复**：恢复 Linux 命令与 JBrowse 的回环静态服务块，避免同源反代 502；网络自检改为
+  同源 URL + 宿主机网关探测；服务目录移除已下线图纸平台，Primer3 改走 `/apps/primer/`，
+  并修正 Primer3/Stirling 健康检查地址。首页最近访问与 PDF 翻译回归改为真实断言；
+  修复 PDF 上传把 Starlette `UploadFile` 误判为 FastAPI 子类而返回“缺少文件”的问题，
+  并将回环来源加入 CSRF Origin 白名单。
 - **回归**：新增门户长文件、生信工作区、primer3 序列三组端到端用例，并纳入全量套件；
   新增 Agent 入口收敛与本地登出回归，侧栏回归补移动端与悬浮弹层点击。
 

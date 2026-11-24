@@ -37,9 +37,9 @@ console.log('\n== 1. 服务目录按入口主机适配 ==');
 for (const host of ['192.0.2.10', TS_HOST]) {
   const { status, body } = await apiAs(host, '/api/services');
   const items = body?.items || body?.services || [];
-  const urls = items.map((i) => i.url || '').filter((u) => /^https?:\/\//.test(u));
-  const bad = urls.filter((u) => !u.startsWith(`http://${host}`) && !u.includes('192.0.2.29'));
-  record(`${host} 入口的服务地址全部跟随该主机`, status === 200 && urls.length > 0 && bad.length === 0,
+  const urls = items.map((i) => i.url || '').filter(Boolean);
+  const bad = urls.filter((u) => !u.startsWith('/') || /^https?:\/\//.test(u));
+  record(`${host} 入口的服务地址全部使用同源路径`, status === 200 && urls.length > 0 && bad.length === 0,
     `${urls.length} 个服务，异常 ${bad.length}${bad.length ? '：' + bad.slice(0, 3).join(' , ') : ''}`);
 }
 
@@ -87,7 +87,7 @@ for (const entry of [`${BASE}`, `http://${TS_HOST}`]) {
     return { ipLinks, text };
   });
   const bad = info.ipLinks.filter((h) => !h.includes(host) && !h.includes('192.0.2.29'));
-  record(`${entry} /start 的 IP 外链跟随该主机`, info.ipLinks.length > 0 && bad.length === 0,
+  record(`${entry} /start 无跨主机或独立端口外链`, bad.length === 0,
     `IP 外链 ${info.ipLinks.length} 个，异常 ${bad.length}${bad.length ? '：' + bad.slice(0, 3).join(' , ') : ''}`);
   // 只校验「链接」不指向另一入口；页面正文会刻意列出两个入口地址供用户参考
   const badLink = info.ipLinks.filter((h) => h.includes(other));

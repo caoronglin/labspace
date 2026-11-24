@@ -24,7 +24,7 @@ def safe_component(name: str, fallback: str = "user") -> str:
 def host_allowed(host: str) -> bool:
     """入口主机是否在白名单内。
 
-    只采信 ``LABSPACE_ALLOWED_HOSTS`` 里的主机名：门户坚持 IP + 端口直连，
+    只采信 ``LABSPACE_ALLOWED_HOSTS`` 里的主机名：门户应用统一走同源路径，
     合法入口就那几个 IP / localhost，没必要把任意 Host 当成可拼接入站地址的输入。
     白名单为空（未配置）时退回“只认默认入口主机”，宁严不宽。
     """

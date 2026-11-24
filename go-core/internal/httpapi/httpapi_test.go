@@ -166,7 +166,7 @@ func TestCatalogAndSearchEndpoints(t *testing.T) {
 	}
 	c := call("/v1/catalog")
 	if c.Code != 200 || !bytes.Contains(c.Body.Bytes(), []byte(`"url":"/genomes"`)) ||
-		!bytes.Contains(c.Body.Bytes(), []byte("198.51.100.71:8093")) {
+		!bytes.Contains(c.Body.Bytes(), []byte(`"url":"/apps/primer/"`)) {
 		t.Fatalf("catalog: %d %s", c.Code, c.Body.String())
 	}
 	s := call("/v1/search?q=maize")

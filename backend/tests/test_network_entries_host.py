@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 from starlette.requests import Request
 
-from app import main as main_mod
 from app.config import settings
 from app.routers import deps, network
 from app.routers.deps import host_allowed
@@ -76,7 +75,7 @@ def test_host_allowed_edge_cases() -> None:
 @pytest.mark.parametrize("forged", ["169.254.169.254", "10.0.0.1", "metadata.google.internal"])
 def test_network_entries_probe_only_whitelisted_host(monkeypatch, forged: str) -> None:
     """端到端：伪造头不会出现在任何出站请求里，且探针不跟随跳转。"""
-    seen: list[tuple[str, bool]] = []
+    seen: list[tuple[str, bool, dict[str, str]]] = []
 
     class FakeResponse:
         status_code = 200
@@ -91,8 +90,8 @@ def test_network_entries_probe_only_whitelisted_host(monkeypatch, forged: str) -
         async def __aexit__(self, *exc):  # noqa: ANN002, ANN204
             return False
 
-        async def get(self, target: str) -> FakeResponse:
-            seen.append((target, bool(self._follow)))
+        async def get(self, target: str, *, headers=None) -> FakeResponse:  # noqa: ANN001, D107
+            seen.append((target, bool(self._follow), dict(headers or {})))
             return FakeResponse()
 
     monkeypatch.setattr(network.httpx, "AsyncClient", FakeClient)
@@ -104,7 +103,9 @@ def test_network_entries_probe_only_whitelisted_host(monkeypatch, forged: str) -
 
     assert result["host"] == settings.default_entry_host
     assert seen, "应当至少探测一次入口"
-    for target, follow in seen:
+    assert all(item["url"].startswith(f"http://{settings.default_entry_host}/") for item in result["items"])
+    for target, follow, headers in seen:
         assert forged not in target
+        assert headers.get("Host") == settings.default_entry_host
         assert follow is False, "自检探针不得跟随上游 302"
-        assert settings.default_entry_host in target
+        assert target.startswith(network._probe_base())

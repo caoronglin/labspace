@@ -171,22 +171,6 @@ func Default() *Service {
 				Health: HealthSpec{URL: "http://127.0.0.1:8102/api/v1/health", Kind: "http"},
 			},
 			{
-				ID: "drawing-board", Name: "图纸平台", Category: "draw",
-				Description: "实验图纸与流程图协作平台（独立主机，经门户反向代理接入）",
-				URL:         "http://192.0.2.10:8093/", Icon: "ApartmentOutlined",
-				OpenMode: "link", Embed: true,
-				EmbedURL: "http://192.0.2.10:8093/",
-				External: true,
-				Tags:     []string{"图纸", "协作"},
-				Guide: []string{
-					"由门户 8093 端口反向代理到 192.0.2.29:5244，内网与 Tailscale 两个入口均可访问。",
-					"反代保留访问方 Host 并改写上游重定向，图纸平台生成的链接不会跳回内网地址。",
-					"与 LabSpace 共用门户统一认证账号体系（如该平台已接入）。",
-				},
-				Enabled: true, Status: "external", Engine: "external drawing platform",
-				Health: HealthSpec{URL: "http://127.0.0.1:8093/", Kind: "http"},
-			},
-			{
 				ID: "jbrowse", Name: "公共基因组", Category: "research",
 				Description: "JBrowse 2 基因组浏览器 + 门户内置生信工具（Biopython / scikit-bio）：比对、CDS 提取、酶切、ORF、进化树、质粒图谱与 BLAST",
 				URL:         "/genomes", Icon: "ExperimentOutlined",
@@ -218,10 +202,8 @@ func Default() *Service {
 			{
 				ID: "primer", Name: "引物设计（Primer3）", Category: "research",
 				Description: "单条/批量引物设计、qPCR、探针、环状模板向外扩增；内含 Primer3 2.6.1，全部本地计算",
-				// 走独立端口而不是门户路径：Primer 的 SPA 用绝对资源路径
-				// （/assets/...），挂在 /primer-app/ 子路径下资源会 404。
-				// 与 draw.io / JBrowse 的做法一致：绝对 URL + adaptText 自动换主机。
-				URL: "http://192.0.2.10:8097/", Icon: "ExperimentOutlined",
+				// 走门户同源路径；Vite base 与 API 客户端均已适配 /apps/primer/。
+				URL: "/apps/primer/", Icon: "ExperimentOutlined",
 				OpenMode: "link",
 				Tags:     []string{"引物", "PCR", "qPCR", "Primer3", "克隆"},
 				Guide: []string{
@@ -229,8 +211,8 @@ func Default() *Service {
 					"所有计算在本机完成，序列不上传外网。",
 				},
 				Enabled: true, Status: "new", Engine: "Primer3 2.6.1 + FastAPI",
-				// 探活走门户代理端口：容器只绑回环，内网只能经 nginx 访问。
-				Health: HealthSpec{URL: "http://127.0.0.1:8097/health", Kind: "http"},
+				// 探活走 Apptainer 实际 API；/health 是 SPA 页面而不是健康端点。
+				Health: HealthSpec{URL: "http://127.0.0.1:18097/api/v1/health", Kind: "http"},
 			},
 			{
 				ID: "stirling", Name: "PDF 工具箱", Category: "research",
@@ -238,7 +220,7 @@ func Default() *Service {
 				// 指向**门户自绘**的页面（/pdf），不是 Stirling 自己的界面：
 				// 与 Baserow 多维表格同一条原则 —— 能自己画的就自己画，
 				// 免得用户在里面再登一次、还得适应另一套导航。
-				// Stirling 的原生界面仍在 8106 端口可用，供需要完整功能时直达。
+				// Stirling 的原生界面仍在回环 8116 端口可用，供需要完整功能时直达。
 				URL: "/pdf", Icon: "FilePdfOutlined",
 				OpenMode: "link",
 				Tags:     []string{"PDF", "论文", "合并", "拆分", "转换"},
@@ -248,7 +230,7 @@ func Default() *Service {
 					"不调用任何第三方 OCR / 转换 API，上传的文件不出本机。",
 				},
 				Enabled: true, Status: "new", Engine: "Stirling PDF 3.3 (Java)",
-				Health: HealthSpec{URL: "http://127.0.0.1:8106/actuator/health", Kind: "http"},
+				Health: HealthSpec{URL: "http://127.0.0.1:8116/actuator/health", Kind: "http"},
 			},
 		},
 		native: []NativeItem{

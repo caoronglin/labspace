@@ -5,20 +5,20 @@ import (
 	"testing"
 )
 
-func TestHostAdaptationPreservesServicePort(t *testing.T) {
+func TestPrimerUsesSameOriginPath(t *testing.T) {
 	s := Default()
 	items := s.Catalog("198.51.100.71", false)
 	var found bool
 	for _, it := range items {
-		if it.ID == "drawing-board" {
+		if it.ID == "primer" {
 			found = true
-			if it.URL != "http://198.51.100.71:8093/" {
+			if it.URL != "/apps/primer/" {
 				t.Fatalf("unexpected URL %s", it.URL)
 			}
 		}
 	}
 	if !found {
-		t.Fatal("drawing-board missing")
+		t.Fatal("primer missing")
 	}
 }
 
@@ -43,7 +43,7 @@ func TestRelativeURLsStayRelative(t *testing.T) {
 // hide a service that students can actually open.
 var liveServiceIDs = []string{
 	"drawio", "linux-command",
-	"literature-search", "docling", "searxng", "drawing-board", "jbrowse", "snapotter",
+	"literature-search", "docling", "searxng", "jbrowse", "snapotter",
 	"bioinfo-training",
 }
 
@@ -83,15 +83,13 @@ func TestHostAdaptationRejectsUntrustedNonIPHost(t *testing.T) {
 func TestLiveListMatchesPortalContract(t *testing.T) {
 	s := Default()
 	student := s.Live("192.0.2.10", []string{"lab-student", "bioinfo-student"})
-	// 12 = 原有 10 + 引物设计（primer）+ PDF 工具箱（stirling）。
-	// 这个数字只是"目录没被意外清空"的锚点，
-	// 新增服务时同步上调即可，不必为保持 10 而拒绝接入。
-	if len(student) != 12 {
-		t.Fatalf("student service count = %d, want 12", len(student))
+	// 11 = 原有服务移除已下线图纸平台后保留 11 项。
+	if len(student) != 11 {
+		t.Fatalf("student service count = %d, want 11", len(student))
 	}
 	teacher := s.Live("192.0.2.10", []string{"lab-teacher"})
-	if len(teacher) != 12 {
-		t.Fatalf("teacher service count = %d, want 12", len(teacher))
+	if len(teacher) != 11 {
+		t.Fatalf("teacher service count = %d, want 11", len(teacher))
 	}
 }
 
@@ -129,8 +127,8 @@ func TestExportIsValidJSON(t *testing.T) {
 	if doc.Version != 2 {
 		t.Fatalf("unexpected export version %d", doc.Version)
 	}
-	if len(doc.Services) != 12 {
-		t.Fatalf("exported %d services, want 12", len(doc.Services))
+	if len(doc.Services) != 11 {
+		t.Fatalf("exported %d services, want 11", len(doc.Services))
 	}
 }
 

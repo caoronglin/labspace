@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import (
@@ -18,6 +19,7 @@ from .. import (
     db_apis,
 )
 from ..catalog import adapt_host, load_catalog
+from ..config import settings
 from ..routers.deps import (
     client_host as _client_host,
 )
@@ -100,39 +102,56 @@ async def api_databases_probe(db_id: str, _: dict = Depends(require_user_or_serv
 # ------------------------------------------------------------------ 网络 / 入口自检
 
 SERVICE_ENTRIES = [
-    ("门户 D509 工作台", "http://192.0.2.10/", "/"),
-    ("生信实训平台", "http://192.0.2.10/apps/bioinfo/", "/"),
-    ("draw.io 绘图", "http://192.0.2.10:8082/", "/"),
-    ("Linux 命令速查", "http://192.0.2.10:8086/", "/"),
-    ("JBrowse 2 基因组浏览器", "http://192.0.2.10:8091/index.html?config=data/demo/config.zh.json", "/index.html"),
+    ("门户 D509 工作台", "/", "/"),
+    ("生信实训平台", "/apps/bioinfo/", "/"),
+    ("draw.io 绘图", "/apps/drawio/", "/"),
+    ("Linux 命令速查", "/apps/commands/", "/"),
+    ("JBrowse 2 基因组浏览器", "/jbrowse/index.html?config=data/demo/config.zh.json", "/jbrowse/index.html?config=data/demo/config.zh.json"),
+    ("Primer3 引物设计", "/apps/primer/", "/"),
 ]
+
+
+def _probe_base() -> str:
+    """容器内探测宿主机 Nginx 的基址。
+
+    后端运行在 Docker 容器内，``127.0.0.1`` 是容器自身；LabGo 环境里的
+    ``LABSPACE_LABGO_BASE`` 已包含可达的宿主机网关主机，复用其主机名并
+    强制走 HTTP 80，避免把内部探测地址暴露给浏览器。
+    """
+    parsed = urlsplit(settings.labgo_base)
+    scheme = parsed.scheme if parsed.scheme in {"http", "https"} else "http"
+    host = parsed.hostname or "172.28.0.1"
+    return f"{scheme}://{host}"
+
 
 @router.get("/api/network/entries")
 async def api_network_entries(request: Request, _: dict = Depends(require_user)) -> dict[str, Any]:
-    """各服务入口（当前访问主机 + 端口）的实时可用性自检。"""
+    """同源入口的实时可用性自检；返回浏览器 URL，内部走宿主机网关探测。"""
 
-    host = _client_host(request)
-    entries = adapt_host(
-        [{"name": n, "url": u, "path": p} for n, u, p in SERVICE_ENTRIES], host
-    )
+    host = _client_host(request) or settings.default_entry_host
+    public_base = f"http://{host}"
+    entries = [
+        {"name": name, "url": public_base + path, "path": probe_path}
+        for name, path, probe_path in SERVICE_ENTRIES
+    ]
+    probe_base = _probe_base()
 
-    async def probe(url: str, path: str) -> tuple[bool, str]:
-        target = url.rsplit("/", 1)[0] + path if path != "/" else url
+    async def probe(path: str) -> tuple[bool, str]:
+        target = probe_base + path
         try:
-            # 不跟随跳转：目标主机虽来自白名单，但上游 302 仍可能把我们带到任意地址
-            # （重定向放大）。自检只需要“这个入口现在通不通”，3xx 也算活着。
+            # 不跟随跳转：路径固定且 Host 来自白名单，避免重定向放大。
             async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
-                resp = await client.get(target)
-                return resp.status_code < 400, f"HTTP {resp.status_code}"
+                resp = await client.get(target, headers={"Host": host})
+                return resp.status_code < 400 or resp.status_code in {401, 403}, f"HTTP {resp.status_code}"
         except Exception as exc:  # noqa: BLE001
             return False, type(exc).__name__
 
-    results = await asyncio.gather(*[probe(u["url"], u["path"]) for u in entries])
+    results = await asyncio.gather(*[probe(e["path"]) for e in entries])
     items = [
         {"name": e["name"], "url": e["url"], "up": up, "detail": detail}
         for e, (up, detail) in zip(entries, results, strict=True)
     ]
-    return {"items": items, "host": host or "192.0.2.10"}
+    return {"items": items, "host": host}
 
 def _service_for_user(service_id: str, user: dict[str, Any]):
     """服务存在且当前用户满足其角色限制，否则 404/403。"""

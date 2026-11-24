@@ -10,7 +10,7 @@ interface Entry {
   detail: string;
 }
 
-/** 服务入口自检：当前访问主机 + 端口，不使用任何域名 */
+/** 服务入口自检：当前访问主机上的同源路径，不使用独立端口 */
 export default function NetworkDiagnostics() {
   const { token } = theme.useToken();
   const { data, isLoading } = useQuery({
@@ -33,10 +33,10 @@ export default function NetworkDiagnostics() {
         type={down.length === 0 && items.length > 0 ? 'success' : 'warning'}
         showIcon
         icon={down.length === 0 ? <CheckCircleFilled /> : <WarningFilled />}
-        title={`服务入口（${currentHost()} + 端口）`}
+        title={`服务入口（${currentHost()} 同源路径）`}
         description={
           <Typography.Text style={{ fontSize: 13 }}>
-            全部服务均以 <b>{currentHost()} + 端口</b> 对外，<b>不使用任何域名</b>，
+            全部服务均通过 <b>{currentHost()}</b> 的同源路径访问，<b>不再使用 IP + 独立端口</b>，
             客户端无需 DNS 解析、也无需任何 hosts 配置；
             <b>入口自适应</b>：从哪个地址进入，下列所有服务就用同一个地址。
             {isLoading ? '正在自检…' : down.length === 0 ? '当前全部入口探测正常。' : `当前 ${down.length} 个入口异常。`}
@@ -68,13 +68,13 @@ export default function NetworkDiagnostics() {
       <Card size="small" title="使用说明">
         <Flex vertical gap={4} style={{ width: '100%' }}>
           <Typography.Text style={{ fontSize: 12.5 }}>
-            1. 所有入口都以 IP + 端口访问，<b>不需要 DNS，不需要 hosts，不需要改路由器设置</b>。
+            1. 所有入口都通过门户同源路径访问，<b>不需要 DNS、hosts 或独立服务端口</b>。
           </Typography.Text>
           <Typography.Text style={{ fontSize: 12.5 }}>
             2. 统一认证由门户自身提供，登录与登出均在同源路径完成，不再跳转独立认证端口。
           </Typography.Text>
           <Typography.Text style={{ fontSize: 12.5 }}>
-            3. 入口自适应：当前入口 <b>{currentHost()}</b>；若经 Tailscale 访问则自动切换为 Tailscale 地址，端口完全一致，无需任何配置。
+            3. 入口自适应：当前入口 <b>{currentHost()}</b>；若经 Tailscale 访问，同源路径会自动跟随当前主机。
           </Typography.Text>
         </Flex>
       </Card>

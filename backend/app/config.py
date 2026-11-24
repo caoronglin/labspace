@@ -73,7 +73,7 @@ class Settings:
     max_upload_bytes: int = int(os.getenv("LABSPACE_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024)))
 
     # 允许的前端来源（CSRF 之外的第二道校验）
-    allowed_origins: list[str] = field(default_factory=lambda: _list("LABSPACE_ALLOWED_ORIGINS", "http://portal.lab.example"))
+    allowed_origins: list[str] = field(default_factory=lambda: _list("LABSPACE_ALLOWED_ORIGINS", "http://portal.lab.example,http://127.0.0.1,http://localhost"))
 
     # 服务健康检查开关
     enable_health: bool = _bool("LABSPACE_ENABLE_HEALTH", True)
