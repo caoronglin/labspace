@@ -31,7 +31,7 @@ ok(page.url().startsWith(BASE), `登录后回到门户 → ${page.url()}`);
 consoleErrors.length = 0;
 
 // 2. 首页：服务卡片 + 收藏为空（已重置）
-await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1500);
 const cards = await page.locator('.lab-service-card').count();
 ok(cards >= 10, `首页服务卡片 ${cards} 张`);
@@ -39,7 +39,7 @@ const heroText = await page.locator('body').innerText();
 ok(/全部服务|常用服务|工作台/.test(heroText), '首页含核心区块');
 
 // 3. 数据库目录仍可用（重置只清业务数据，目录是静态配置）
-await page.goto(`${BASE}/databases`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/databases`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1200);
 const dbText = await page.locator('body').innerText();
 ok(/已接入 API|仅网页访问|数据库/.test(dbText), '数据库目录页正常');
@@ -59,7 +59,7 @@ const cap = await page.evaluate(async (t) => {
 ok(cap.status === 200 && cap.body?.item?.kind === 'task', `工作台捕获可用 → kind=${cap.body?.item?.kind}`);
 
 // 5. 工作台首页渲染
-await page.goto(`${BASE}/workbench`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/workbench`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1200);
 const wbText = await page.locator('body').innerText();
 ok(/AI|工作台|计划/.test(wbText), '个人工作台页渲染');
