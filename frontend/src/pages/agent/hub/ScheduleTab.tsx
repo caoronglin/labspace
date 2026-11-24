@@ -317,7 +317,7 @@ export default function ScheduleTab() {
                 label: agent.data?.name || agent.id,
               }))}
               notFoundContent={
-                agents.error ? '助手列表不可用' : '当前没有可用的助手，请先在 Agent 与知识库里创建'
+                agents.error ? '助手列表不可用' : '当前没有可用的助手，请先在 Agent 个人助手里创建'
               }
             />
           </Form.Item>
