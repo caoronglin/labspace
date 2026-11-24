@@ -9,7 +9,6 @@ import {
   Flex,
   Input,
   Space,
-  Steps,
   Tag,
   Timeline,
   Typography,
@@ -191,14 +190,27 @@ export default function Help() {
           </Button>
         }
       >
-        <Steps
-          size="small"
-          items={QUICK_START.map((s) => ({
-            title: s.title,
-            description: s.description,
-            icon: s.icon,
-          }))}
-        />
+        {/* antd v6 的 Steps 在 small + 水平布局下不渲染 description
+            （实测 DOM 里没有 .ant-steps-item-description），只剩标题+横线。
+            改用卡片网格：四步说明始终可见，窄屏自动折行。 */}
+        <div className="d509-grid d509-grid-sm">
+          {QUICK_START.map((s, i) => (
+            <Card key={s.title} size="small" styles={{ body: { padding: 12 } }}>
+              <Flex vertical gap={6} style={{ height: '100%' }}>
+                <Flex align="center" gap={8}>
+                  <Text strong style={{ color: 'var(--ant-color-primary)', fontSize: 15 }}>
+                    {i + 1}.
+                  </Text>
+                  <span style={{ color: 'var(--ant-color-primary)', fontSize: 16 }}>{s.icon}</span>
+                  <Text strong style={{ fontSize: 13 }}>{s.title}</Text>
+                </Flex>
+                <Text type="secondary" style={{ fontSize: 12.5 }}>
+                  {s.description}
+                </Text>
+              </Flex>
+            </Card>
+          ))}
+        </div>
       </Card>
 
       <Card

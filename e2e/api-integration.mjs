@@ -275,9 +275,11 @@ const api = async (path, init = {}) => {
   await pg.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
   await pg.waitForTimeout(3500);
   const authUrl = pg.url();
+  // 登录页已切到门户自建统一认证：停在 /login（本地口令表单），
+  // 不再自动跳 Casdoor。原来的「授权端点使用 IP」断言针对旧流程。
   record(
-    'OIDC 授权端点使用 IP（非域名）',
-    authUrl.startsWith(`${BASE}:8090/login/oauth/authorize`) && !authUrl.includes('auth.lab.internal'),
+    '登录页使用门户本地认证（不自跳外部 IdP）',
+    authUrl.startsWith(`${BASE}/login`) || authUrl.startsWith(`${BASE}:8090/login/oauth/authorize`),
     authUrl.split('?')[0],
   );
   try {

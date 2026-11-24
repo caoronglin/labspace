@@ -17,14 +17,13 @@ const page = await ctx.newPage();
 const consoleErrors = [];
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 160)); });
 
-// 1. 登录
+// 1. 登录（门户自建统一认证：本地口令表单，不再跳 Casdoor）
 await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-await page.waitForURL(/192\.168\.5\.12:8090/, { timeout: 20000 });
-await page.fill('#username', USER);
-await page.fill('#password', PASS);
+await page.locator('input[autocomplete="username"]').fill(USER);
+await page.locator('input[type="password"]').fill(PASS);
 await Promise.all([
   page.waitForURL(/192\.168\.5\.12\/(?!api)/, { timeout: 30000 }),
-  page.getByRole('button', { name: /登录|Log in|Login/i }).first().click(),
+  page.locator('button.ant-btn-primary').first().click(),
 ]);
 await page.waitForLoadState('networkidle').catch(() => {});
 ok(page.url().startsWith(BASE), `登录后回到门户 → ${page.url()}`);

@@ -266,9 +266,9 @@ try {
     if (sso) pass('登录页', 'SSO 主按钮存在');
     else fail('登录页', '缺少 SSO 主按钮');
 
-    // 新版登录页：只有真的在跳转（starting）才显示「正在跳转…」，
-    // 否则显示 SSO 说明「使用实验室统一身份认证（Casdoor）登录，不需要单独注册。」
-    const status = await page.getByText(/正在跳转到统一身份认证|统一身份认证（Casdoor）登录/).count();
+    // 登录页已切到自建统一认证：默认显示口令表单与「实验室统一身份登录」说明；
+    // Casdoor 只剩次要按钮。断言当前页面实际文案。
+    const status = await page.getByText(/实验室统一身份登录|正在跳转到统一身份认证|统一身份认证登录/).count();
     if (status) pass('登录页', '登录状态/说明文案存在');
     else fail('登录页', '缺少跳转状态说明');
 
