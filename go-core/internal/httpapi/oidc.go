@@ -36,7 +36,7 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/oidc")
 	switch path {
 	case "/.well-known/openid-configuration":
-		jsonResponse(w, 200, p.DiscoveryFor(s.publicBase(r)))
+		jsonResponse(w, 200, p.DiscoveryFor(s.oidcIssuer(r)))
 	case "/.well-known/jwks.json":
 		jsonResponse(w, 200, p.JWKS())
 	case "/authorize":
@@ -76,7 +76,7 @@ func (s *Server) oidcAuthorize(w http.ResponseWriter, r *http.Request, p *oidc.P
 		return
 	}
 	// 用户已由门户会话确认，直接按该身份签发授权码。
-	res := p.AuthorizeFor(q, oidcUserFromActor(actor), s.publicBase(r))
+	res := p.AuthorizeFor(q, oidcUserFromActor(actor), s.oidcIssuer(r))
 	if res.Error != "" {
 		jsonResponse(w, 400, map[string]any{"error": res.Error, "error_description": res.Description})
 		return
@@ -237,6 +237,11 @@ func (s *Server) hostAllowed(host string) bool {
 		}
 	}
 	return false
+}
+
+// oidcIssuer is the public OIDC namespace on the current allowed entry host.
+func (s *Server) oidcIssuer(r *http.Request) string {
+	return strings.TrimRight(s.publicBase(r), "/") + "/oidc"
 }
 
 // portalLoginURL points at the portal's own login page.

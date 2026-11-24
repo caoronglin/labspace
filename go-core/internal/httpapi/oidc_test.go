@@ -17,6 +17,9 @@ func TestPublicBaseFollowsAllowedEntryHost(t *testing.T) {
 	if got := s.publicBase(r); got != "http://198.51.100.71" {
 		t.Fatalf("allowed entry host: %s", got)
 	}
+	if got := s.oidcIssuer(r); got != "http://198.51.100.71/oidc" {
+		t.Fatalf("oidc issuer: %s", got)
+	}
 	r.Header.Set("X-Forwarded-Host", "evil.example")
 	if got := s.publicBase(r); got != "http://192.0.2.10" {
 		t.Fatalf("untrusted host fallback: %s", got)
