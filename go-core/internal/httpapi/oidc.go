@@ -36,7 +36,7 @@ func (s *Server) serveOIDC(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/oidc")
 	switch path {
 	case "/.well-known/openid-configuration":
-		jsonResponse(w, 200, p.Discovery())
+		jsonResponse(w, 200, p.DiscoveryFor(s.publicBase(r)))
 	case "/.well-known/jwks.json":
 		jsonResponse(w, 200, p.JWKS())
 	case "/authorize":
@@ -76,7 +76,7 @@ func (s *Server) oidcAuthorize(w http.ResponseWriter, r *http.Request, p *oidc.P
 		return
 	}
 	// 用户已由门户会话确认，直接按该身份签发授权码。
-	res := p.AuthorizeFor(q, oidcUserFromActor(actor))
+	res := p.AuthorizeFor(q, oidcUserFromActor(actor), s.publicBase(r))
 	if res.Error != "" {
 		jsonResponse(w, 400, map[string]any{"error": res.Error, "error_description": res.Description})
 		return
@@ -192,12 +192,22 @@ func oidcUserFromActor(a session.Actor) oidc.User {
 // 回跳地址就成了开放重定向（攻击者能让受害者被弹到外部站点）。白名单为空时
 // 退回部署时配置的固定 PublicURL —— 宁严不宽。
 func (s *Server) publicBase(r *http.Request) string {
-	if s.PublicURL != "" {
-		return strings.TrimRight(s.PublicURL, "/")
-	}
+	// Prefer the current entry host when it is explicitly allowed. This keeps
+	// LAN and Tailscale sessions on the same host instead of redirecting a
+	// Tailscale-authenticated user to the LAN issuer (where the Cookie is absent).
 	host := r.Header.Get("X-Forwarded-Host")
 	if host == "" {
 		host = r.Host
+	}
+	if s.hostAllowed(host) {
+		proto := r.Header.Get("X-Forwarded-Proto")
+		if proto != "http" && proto != "https" {
+			proto = "http"
+		}
+		return proto + "://" + host
+	}
+	if s.PublicURL != "" {
+		return strings.TrimRight(s.PublicURL, "/")
 	}
 	if !s.hostAllowed(host) {
 		host = s.DefaultEntryHost
@@ -242,4 +252,3 @@ func base64Decode(s string) (string, error) {
 	}
 	return string(b), nil
 }
-

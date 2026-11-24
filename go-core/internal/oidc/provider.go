@@ -1,9 +1,9 @@
 // Package oidc implements a minimal OpenID Connect Provider.
 //
 // 为什么自己实现：门户原先把 Casdoor 当唯一身份源，运行时多了一个容器、
-//一套数据库与一条 OIDC 往返。核心诉求只是「让生信实训平台等内网服务能用
-//标准 OIDC 登录」，而 Go 核心要求零第三方依赖（无 go.sum），所以这里用标准库
-//（crypto/rsa + encoding/base64 + encoding/json）手写最小可用实现：
+// 一套数据库与一条 OIDC 往返。核心诉求只是「让生信实训平台等内网服务能用
+// 标准 OIDC 登录」，而 Go 核心要求零第三方依赖（无 go.sum），所以这里用标准库
+// （crypto/rsa + encoding/base64 + encoding/json）手写最小可用实现：
 //
 //   - /.well-known/openid-configuration  discovery
 //   - /.well-known/jwks.json              公钥集合
@@ -35,7 +35,8 @@ import (
 
 // Config describes the provider and its registered clients.
 type Config struct {
-	// Issuer is the provider's base URL (e.g. https://portal.example).
+	// Issuer is the provider's default base URL. HTTP handlers may override it
+	// per request when the portal is reachable through multiple allowed hosts.
 	Issuer string
 	// Clients maps client_id to its secret (empty secret = public client,
 	// which then must use PKCE).
@@ -78,6 +79,7 @@ type code struct {
 	redirectURI string
 	challenge   string
 	nonce       string
+	issuer      string
 	user        User
 	expires     time.Time
 	used        bool
@@ -111,6 +113,14 @@ func New(cfg Config, auth Authorizer) (*Provider, error) {
 	}, nil
 }
 
+// issuerFor resolves the per-request issuer override, falling back to config.
+func (p *Provider) issuerFor(override []string) string {
+	if len(override) > 0 && strings.TrimSpace(override[0]) != "" {
+		return strings.TrimRight(strings.TrimSpace(override[0]), "/")
+	}
+	return strings.TrimRight(p.cfg.Issuer, "/")
+}
+
 // JWKS returns the public key set.
 func (p *Provider) JWKS() map[string]any {
 	pub := p.key.PublicKey
@@ -128,7 +138,14 @@ func (p *Provider) JWKS() map[string]any {
 
 // Discovery returns the provider metadata document.
 func (p *Provider) Discovery() map[string]any {
-	iss := strings.TrimRight(p.cfg.Issuer, "/")
+	return p.DiscoveryFor(p.cfg.Issuer)
+}
+
+// DiscoveryFor publishes provider metadata for a specific allowed entry host.
+// The issuer must match the host that issued the authorization code so clients
+// can validate id_token.iss without being bounced to another portal address.
+func (p *Provider) DiscoveryFor(issuer string) map[string]any {
+	iss := strings.TrimRight(issuer, "/")
 	return map[string]any{
 		"issuer":                                iss,
 		"authorization_endpoint":                iss + "/authorize",
@@ -140,7 +157,7 @@ func (p *Provider) Discovery() map[string]any {
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"scopes_supported":                      []string{"openid", "profile", "email", "groups"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_post", "client_secret_basic", "none"},
-		"code_challenge_methods_supported":       []string{"S256"},
+		"code_challenge_methods_supported":      []string{"S256"},
 		"claims_supported":                      []string{"sub", "email", "name", "groups", "preferred_username"},
 	}
 }
@@ -161,7 +178,7 @@ type AuthorizeResult struct {
 // The flow is deliberately the "same page" form used by simple internal
 // providers: the portal renders a small login form for this endpoint, posts
 // username/password back, and the server answers with a redirect.
-func (p *Provider) Authorize(query url.Values, username, password string) AuthorizeResult {
+func (p *Provider) Authorize(query url.Values, username, password string, issuer ...string) AuthorizeResult {
 	clientID := query.Get("client_id")
 	redirectURI := query.Get("redirect_uri")
 	state := query.Get("state")
@@ -205,6 +222,7 @@ func (p *Provider) Authorize(query url.Values, username, password string) Author
 			redirectURI: redirectURI,
 			challenge:   challenge,
 			nonce:       nonce,
+			issuer:      p.issuerFor(issuer),
 			user:        u,
 			expires:     time.Now().Add(p.cfg.CodeTTL),
 		}
@@ -233,7 +251,7 @@ func (p *Provider) Authorize(query url.Values, username, password string) Author
 // (the password hash lives in the portal backend), so by the time the code
 // flow reaches the authorize endpoint the subject is already known and only
 // the client / redirect / PKCE checks remain.
-func (p *Provider) AuthorizeFor(query url.Values, u User) AuthorizeResult {
+func (p *Provider) AuthorizeFor(query url.Values, u User, issuer ...string) AuthorizeResult {
 	clientID := query.Get("client_id")
 	redirectURI := query.Get("redirect_uri")
 	state := query.Get("state")
@@ -265,6 +283,7 @@ func (p *Provider) AuthorizeFor(query url.Values, u User) AuthorizeResult {
 		redirectURI: redirectURI,
 		challenge:   challenge,
 		nonce:       nonce,
+		issuer:      p.issuerFor(issuer),
 		user:        u,
 		expires:     time.Now().Add(p.cfg.CodeTTL),
 	}
@@ -341,7 +360,7 @@ func (p *Provider) Token(clientID, clientSecret, codeValue, redirectURI, codeVer
 		return TokenResult{}, err
 	}
 	claims := map[string]any{
-		"iss":                strings.TrimRight(p.cfg.Issuer, "/"),
+		"iss":                strings.TrimRight(c.issuer, "/"),
 		"aud":                clientID,
 		"sub":                c.user.Subject,
 		"email":              c.user.Email,

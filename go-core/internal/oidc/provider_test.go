@@ -166,6 +166,49 @@ func TestDiscoveryAndJWKS(t *testing.T) {
 	}
 }
 
+func TestDiscoveryForEntryHost(t *testing.T) {
+	p := testProvider(t)
+	issuer := "http://100.66.114.71/oidc"
+	d := p.DiscoveryFor(issuer)
+	if d["issuer"] != issuer {
+		t.Fatalf("issuer: %v", d["issuer"])
+	}
+	if d["authorization_endpoint"] != issuer+"/authorize" || d["token_endpoint"] != issuer+"/token" {
+		t.Fatalf("endpoints: %v", d)
+	}
+}
+
+func TestTokenIssuerMatchesAuthorizationEntry(t *testing.T) {
+	p := testProvider(t)
+	issuer := "http://100.66.114.71/oidc"
+	q := url.Values{
+		"client_id":             {"bioinfo"},
+		"redirect_uri":          {"https://bio.example/apps/bioinfo/auth/callback"},
+		"state":                 {"st-1"},
+		"code_challenge":        {s256("verifier-123")},
+		"code_challenge_method": {"S256"},
+	}
+	res := p.AuthorizeFor(q, User{Subject: "u1", Email: "student01@lab.local", Name: "E2E"}, issuer)
+	if res.Error != "" {
+		t.Fatalf("authorize: %+v", res)
+	}
+	u, err := url.Parse(res.Redirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := p.Token("bioinfo", "s3cret", u.Query().Get("code"), q.Get("redirect_uri"), "verifier-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := p.verify(tokens.IDToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims["iss"] != issuer {
+		t.Fatalf("id_token issuer: %v", claims["iss"])
+	}
+}
+
 func TestTokenSignatureVerified(t *testing.T) {
 	p := testProvider(t)
 	code, _ := authorize(t, p)
