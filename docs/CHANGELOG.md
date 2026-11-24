@@ -21,7 +21,7 @@
   同源 URL + 宿主机网关探测；服务目录移除已下线图纸平台，Primer3 改走 `/apps/primer/`，
   并修正 Primer3/Stirling 健康检查地址。首页最近访问与 PDF 翻译回归改为真实断言；
   修复 PDF 上传把 Starlette `UploadFile` 误判为 FastAPI 子类而返回“缺少文件”的问题，
-  并将回环来源加入 CSRF Origin 白名单。
+  将回环来源加入 CSRF Origin 白名单；生信 OIDC 在 LabGo 密钥轮换后自动刷新 JWKS 重试验签。
 - **回归**：新增门户长文件、生信工作区、primer3 序列三组端到端用例，并纳入全量套件；
   新增 Agent 入口收敛与本地登出回归，侧栏回归补移动端与悬浮弹层点击。
 

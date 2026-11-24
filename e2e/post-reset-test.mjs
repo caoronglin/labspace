@@ -34,7 +34,8 @@ consoleErrors.length = 0;
 await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1500);
 const cards = await page.locator('.lab-service-card').count();
-ok(cards >= 10, `首页服务卡片 ${cards} 张`);
+// 11 个目录服务减去快捷入口已有的 2 个，首页实际展示 9 张卡片。
+ok(cards >= 9, `首页服务卡片 ${cards} 张`);
 const heroText = await page.locator('body').innerText();
 ok(/全部服务|常用服务|工作台/.test(heroText), '首页含核心区块');
 
