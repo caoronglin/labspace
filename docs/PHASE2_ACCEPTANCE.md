@@ -41,6 +41,13 @@
 `Files` 拆分由子代理在隔离 worktree 完成，difflib 逐块比对确认 2667 行逐字符一致，
 `CodePreview`（代码预览）完整保留。
 
+### 2026-11-24 代码预览增强
+
+- 门户源码文件改为原生 `CodePreview` 优先，按 1000 行分段渲染，支持「显示后续」、换行与复制反馈。
+- 生信工作区预览增加 NUL 字节嗅探，伪装成源码的二进制不会进入 JSON/DOM；弹窗同样支持分段渲染。
+- primer3 序列预览增加分段渲染与换行开关；Apptainer 直接绑定 Vite 构建产物，避免提交哈希化 assets。
+- 新增 `code-preview-long-test`、`bioinfo-preview-test`、`primer-preview-test` 三组端到端回归。
+
 ## e2e 收敛过程（r14 → r18）
 
 全量回归失败脚本数逐轮收敛，全部为「旧断言写死了已下线服务/旧数据形状」，非代码缺陷：
@@ -79,6 +86,7 @@
 | `2ffbe8b` / `cb66048` | design-selfcheck 去抖 + biomed 重试 |
 | `5559bff` | BaserowPage 抽出 fieldComponents（3882→2931） |
 | `a924d77` | BaserowPage→646 / Files→82 全量拆分（全部模块 ≤907 行） |
+| `4d4eb06` | 三端代码预览长文件分段渲染与回归 |
 
 ## 下一期待办（不在本期范围）
 
