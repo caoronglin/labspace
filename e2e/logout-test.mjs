@@ -10,7 +10,7 @@ const record = (name, ok, detail = '') => {
 const browser = await launch();
 try {
   const ctx = await loginContext(browser);
-  const page = await ctx.newPage();
+  const page = ctx.pages()[0];
   const authRequests = [];
   page.on('request', req => {
     if (req.url().includes('/api/auth/logout')) authRequests.push({ url: req.url(), method: req.method() });
