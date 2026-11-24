@@ -649,7 +649,7 @@ OIDC 同步器     已下线服务的历史 issuer 同步器 /opt/labspace/ops/o
 生信 Nginx      /etc/nginx/sites-available/bioinfo.conf
 FQ              已下线：/opt/lab-quantum（容器、镜像与 lab-quantum_default 网络已于 2026-11-04 清理）
 Open WebUI      已下线：/opt/lab-core-stack（同上，:3000 入口与容器均已清理）
-生信平台 env    /etc/bioinfo-training/platform.env(0600)             资源档 /etc/bioinfo-training/resource-profiles.json
+生信平台 env    /etc/bioinfo-training/platform.env(root:bioinfo 0640)   资源档 /etc/bioinfo-training/resource-profiles.json
 Casdoor 用户表  /etc/labspace/casdoor-users.txt(0600)
 数据库          lab-postgres 容器（casdoor/labspace）；bioinfo 宿主 5433
 数据盘          /srv/labdata（jbrowse / bioinfo-training / 备份）
