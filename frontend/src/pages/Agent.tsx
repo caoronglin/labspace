@@ -568,15 +568,6 @@ export default function Agent() {
     [models],
   );
 
-  const modelLabel = useCallback(
-    (id?: string) => {
-      if (!id) return '默认模型';
-      const hit = models.find((m) => m.id === id);
-      return hit ? hit.label || hit.id : id;
-    },
-    [models],
-  );
-
   const activeSession: AgentSession | undefined = useMemo(
     () => sessions.find((s) => s.id === activeId),
     [sessions, activeId],
@@ -1390,11 +1381,6 @@ export default function Agent() {
             setStreamError('');
             setStreamNotice('');
           }}
-          creation={{
-            icon: <PlusOutlined />,
-            label: '新建会话',
-            onClick: () => createMut.mutate(selectedModel),
-          }}
           menu={(item) => ({
             items: [
               {
@@ -1722,11 +1708,6 @@ export default function Agent() {
             <Tag color="processing" variant="filled">
               正在生成…
             </Tag>
-          )}
-          {mode === 'chat' && status?.model && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              当前模型：{modelLabel(status.model)}
-            </Typography.Text>
           )}
         </Space>
       }
