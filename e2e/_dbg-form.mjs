@@ -1,0 +1,15 @@
+import { launch } from './_auth.mjs';
+const b = await launch();
+const ctx = await b.newContext();
+const p = await ctx.newPage();
+const seen = [];
+p.on('response', r => { if (r.url().includes('/assets/')) seen.push(r.url().split('/').pop()); });
+await p.goto('http://127.0.0.1/login?_=' + Date.now(), { waitUntil: 'networkidle' }).catch(() => {});
+await p.waitForTimeout(2000);
+console.log('final url:', p.url());
+console.log('加载的 assets:', seen.slice(0, 6));
+console.log('inputs:', await p.locator('input').count());
+console.log('autocomplete=username:', await p.locator('input[autocomplete="username"]').count());
+console.log('type=password:', await p.locator('input[type="password"]').count());
+console.log('body:', (await p.locator('body').innerText()).replace(/\s+/g,' ').slice(0, 220));
+await b.close();

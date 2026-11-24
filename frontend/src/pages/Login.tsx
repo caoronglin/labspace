@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Flex, Spin, Typography } from 'antd';
+import { Alert, Button, Card, Flex, Input, Spin, Typography, App } from 'antd';
 import { LoginOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../app/AuthContext';
@@ -30,6 +30,13 @@ export default function Login() {
   const error = params.get('error') ?? '';
   const [starting, setStarting] = useState(false);
   const navigated = useRef(false);
+  // 直连口令登录（门户自建统一认证）：用户名 + 口令 → 门户会话。
+  // Casdoor 统一身份认证降为次要入口（保留给尚未迁移的外部 IdP 场景）。
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const { message } = App.useApp();
 
   const loginUrl = `/api/auth/login${back ? `?back=${encodeURIComponent(back)}` : ''}`;
 
@@ -41,27 +48,56 @@ export default function Login() {
     // 已登录：直接去目标页。只做一次，避免与「用户正在点登录」互相打架。
     if (loading || !me?.authenticated || navigated.current) return;
     navigated.current = true;
+    // back 可能是跨端口的绝对地址（如 primer 的 http://<host>:8097/）：
+    // react-router 的 navigate 处理不了跨源地址，必须整页跳转。
+    if (/^https?:\/\//i.test(back)) {
+      window.location.replace(back);
+      return;
+    }
     navigate(back || '/', { replace: true });
   }, [back, loading, me, navigate]);
 
+  // 不再自动跳转 Casdoor：自建统一认证后，口令登录是默认路径，
+  // 自动跳走反而会让用户「看到转圈却无法输入账号」。
+  // 顺手清掉历史的自动跳转标记（老版本写过），避免它留在会话里误导后续逻辑。
   useEffect(() => {
-    // 出错时不自动跳：页面要停在原地把原因讲清楚，否则用户只会看到转圈。
-    if (error) return;
-    // 已经在本次会话里自动跳过，就不要再跳（避免与手动点击叠加成循环）。
-    if (sessionStorage.getItem(AUTO_KEY) === '1') return;
-    const t = setTimeout(() => {
-      sessionStorage.setItem(AUTO_KEY, '1');
-      startLogin();
-    }, 400);
-    return () => clearTimeout(t);
-    // startLogin 依赖 loginUrl，这里用 ref 保持依赖稳定即可
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [error]);
+    sessionStorage.removeItem(AUTO_KEY);
+  }, []);
 
   const startLogin = () => {
     setStarting(true);
     // 整页跳转：后端 /api/auth/login 是 302 到 Casdoor，前端路由走不了
     window.location.assign(loginUrl);
+  };
+
+  /** 直连口令登录：成功即建立门户会话并回到目标页。 */
+  const submitPassword = async () => {
+    if (!username.trim() || !password) {
+      setFormError('请输入账号与口令');
+      return;
+    }
+    setSubmitting(true);
+    setFormError('');
+    try {
+      const res = await fetch('/api/auth/login-direct', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setFormError(String(data.detail || '登录失败，请稍后再试'));
+        return;
+      }
+      message.success('登录成功');
+      // 会话已建立：整页跳回目标页，让所有依赖会话的接口重新取一次身份。
+      window.location.assign(back || '/');
+    } catch {
+      setFormError('网络异常，请稍后再试');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -106,16 +142,52 @@ export default function Login() {
           />
         ) : null}
 
-        {/* 主行动：SSO 统一身份认证（由用户点击触发，避免自动跳转造成的循环） */}
+        {/* 主行动：门户自建统一认证 —— 账号 + 口令直接登录（不再跳转 Casdoor） */}
+        <Flex vertical gap={10}>
+          <Input
+            size="large"
+            allowClear
+            autoComplete="username"
+            placeholder="账号，例如 student01"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            onPressEnter={submitPassword}
+          />
+          <Input.Password
+            size="large"
+            autoComplete="current-password"
+            placeholder="口令"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onPressEnter={submitPassword}
+          />
+          {formError ? (
+            <Typography.Text type="danger" style={{ fontSize: 12.5 }}>
+              {formError}
+            </Typography.Text>
+          ) : null}
+          <Button
+            type="primary"
+            block
+            size="large"
+            icon={<LoginOutlined />}
+            loading={submitting}
+            onClick={submitPassword}
+          >
+            登录
+          </Button>
+        </Flex>
+
+        {/* 次要入口：统一身份认证（Casdoor）。保留给尚未迁移的外部 IdP 场景。 */}
         <Button
-          type="primary"
           block
           size="large"
           icon={<LoginOutlined />}
           loading={starting}
           onClick={startLogin}
+          style={{ marginTop: 10 }}
         >
-          {error ? '重新登录' : '使用统一身份认证登录'}
+          使用统一身份认证登录
         </Button>
 
         {/* 状态说明：只在真的在跳转时才显示，避免"永远转圈"的错觉 */}
@@ -131,7 +203,7 @@ export default function Login() {
             type="secondary"
             style={{ marginTop: 16, marginBottom: 0, fontSize: 12.5, textAlign: 'center' }}
           >
-            使用实验室统一身份认证（Casdoor）登录，不需要单独注册。
+            使用实验室统一身份登录，不需要单独注册；首次登录后按提示修改初始口令。
           </Typography.Paragraph>
         )}
 
