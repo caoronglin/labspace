@@ -153,7 +153,7 @@ export default function SeedScanModal({ open, fieldNames, onClose, onPrefill }: 
           <Alert
             type="info"
             showIcon
-            message="没认出可用文字"
+            title="没认出可用文字"
             description="可以重拍一张；也可以直接关掉这个窗口手动新建记录。"
           />
         ) : null}
@@ -162,7 +162,7 @@ export default function SeedScanModal({ open, fieldNames, onClose, onPrefill }: 
           <Alert
             type="warning"
             showIcon
-            message="认出了文字，但没对上表里的字段"
+            title="认出了文字，但没对上表里的字段"
             description={
               <span>
                 原始识别结果：
@@ -180,7 +180,7 @@ export default function SeedScanModal({ open, fieldNames, onClose, onPrefill }: 
             <Alert
               type="success"
               showIcon
-              message={`认出 ${mapped.mapping.length} 个字段`}
+              title={`认出 ${mapped.mapping.length} 个字段`}
               description="请核对下方内容；识别有误可直接改，改完再填入表单。"
             />
             <Descriptions

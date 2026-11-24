@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Flex, Input, Spin, Typography, App } from 'antd';
+import { Alert, Button, Card, Flex, Input, Spin, Typography } from 'antd';
 import { LoginOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../app/AuthContext';
@@ -36,7 +36,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
-  const { message } = App.useApp();
 
   const loginUrl = `/api/auth/login${back ? `?back=${encodeURIComponent(back)}` : ''}`;
 
@@ -90,7 +89,6 @@ export default function Login() {
         setFormError(String(data.detail || '登录失败，请稍后再试'));
         return;
       }
-      message.success('登录成功');
       // 会话已建立：整页跳回目标页，让所有依赖会话的接口重新取一次身份。
       window.location.assign(back || '/');
     } catch {
@@ -118,7 +116,7 @@ export default function Login() {
           <Alert
             type="error"
             showIcon
-            message="登录未完成"
+            title="登录未完成"
             description={
               <Flex vertical gap={6}>
                 <Typography.Text>{error}</Typography.Text>
@@ -136,7 +134,7 @@ export default function Login() {
           <Alert
             type="info"
             showIcon
-            message="登录后将回到你刚才访问的页面"
+            title="登录后将回到你刚才访问的页面"
             description={<Typography.Text code style={{ fontSize: 12 }}>{back}</Typography.Text>}
             style={{ marginBottom: 16 }}
           />

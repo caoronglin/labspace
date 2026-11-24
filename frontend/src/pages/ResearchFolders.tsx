@@ -247,7 +247,7 @@ export default function ResearchFolders() {
           <Alert
             type="error"
             showIcon
-            message="读取课题资料失败"
+            title="读取课题资料失败"
             description={errText(mine.error)}
             action={
               <Button size="small" onClick={() => void mine.refetch()}>
@@ -353,7 +353,7 @@ export default function ResearchFolders() {
           <Alert
             type="error"
             showIcon
-            message="读取目录失败"
+            title="读取目录失败"
             description={errText(folders.error)}
             action={
               <Button size="small" onClick={() => void folders.refetch()}>

@@ -1,1 +1,4 @@
 /srv/labdata/primer-data:/data/primer-data
+# 前端静态资源：容器内应用在 /app/primer3，构建产物在宿主机 /opt/primer/primer3/web_assets。
+# 不绑定的话，容器用的是 SIF 镜像里的旧副本，发布新前端不会生效。
+/opt/primer/primer3/web_assets:/app/primer3/web_assets

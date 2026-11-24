@@ -25,7 +25,7 @@ export function AsErrorAlert({ error, onRetry }: { error: unknown; onRetry?: () 
     <Alert
       type="error"
       showIcon
-      message="该能力暂不可用"
+      title="该能力暂不可用"
       description={asErrorText(error)}
       action={
         onRetry ? (

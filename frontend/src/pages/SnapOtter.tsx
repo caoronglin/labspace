@@ -654,7 +654,7 @@ export default function SnapOtter() {
                             <Alert
                               type="info"
                               showIcon
-                              message="可用参数"
+                              title="可用参数"
                               description={
                                 <div style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, lineHeight: 1.7 }}>
                                   {active.settingsHint}
@@ -681,9 +681,8 @@ export default function SnapOtter() {
                                   }))}
                                   placeholder="参数名"
                                   style={{ flex: '1 1 200px', minWidth: 140 }}
-                                  filterOption={(input: string, option) =>
-                                    String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())
-                                  }
+                                  // antd v6 弃用 filterOption：这里 option.label 与 value
+                                  // 相同，默认的「按 label 包含匹配」行为与原自定义逻辑等价。
                                 />
                                 <Input
                                   value={row.value}
