@@ -1,7 +1,7 @@
 [project]
 name = "labspace-backend"
 version = "1.0.0"
-description = "D509 工作台后端（FastAPI + PostgreSQL + Casdoor OIDC）"
+description = "D509 工作台后端（FastAPI + PostgreSQL + Portal OIDC）"
 requires-python = ">=3.15"
 dependencies = [
   "fastapi==0.163.1",

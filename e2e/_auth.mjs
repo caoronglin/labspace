@@ -1,4 +1,4 @@
-// 登录门户（Casdoor OIDC），返回已认证的 BrowserContext
+// 登录门户（自有账号口令认证），返回已认证的 BrowserContext
 import { chromium } from 'playwright';
 
 export const LAB_USER = process.env.LAB_USER || 'student01';
@@ -10,9 +10,9 @@ export async function loginContext(browser, base = BASE) {
   const page = await ctx.newPage();
   await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('input[type="password"]', { timeout: 20000 });
-  await page.locator('input[type="text"], input:not([type])').first().fill(LAB_USER);
+  await page.locator('#username').fill(LAB_USER);
   await page.locator('input[type="password"]').first().fill(LAB_PASS);
-  await page.getByRole('button', { name: /登录|Login/ }).first().click();
+  await page.locator('button.ant-btn-primary').first().click();
   await page.waitForTimeout(5000);
   const body = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
   if (!/工作台|全部服务|我的收藏/.test(body)) {

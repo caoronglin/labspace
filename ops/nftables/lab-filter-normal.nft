@@ -12,8 +12,8 @@
 #              内部服务（文件核心/后端/RAG/Samba…）只走 Tailscale（WireGuard 加密）。
 #
 # 入口端口：22 ssh / 53 dns / 80 门户 / 8082 draw.io / 8086 命令速查 /
-#           8090 Casdoor / 8091 JBrowse / 8092 SnapOtter / 8093 图纸 /
-#           8094 Baserow / 8097 primer / 8102 生信实训 / 8104 AgentScope
+#           8091 JBrowse / 8092 SnapOtter / 8093 图纸 /
+#           8094 Baserow / 8104 AgentScope（primer/生信走门户同源路径）
 # 幂等加载：先声明（不存在就建）→ 再删 → 最后重建。
 # 不这样做的话，重复 `nft -f` 会把规则一条条叠加上去。
 table ip labfilter
@@ -31,7 +31,7 @@ table ip labfilter {
         iifname "veth*" accept
 
         # —— 局域网：只放行对外入口 ——
-        ip saddr 192.0.2.0/24 tcp dport { 22, 53, 80, 8082, 8086, 8090, 8091, 8092, 8093, 8094, 8097, 8102, 8104 } accept
+        ip saddr 192.0.2.0/24 tcp dport { 22, 53, 80, 8082, 8086, 8091, 8092, 8093, 8094, 8104 } accept
         ip saddr 192.0.2.0/24 udp dport 53 accept
 
         # —— 其余局域网流量一律拒 ——
@@ -47,7 +47,7 @@ delete table ip6 labfilter
 table ip6 labfilter {
     chain input {
         type filter hook input priority -10; policy accept;
-        ip6 saddr fd62:317c:ce1e::/64 tcp dport { 22, 53, 80, 8082, 8086, 8090, 8091, 8092, 8093, 8094, 8097, 8102, 8104 } accept
+        ip6 saddr fd62:317c:ce1e::/64 tcp dport { 22, 53, 80, 8082, 8086, 8091, 8092, 8093, 8094, 8104 } accept
         ip6 saddr fd62:317c:ce1e::/64 udp dport 53 accept
         ip6 saddr fd62:317c:ce1e::/64 counter drop
     }

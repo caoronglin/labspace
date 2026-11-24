@@ -101,8 +101,7 @@ async def api_databases_probe(db_id: str, _: dict = Depends(require_user_or_serv
 
 SERVICE_ENTRIES = [
     ("门户 D509 工作台", "http://192.0.2.10/", "/"),
-    ("统一认证 Casdoor", "http://192.0.2.10:8090/", "/"),
-    ("生信实训平台", "http://192.0.2.10:8102/", "/"),
+    ("生信实训平台", "http://192.0.2.10/apps/bioinfo/", "/"),
     ("draw.io 绘图", "http://192.0.2.10:8082/", "/"),
     ("Linux 命令速查", "http://192.0.2.10:8086/", "/"),
     ("JBrowse 2 基因组浏览器", "http://192.0.2.10:8091/index.html?config=data/demo/config.zh.json", "/index.html"),
@@ -163,7 +162,7 @@ async def api_service_embed(service_id: str, request: Request, user: dict = Depe
 @router.get("/api/services/{service_id}/sso")
 @router.get("/v1/services/{service_id}/sso")
 async def api_service_sso(service_id: str, request: Request, user: dict = Depends(require_user)) -> dict[str, Any]:
-    """返回服务的免密登录入口（Casdoor OIDC 起跳地址）。
+    """返回服务的免密登录入口（门户 OIDC 起跳地址）。
 
     已由 Go 核心接管，此处保留仅为兼容直连后端端口的旧客户端。
     """

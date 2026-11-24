@@ -256,7 +256,7 @@ fi
 # —— 容器层 —— 基础组件的容器挂了，上面几个 URL 也会连着报错，
 #    这里单独列出来，日志里一眼能看出是容器问题还是应用问题。
 log "  ── 容器 ──"
-for c in lab-labspace-backend lab-postgres lab-casdoor lab-qdrant lab-agentscope lab-docling lab-tika lab-drawio lab-pdf2zh; do
+for c in lab-labspace-backend lab-postgres lab-qdrant lab-agentscope lab-docling lab-tika lab-drawio lab-pdf2zh; do
   if docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null | grep -q true; then
     log "  ✓ $c"
   else

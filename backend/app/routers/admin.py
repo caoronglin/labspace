@@ -55,7 +55,7 @@ async def api_admin_info(user: dict[str, Any] = Depends(require_admin)) -> dict[
             "free": disk.free,
         },
         "containers": containers,
-        "casdoor": {"issuer": settings.issuer, "clientId": settings.client_id},
+        "auth": {"provider": "portal-oidc", "issuer": f"{settings.public_url}/oidc", "clientId": "bioinfo-training"},
         "roles": {"admin": settings.admin_roles, "teacher": settings.teacher_roles},
     }
 

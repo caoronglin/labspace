@@ -15,6 +15,18 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: '2026.11.24',
+    date: '2026-11-24',
+    title: '三端代码预览与统一认证切换',
+    summary: '门户、生信实训与 primer3 的预览体验统一，登录切换到实验室自有认证。',
+    highlights: [
+      '门户源码预览改为原生行号视图，支持自动换行、复制反馈与长文件分段加载',
+      '生信工作区新增代码预览，二进制识别与大小上限避免把乱码或大文件塞进页面',
+      'primer3 序列预览支持分段加载与自动换行，长序列不再卡顿',
+      '门户登录改为账号口令直连，生信与 primer3 通过门户 OIDC 单点登录',
+    ],
+  },
+  {
     version: '2026.11.22.4',
     date: '2026-11-22',
     title: '侧栏子菜单联动修复',

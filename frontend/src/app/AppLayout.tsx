@@ -183,7 +183,7 @@ export default function AppLayout() {
       if (key === 'theme') setMode(resolved === 'dark' ? 'light' : 'dark');
       if (key === 'logout') {
         // 登出后要跳到 IdP 的登出地址；该地址来自服务端响应，
-        // 但仍按"只允许 http(s) 且必须是本站或已配置的 Casdoor 主机"校验，
+        // 但仍按"只允许 http(s) 且必须是本站或已配置的门户主机"校验，
         // 避免响应被篡改时把用户带去钓鱼站点。
         const fallback = '/api/auth/logout-redirect';
         let target = fallback;

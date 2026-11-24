@@ -310,7 +310,7 @@ export interface AdminInfo {
   host?: { platform?: string; python?: string; hostname?: string };
   disk: { total: number; used: number; free: number; mount?: string };
   containers: string[];
-  casdoor: { issuer: string; clientId: string };
+  auth: { provider: string; issuer: string; clientId: string };
   roles: { admin: string[]; teacher: string[] };
   [key: string]: unknown;
 }
@@ -731,7 +731,7 @@ export interface Me {
   email?: string;
   /** 会话里的名字（历史账号可能是账号名）。 */
   name?: string;
-  /** 服务端从 Casdoor 解析的**中文姓名**，界面应优先用它。 */
+  /** 服务端从账号库解析的**中文姓名**，界面应优先用它。 */
   displayName?: string;
   roles?: string[];
   isAdmin?: boolean;

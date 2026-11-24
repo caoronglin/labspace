@@ -1,7 +1,7 @@
 // Command labgo is the LabSpace Go core reference server.
 //
 // It binds loopback only and is an incremental bridge behind the existing
-// nginx/Casdoor gateway. Every capability is opt-in via environment variables;
+// nginx/portal auth gateway. Every capability is opt-in via environment variables;
 // a missing dependency never widens permissions (fail closed).
 package main
 

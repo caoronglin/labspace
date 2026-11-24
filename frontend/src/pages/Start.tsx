@@ -225,7 +225,7 @@ export default function Start() {
               </Space>
             </Dropdown>
           ) : (
-            <Button type="primary" onClick={() => redirectSafely('/api/auth/login', '/')}>
+            <Button type="primary" onClick={() => redirectSafely('/login', '/')}>
               登录
             </Button>
           )}

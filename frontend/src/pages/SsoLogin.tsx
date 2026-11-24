@@ -10,7 +10,7 @@ import { api } from '../services/api';
  * 1. 读取当前访问入口的主机（内网 IP 或 Tailscale IP）；
  * 2. 调用后端把目标服务的 OIDC issuer / 回调地址切换到该主机
  *    （由宿主机侧的 OIDC 同步服务执行）；
- * 3. 跳转到服务自身的登录入口，Casdoor 已有会话即可免密进入。
+ * 3. 跳转到服务自身的登录入口，门户已有会话即可通过 OIDC 免密进入。
  */
 export default function SsoLoginPage() {
   const { serviceId = '' } = useParams();

@@ -1,9 +1,9 @@
-"""统一账号管理：以 Casdoor 为唯一身份源，提供管理员侧的账号读写。
+"""统一账号管理：门户自有认证，提供管理员侧的账号读写。
 
 Casdoor 的写 API（add-user / update-user）在本部署中返回
 "Unauthorized operation"，且 built-in 组织默认禁止通过 API 新增用户，
-因此本模块在**管理员会话 + CSRF** 的双重保护下直接读写 Casdoor 的
-PostgreSQL 表，并写入 labspace.account_audit 审计表。
+因此本模块在**管理员会话 + CSRF** 的双重保护下直接读写原 Casdoor
+PostgreSQL 账号库（容器已下线、数据保留），并写入 labspace.account_audit 审计表。
 
 约束：
 * 只操作 ``owner = 'built-in'`` 的用户；

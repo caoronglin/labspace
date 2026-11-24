@@ -31,7 +31,7 @@ def _capabilities() -> dict[str, bool]:
         "database_dsn": bool(settings.db_dsn),
         "health_probes": settings.enable_health,
         "service_token": bool(settings.service_token),
-        "casdoor_client": bool(settings.client_id),
+        "portal_oidc": bool(settings.session_secret),
         "agent_gateway": bool(settings.agent_gateway),
         "labgo_core": bool(settings.labgo_base),
     }
@@ -51,7 +51,7 @@ async def debug_status(user: dict[str, Any] = Depends(require_superadmin)) -> di
     return {
         "backend": {
             "service": "labspace-backend",
-            "version": "1.0.0",
+            "version": "2026.11.24",
             "python": platform.python_version(),
             "platform": platform.platform(),
             "uptime_seconds": int(time.monotonic() - _STARTED),

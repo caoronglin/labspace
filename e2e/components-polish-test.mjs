@@ -244,9 +244,7 @@ try {
     });
     const page = await lctx.newPage();
     const bag = attachConsole(page, '登录页');
-    // 阻止自动跳转（否则 400ms 后立即跳 Casdoor），页面本身渲染逻辑不变。
-    // Login.tsx 的门控：sessionStorage['labspace.login.auto']==='1' 时不再自动跳，
-    // 兜底再拦一次 300/400ms 的 setTimeout（旧版 300ms、新版 400ms）。
+    // 登录页已是本地口令表单，不再自动跳转；保留 /api/me pending 以稳定布局。
     await page.addInitScript(() => {
       try { sessionStorage.setItem('labspace.login.auto', '1'); } catch { /* ignore */ }
       const orig = window.setTimeout;
@@ -262,12 +260,12 @@ try {
     if (brand) pass('登录页', '品牌区名称存在');
     else fail('登录页', '缺少品牌区名称');
 
-    const sso = await page.getByRole('button', { name: /统一身份认证登录/ }).count();
-    if (sso) pass('登录页', 'SSO 主按钮存在');
-    else fail('登录页', '缺少 SSO 主按钮');
+    const localForm = await page.locator('#username').count() + await page.locator('#password').count();
+    if (localForm === 2) pass('登录页', '本地账号口令表单存在');
+    else fail('登录页', '缺少本地账号口令表单');
 
     // 登录页已切到自建统一认证：默认显示口令表单与「实验室统一身份登录」说明；
-    // Casdoor 只剩次要按钮。断言当前页面实际文案。
+    // 断言当前本地认证说明文案。
     const status = await page.getByText(/实验室统一身份登录|正在跳转到统一身份认证|统一身份认证登录/).count();
     if (status) pass('登录页', '登录状态/说明文案存在');
     else fail('登录页', '缺少跳转状态说明');

@@ -4,7 +4,7 @@ import { Button, Tooltip } from 'antd';
 import { LoginOutlined } from '@ant-design/icons';
 
 export interface SsoButtonProps {
-  /** 服务自身的 OIDC 启动端点；Casdoor 已有会话时可直接免密进入 */
+  /** 服务自身的 OIDC 启动端点；门户已有会话时可直接免密进入 */
   ssoUrl?: string;
   /** 服务 id：提供时先走门户的 /sso/:id 页面，按当前入口主机自适应切换 OIDC 配置 */
   serviceId?: string;
@@ -17,8 +17,8 @@ export interface SsoButtonProps {
 /**
  * 「一键登录」按钮。
  *
- * 门户与第三方服务共用同一个 Casdoor 作为身份源，
- * 门户已登录 ⇒ Casdoor 会话已存在 ⇒ 访问服务自己的 OIDC 启动端点即可免密进入，
+ * 门户与第三方服务共用同一个门户 OIDC Provider，
+ * 门户已登录 ⇒ 门户会话已存在 ⇒ 访问服务自己的 OIDC 启动端点即可免密进入，
  * 不需要再输入一次口令。
  *
  * 若提供 serviceId，则先进入门户的 /sso/:id 页面：那里会把该服务的
@@ -39,7 +39,7 @@ export default function SsoButton({
 
   const go = () => {
     setBusy(true);
-    // 优先直连服务自带的 OIDC 启动端点：Casdoor 会话命中后无需再次输入口令
+    // 优先直连服务自带的 OIDC 启动端点：门户 OIDC 会话命中后无需再次输入口令
     if (ssoUrl) {
       window.location.href = ssoUrl;
       return;
@@ -48,7 +48,7 @@ export default function SsoButton({
   };
 
   return (
-    <Tooltip title="门户与该服务共用 Casdoor 账号，无需重复输入口令">
+    <Tooltip title="门户与该服务共用统一认证账号，无需重复输入口令">
       <Button
         type="primary"
         size={size}

@@ -42,7 +42,7 @@ export interface FaqItem {
 export const QUICK_START: QuickStartItem[] = [
   {
     title: '一次登录，全站可用',
-    description: 'Casdoor 是唯一身份源；首次登录按提示改完初始口令即可使用所有已授权服务。',
+    description: '门户统一认证是唯一身份源；首次登录按提示改完初始口令即可使用所有已授权服务。',
     icon: <SafetyCertificateOutlined />,
   },
   {
@@ -105,11 +105,11 @@ export const ROLE_STARTS: RoleStartGroup[] = [
 export const FAQ: FaqItem[] = [
   {
     key: 'account',
-    keywords: '账号 密码 登录 开通 casdoor 首次',
+    keywords: '账号 密码 登录 开通 首次',
     label: '账号与密码由谁管理？',
     children: (
       <ParagraphText>
-        账号、密码与用户组统一由 Casdoor 管理，门户不单独保存密码。新成员请联系管理员开通；
+        账号、口令哈希与用户组由门户统一管理，密码不以明文保存。新成员请联系管理员开通；
         首次登录会自动弹出本帮助，之后可在右上角「帮助中心」随时打开。
       </ParagraphText>
     ),

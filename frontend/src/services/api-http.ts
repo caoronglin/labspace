@@ -32,7 +32,7 @@ export class SessionExpiredError extends Error {
  */
 export function redirectToLogin(): void {
   const back = `${window.location.pathname}${window.location.search}`;
-  const target = new URL('/api/auth/login', window.location.origin);
+  const target = new URL('/login', window.location.origin);
   if (back.startsWith('/') && !back.startsWith('//')) {
     target.searchParams.set('back', back);
   }

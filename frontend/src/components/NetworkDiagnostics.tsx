@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Card, Flex, Tag, Typography, theme } from 'antd';
 import { CheckCircleFilled, WarningFilled } from '@ant-design/icons';
-import { currentHost, hostUrl } from '../utils/host';
+import { currentHost } from '../utils/host';
 
 interface Entry {
   name: string;
@@ -71,7 +71,7 @@ export default function NetworkDiagnostics() {
             1. 所有入口都以 IP + 端口访问，<b>不需要 DNS，不需要 hosts，不需要改路由器设置</b>。
           </Typography.Text>
           <Typography.Text style={{ fontSize: 12.5 }}>
-            2. 统一认证固定在 <b>{hostUrl('/', 8090)}</b>，门户登录跳转均指向该地址。
+            2. 统一认证由门户自身提供，登录与登出均在同源路径完成，不再跳转独立认证端口。
           </Typography.Text>
           <Typography.Text style={{ fontSize: 12.5 }}>
             3. 入口自适应：当前入口 <b>{currentHost()}</b>；若经 Tailscale 访问则自动切换为 Tailscale 地址，端口完全一致，无需任何配置。

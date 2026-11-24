@@ -242,57 +242,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ---------------------------------------------------------------- Casdoor（统一身份源）
-  casdoor:
-    image: casbin/casdoor@sha256:d8fd4f387026e1ffdf887b924c1c74ad5c15e8d3be54fb739b57b2037073a51f
-    container_name: lab-casdoor
-    restart: unless-stopped
-    init: true
-    environment:
-      TZ: Asia/Shanghai
-      RUNNING_IN_DOCKER: "true"
-      ENABLE_LOGIN_FORM: "true"
-      # Casdoor 通过同名环境变量覆盖 beego app.conf（官方方式）
-      driverName: "postgres"
-      # 口令走环境变量，不写进仓库：Casdoor 是**全部身份**的权威源，
-      # 谁能被授予 lab-admin / lab-superadmin / lab-teacher 由它决定。
-      # 口令泄露 = 可以直接给自己签发任意角色的账号，
-      # 绕过门户的两级管理员与教师隔离机制。
-      # 取值见 deploy/.env（0600，已 gitignore）与 deploy/.env.example。
-      dataSourceName: "user=${CASDOOR_DB_USER:-casdoor} password=${CASDOOR_DB_PASSWORD} host=${CASDOOR_DB_HOST:-lab-postgres} port=${CASDOOR_DB_PORT:-5432} dbname=${CASDOOR_DB_NAME:-casdoor} sslmode=disable"
-      dbName: "${CASDOOR_DB_NAME:-casdoor}"
-      # 内置管理员初始口令（仅在首次启动、admin 口令未设置时生效）
-      initAdminPassword: "${CASDOOR_ADMIN_PASSWORD}"
-      runmode: "prod"
-      defaultLanguage: "zh"
-      forceLanguage: "zh"
-      staticBaseUrl: "https://cdn.casbin.org"
-      # origin 留空：Casdoor 按请求的 Host 回显 issuer，
-      # 因此门户可按访问主机（LAN IP / Tailscale IP / 别名域名）动态选择 issuer，
-      # 授权地址始终与浏览器实际访问的主机一致，无需 DNS 解析
-      origin: ""
-      originFrontend: ""
-    ports:
-      - "127.0.0.1:8000:8000"
-    networks:
-      - labspace
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 1g
-    cpus: 1.0
-    pids_limit: 256
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   # ---------------------------------------------------------------- draw.io
   drawio:
     image: jgraph/drawio@sha256:3e3281733f69416b2b632adad05c9c07d434ebb775e01070d55e9f3247cebe31

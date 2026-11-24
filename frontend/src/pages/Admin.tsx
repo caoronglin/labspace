@@ -72,7 +72,7 @@ function ChartFallback() {
 // 大小格式化统一走 utils/format（见该文件顶部说明）
 const formatBytes = formatSize;
 
-function formatCasdoorTime(v?: string) {
+function formatAccountTime(v?: string) {
   if (!v) return '-';
   const n = Number(v);
   const d = Number.isFinite(n) && v.length <= 11 ? new Date(n * 1000) : new Date(v);
@@ -126,7 +126,7 @@ function generatePassword(length = 16): string {
   return chars.join('');
 }
 
-/** 统一账号管理：Casdoor 是唯一身份源，本页直接读写并写入审计表。 */
+/** 统一账号管理：门户自有认证与账号库，本页直接读写并写入审计表。 */
 /** 表格行：账号本体 + 分组视图用的内部字段（不会出现在接口里）。 */
 type AccountRow = AccountItem & {
   __group?: boolean;
@@ -466,7 +466,7 @@ function AccountsAdmin() {
     <Flex vertical gap={16}>
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6}>
-          <ProStat icon={<TeamOutlined />} title="账号总数" value={counts.total} hint="Casdoor 同步" />
+          <ProStat icon={<TeamOutlined />} title="账号总数" value={counts.total} hint="门户账号库" />
         </Col>
         <Col xs={12} md={6}>
           <ProStat
@@ -726,7 +726,7 @@ function AccountsAdmin() {
             title: '最近登录',
             dataIndex: 'lastSigninAt',
             width: 170,
-            render: (v: string) => formatCasdoorTime(v),
+            render: (v: string) => formatAccountTime(v),
           },
           {
             title: '操作',
@@ -1397,7 +1397,7 @@ function BackupAdmin() {
       content: (
         <Flex vertical gap={6}>
           <Typography.Text>
-            该快照创建于 {formatCasdoorTime(snap.time)}，删除后<strong>无法恢复</strong>，也不会自动重新生成。
+            该快照创建于 {formatAccountTime(snap.time)}，删除后<strong>无法恢复</strong>，也不会自动重新生成。
           </Typography.Text>
           <Typography.Text type="secondary">
             如果只是想控制占用，请优先调整保留策略（当前 {data?.keep_within ?? '3d'}），而不是手工删快照。
@@ -1499,7 +1499,7 @@ function BackupAdmin() {
                 {
                   key: 'generated',
                   label: '状态时间',
-                  children: gitArchive.data?.generatedAt ? formatCasdoorTime(gitArchive.data.generatedAt) : '—',
+                  children: gitArchive.data?.generatedAt ? formatAccountTime(gitArchive.data.generatedAt) : '—',
                 },
                 {
                   key: 'remote',
@@ -1542,7 +1542,7 @@ function BackupAdmin() {
                     dataIndex: 'time',
                     key: 'time',
                     width: 180,
-                    render: (v: string) => formatCasdoorTime(v),
+                    render: (v: string) => formatAccountTime(v),
                   },
                 ]}
               />
@@ -1565,7 +1565,7 @@ function BackupAdmin() {
               column={{ xs: 1, md: 2 }}
               items={[
                 { key: 'repo', label: '仓库', children: data?.repo ?? '-' },
-                { key: 'generated', label: '状态时间', children: data?.generated_at ? formatCasdoorTime(data.generated_at) : '-' },
+                { key: 'generated', label: '状态时间', children: data?.generated_at ? formatAccountTime(data.generated_at) : '-' },
                 { key: 'scope', label: '最近范围', children: data?.scope ?? '-' },
                 { key: 'outcome', label: '结果', children: data?.outcome === 'failed' ? <Tag color="red">失败</Tag> : <Tag color="green">成功</Tag> },
               ]}
@@ -1579,7 +1579,7 @@ function BackupAdmin() {
               pagination={{ pageSize: 8, size: 'small' }}
               columns={[
                 { title: '快照', dataIndex: 'id', render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
-                { title: '时间', dataIndex: 'time', render: (v: string) => formatCasdoorTime(v) },
+                { title: '时间', dataIndex: 'time', render: (v: string) => formatAccountTime(v) },
                 { title: '主机', dataIndex: 'hostname' },
                 { title: '标签', dataIndex: 'tags', render: (v: string[]) => (v?.length ? v.map((t) => <Tag key={t}>{t}</Tag>) : '-') },
                 {
@@ -1766,7 +1766,7 @@ export default function Admin() {
               <AccountsAdmin />
               {/* 组员名册并入账号管理：学号↔账号、身份、在研/出组都在这里维护 */}
               <SharedMembers embedded />
-              <Card size="small" title="角色映射（Casdoor 同步）">
+              <Card size="small" title="角色映射（门户认证）">
                 <Descriptions
                   column={1}
                   bordered
@@ -1821,8 +1821,8 @@ export default function Admin() {
                   items={[
                     { key: 'h', label: '主机', children: info?.host?.hostname },
                     { key: 'p', label: '平台', children: info?.host?.platform },
-                    { key: 'c', label: 'Casdoor', children: info?.casdoor?.issuer },
-                    { key: 'cid', label: 'OIDC Client ID', children: info?.casdoor?.clientId },
+                    { key: 'c', label: '认证提供方', children: info?.auth?.provider },
+                    { key: 'cid', label: 'OIDC Client ID', children: info?.auth?.clientId },
                   ]}
                 />
               </Card>

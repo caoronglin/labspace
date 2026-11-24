@@ -23,15 +23,6 @@ DEFAULT_ALLOWED_HOSTS = "192.0.2.10,198.51.100.71,127.0.0.1,localhost"
 
 @dataclass(frozen=True)
 class Settings:
-    # OIDC / Casdoor
-    issuer: str = os.getenv("LABSPACE_ISSUER", "http://auth.lab.example").rstrip("/")
-    # Casdoor 对外端口（IP 专属端口，授权地址不含域名）
-    casdoor_port: int = int(os.getenv("LABSPACE_CASDOOR_PORT", "8090"))
-    client_id: str = os.getenv("LABSPACE_CLIENT_ID", "")
-    client_secret: str = os.getenv("LABSPACE_CLIENT_SECRET", "")
-    redirect_uri: str = os.getenv("LABSPACE_REDIRECT_URI", "http://portal.lab.example/api/auth/callback")
-    scopes: str = os.getenv("LABSPACE_SCOPES", "openid email profile groups")
-
     # 会话
     session_secret: str = os.getenv("LABSPACE_SESSION_SECRET", "")
     session_hours: int = int(os.getenv("LABSPACE_SESSION_HOURS", "8"))
@@ -56,7 +47,7 @@ class Settings:
     # 数据库
     db_dsn: str = os.getenv("LABSPACE_DB_DSN", "")
 
-    # Casdoor 数据库（统一账号管理：仅管理员 API 使用的受控读写）
+    # 账号数据库（沿用原 Casdoor PostgreSQL 库；Casdoor 容器已下线，数据保留）
     casdoor_db_host: str = os.getenv("CASDOOR_DB_HOST", "lab-postgres")
     casdoor_db_port: int = int(os.getenv("CASDOOR_DB_PORT", "5432"))
     casdoor_db_name: str = os.getenv("CASDOOR_DB_NAME", "casdoor")

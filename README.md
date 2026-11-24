@@ -8,7 +8,7 @@
 
 
 React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验室的 AI、文件、科研绘图、文献与科研数据库，
-以 Casdoor 作为唯一身份源。**全部入口使用 `192.0.2.10 + 端口`，不依赖任何域名或 DNS。**
+使用门户自有统一认证（账号口令 + OIDC Provider）。**Casdoor 已下线**，应用优先通过 Nginx 同源路径访问，不依赖任何域名或 DNS。
 
 > **文档只有一个真源：`docs/`。** 根目录只保留本 README，其他文档一律在
 > `docs/` 下（历史上根目录还有一份同名副本，两份会各自漂移，已经删掉）。
@@ -31,21 +31,19 @@ React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验
 
 文档内的相对链接可用 `ops/check-docs-links.py` 校验（CI 与本地都能跑）。
 
-## 入口（IP + 端口）
+## 入口（门户同源路径优先）
 
 | 服务 | 地址 |
 | --- | --- |
 | 门户 D509 工作台 | http://192.0.2.10/ |
-| 统一认证 Casdoor | http://192.0.2.10:8090/ |
+| 登录 / 登出 | http://192.0.2.10/login |
 | 文件空间（门户原生网盘） | http://192.0.2.10/files |
-| 文件工坊 SnapOtter | http://192.0.2.10:8092/ |
-| draw.io | http://192.0.2.10:8082/ |
-| Linux 命令速查 | http://192.0.2.10:8086/ |
-| JBrowse 2 基因组浏览器 | http://192.0.2.10:8091/ |
-| 图纸平台 | http://192.0.2.10:8093/ |
-| 生信实训平台 | http://192.0.2.10:8102/ |
-| Baserow 数据表 | http://192.0.2.10:8094/ |
-| 引物设计 Primer3 | http://192.0.2.10:8097/ |
+| 文件工坊 SnapOtter | http://192.0.2.10/snapotter |
+| draw.io | http://192.0.2.10/apps/drawio/ |
+| Linux 命令速查 | http://192.0.2.10/apps/commands/ |
+| JBrowse 2 基因组浏览器 | http://192.0.2.10/jbrowse/index.html?config=data/demo/config.zh.json |
+| 生信实训平台 | http://192.0.2.10/apps/bioinfo/ |
+| 引物设计 Primer3 | http://192.0.2.10/apps/primer/ |
 | PDF 工具箱（门户自绘） | http://192.0.2.10/pdf |
 | 邮件（只收不发） | http://192.0.2.10/mail/ |
 
@@ -55,8 +53,7 @@ React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验
 
 > **端口对照**（与 `docker ps` 实际映射一致）：
 > 门户 `:80`（宿主机 nginx）；draw.io `:8082`（`lab-drawio` 容器直出）、SnapOtter `:8092`（`lab-snapotter` 容器直出）；
-> Casdoor `:8090`（宿主机 nginx → `lab-casdoor` 127.0.0.1:8000）；
-> Linux 命令 `:8086`、JBrowse `:8091`、图纸平台 `:8093`、生信实训 `:8102`（宿主机 nginx）；
+> Linux 命令、JBrowse、生信实训与 Primer3 的正式入口均走门户同源路径；旧直连端口只保留回环或已关闭；
 > Baserow `:8094`（宿主机 nginx → `lab-baserow` 127.0.0.1:8096，容器端口仅回环）；
 > SearXNG 容器仅监听回环 127.0.0.1:8081，对外统一走门户 `/search`。
 
@@ -65,7 +62,7 @@ Tailscale 入口为 `http://198.51.100.71/`（同端口）。访问控制由独�
 > **入口自适应**：从哪个入口进入，门户内所有服务地址就用同一个主机。
 > 内网客户端访问 `192.0.2.10` 时其它服务也是 `192.0.2.10`；
 > 通过 Tailscale 访问 `198.51.100.71` 时其它服务自动换成 `198.51.100.71`。
-> 门户地址、Casdoor issuer、服务目录、前端外链均已适配；
+> 门户地址、OIDC issuer、服务目录、前端外链均已适配；
 > 门户内页面（文件空间 / 文件工坊 / 生信工具 / 公共基因组 / 生信实训）与静态站链接同样跟随当前入口。
 
 ## 快速开始
@@ -92,9 +89,9 @@ cd /opt/labspace/e2e && node e2e.mjs           # 浏览器端到端验收（需 
 | 其他成员 | `lab-student` / `lab-phd` / `lab-master` … | 由管理员在 `/admin/users` 创建与维护 |
 
 > 新账号初始口令由管理员在账号管理里生成并**一次性展示**；首次登录强制修改。
-> 登录标识 = 邮箱（Casdoor 按 email 查用户）；Casdoor 是唯一身份源，门户与生信实训共用同一套账号。
+> 登录标识 = 账号名；门户自有认证是唯一身份源，门户、生信实训与 Primer3 共用同一套账号。
 > 口令清单 `/etc/labspace/casdoor-users.txt` 权限 0600，仅 root 可读，**不入库**。
-> ⚠ 账号 email 变更后必须同步两处：Casdoor `user` 表、`/etc/labspace/casdoor-users.txt`。
+> 账号数据沿用原 Casdoor PostgreSQL 库（容器已下线、数据保留）；口令为 bcrypt 哈希，不以明文入库。
 
 ## 目录
 
@@ -104,7 +101,7 @@ labspace/
 │   └── src/{app,components,pages,routes,services,theme}
 ├── backend/             FastAPI（OIDC 会话 / 收藏 / 受控绘图保存 / 统一语料 / 数据库 API
 │   │                    / 个人工作台 / Agent 中继 / 翻译 / 天气）
-│   └── app/{config,security,casdoor,catalog,corpus,databases,db_apis,snapotter,
+│   └── app/{config,security,accounts,catalog,corpus,databases,db_apis,snapotter,
 │            workbench,agent,mt,text_extract,biotools,weather,http,db,golink,main}.py
 ├── go-core/             Go 核心（LabGo，纯标准库、零外部依赖）
 │   ├── cmd/labgo        服务入口（:8122）
@@ -115,7 +112,7 @@ labspace/
 ├── agent/               助手技能（pi 网关已于 2026-11-10 下线，助手改由 AgentScope 提供）
 │   └── skills/          技能内容：deep-research / literature-search / plant-database-search / research-workflow
 ├── deploy/
-│   ├── compose.yaml     backend + latex-compile + casdoor + drawio + pdf2zh + baserow
+│   ├── compose.yaml     backend + latex-compile + drawio + pdf2zh + baserow
 │   ├── .env             真实凭据（0600，不入库）
 │   └── nginx/labspace.conf
 ├── e2e/                 Playwright 验收脚本与截图
@@ -130,7 +127,7 @@ labspace/
   命令面板与全局搜索共用（按类型限额，避免单一类型刷屏）。
 - 生物数据库目录：**107 条真实资源、13 个分类**，其中 **32 个**已接入真实 API（服务端代理 + 归一化结果，
   页面内可直接检索）；未接入的条目逐条写明原因。
-- 身份：Casdoor（内网 :8090）为唯一身份源，门户与生信实训使用 OIDC 客户端（labspace / bioinfo-training）+ 本地口令兜底。
+- 身份：门户自有认证（账号口令 + OIDC Provider）；Casdoor 容器与 :8090 已下线，生信与 Primer3 通过门户 OIDC 单点登录。
 - 平台内嵌：draw.io / Linux Command / JBrowse 支持 iframe 内嵌（图纸平台为外链），服务端按 `X-Frame-Options` 与 CSP `frame-ancestors` 判定，不允许时回退「新窗口打开」。
 - 个人工作台 `/workbench`：一句话捕获 → 自动分类（任务/项目/计划/想法/知识/记忆/笔记）→ 人工确认 → 落库。
 - Agent 助手 `/agent`：底层 **AgentScope 2.0.11**（独立容器，与门户共享 Postgres），12 个 `lab_*` MCP 工具；
@@ -144,9 +141,9 @@ labspace/
     以及 Entrez / BLAST（无外网时 3 秒内明确报错）。原来的 CropGenome（rust-bio）已下架，
     原因与回滚见 [`docs/RETIRE-CROPGENOME.md`](docs/RETIRE-CROPGENOME.md)。
   （OXR-1.0，内网 Docling 兜底）、天气 `/weather`（Open-Meteo）。
-- 单点登录：门户与生信实训平台共用 Casdoor 账号免密进入；JBrowse / draw.io / Linux 命令为静态站，SnapOtter 走门户原生界面，均无需单独登录。
+- 单点登录：门户与生信实训平台共用统一认证账号免密进入；JBrowse / draw.io / Linux 命令为静态站，SnapOtter 走门户原生界面，均无需单独登录。
 - 既有服务保留：SearXNG、Tika、Docling、科研 API/MCP、Open Terminal、oikb；Open WebUI 与 Quantum 已下线（见入口表）。
-- 未新增第二套认证系统、文件系统或容器编排平台。
+- 未新增第二套账号库或文件系统；原账号数据库保留，认证运行时已收口到门户自身。
 
 ## 一键回归
 

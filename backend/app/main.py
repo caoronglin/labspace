@@ -118,7 +118,7 @@ from .security import (
 
 log = logging.getLogger("labspace.main")
 
-app = FastAPI(title="LabSpace API", version="2026.11.22.4", docs_url="/api/docs", openapi_url="/api/openapi.json")
+app = FastAPI(title="LabSpace API", version="2026.11.24", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
 
 @app.on_event("startup")

@@ -46,7 +46,7 @@ STEPS
   echo
   cat <<'STEPS'
 - `curl -fsS http://127.0.0.1/api/health`
-- 页面能用 Casdoor 登录（浏览器不下发服务令牌）
+- 页面能用门户本地账号登录（浏览器不下发服务令牌）
 - 工作台打开、条目增删改查各一次
 - SnapOtter 上传一个小文件并下载结果
 - 科研 API 目录 `/api/databases` 返回 32 项的探活状态

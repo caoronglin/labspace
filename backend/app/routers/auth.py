@@ -10,7 +10,6 @@ from .. import (
     accounts as accounts_mod,
 )
 from .. import (
-    casdoor,
     db,
     db_apis,
 )
@@ -63,7 +62,7 @@ router = APIRouter()
 
 @router.get("/api/health")
 async def api_health() -> dict[str, Any]:
-    return {"status": "ok", "service": "labspace-backend", "version": "1.0.0"}
+    return {"status": "ok", "service": "labspace-backend", "version": "2026.11.24"}
 
 _DISPATCH_ROLES = {"lab-teacher", "lab-postdoc", "lab-phd", "lab-master", "lab-undergrad"}
 
@@ -301,28 +300,6 @@ async def api_saying() -> dict[str, Any]:
         "cached": True,
     }
 
-def _casdoor_issuer(request: Request) -> str:
-    """按当前访问主机推导 Casdoor issuer。
-
-    Casdoor 以"回显请求 Host"的方式发布 issuer，因此门户必须使用与浏览器
-    实际访问主机一致的 Casdoor 地址，授权回调与 token 交换才能对齐。
-    例：访问 http://192.0.2.10/ → http://192.0.2.10:8090
-        访问 http://198.51.100.71/ → http://198.51.100.71:8090
-    """
-    import ipaddress
-
-    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(":")[0]
-    proto = request.headers.get("x-forwarded-proto", "http")
-    if not host:
-        return settings.issuer
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        # 域名别名：Casdoor 对非 IP 主机默认按 https 生成 issuer，而内网是纯 HTTP，
-        # 因此别名统一回落到规范的 IP issuer（授权地址仍为 IP）
-        return settings.issuer
-    return f"{proto}://{host}:{settings.casdoor_port}"
-
 def _request_base(request: Request) -> str:
     """按用户实际访问的主机名生成基址（IP 直连或域名皆可）。
 
@@ -472,72 +449,34 @@ async def api_login_direct(request: Request) -> JSONResponse:
 
 @router.get("/api/auth/login")
 async def api_login(request: Request, back: str = Query(default="")) -> RedirectResponse:
-    """发起 OIDC 登录；``back`` 记住登录后要回到的站内路径。
+    """兼容旧入口：统一重定向到门户本地登录页。
 
-    ``back`` 允许带**端口**（如 ``http://192.0.2.10:8097/``）：
-    平台有多个独立端口的服务（primer 8097、图纸 8093 …），登录页在 80 端口，
-    登录完必须能回到原来那个端口的服务，否则用户会停在门户首页、
-    以为"登录后还是进不去那个页面"。
-    跨主机仍然是禁止的（只允许本站主机名）。
+    Casdoor 已下线；保留 /api/auth/login 是为了旧书签、客户端与回归脚本平滑迁移。
+    登录完成后仍可回到同主机端口下的 primer3 等内网服务。
     """
-    redirect_uri = f"{_request_base(request)}/api/auth/callback"
-    issuer = _casdoor_issuer(request)
-    state = casdoor.new_state(
-        redirect_uri=redirect_uri, issuer=issuer, back=_safe_back(back, request)
-    )
-    return RedirectResponse(casdoor.authorization_url(state, redirect_uri, issuer), status_code=302)
+    target = f"{_request_base(request)}/login"
+    safe = _safe_back(back, request)
+    if safe:
+        target += "?back=" + urllib.parse.quote(safe)
+    return RedirectResponse(target, status_code=302)
+
 
 @router.get("/api/auth/callback")
-async def api_callback(
-    request: Request,
-    code: str | None = Query(default=None),
-    state: str | None = Query(default=None),
-    error: str | None = Query(default=None),
-    error_description: str | None = Query(default=None),
-) -> RedirectResponse:
-    # 身份提供方返回错误时（如用户拒绝授权、state 失效）给友好提示，而不是 422
-    if error or not code:
-        detail = error_description or error or "登录未完成"
-        base = _request_base(request)
-        return RedirectResponse(f"{base}/login?error={urllib.parse.quote(detail)}", status_code=302)
-    entry = casdoor.pop_state(state or "")
-    if not entry:
-        base = _request_base(request)
-        return RedirectResponse(f"{base}/login?error={urllib.parse.quote('登录状态已失效，请重试')}", status_code=302)
-    nonce = entry["nonce"]
-    # 复用发起授权时使用的 redirect_uri 与 issuer，保证与 Casdoor 完全一致
-    redirect_uri = entry.get("redirect_uri") or f"{_request_base(request)}/api/auth/callback"
-    issuer = entry.get("issuer") or _casdoor_issuer(request)
-    tokens = await casdoor.exchange_code(code, redirect_uri, issuer)
-    id_token = tokens.get("id_token")
-    access_token = tokens.get("access_token", "")
-    claims: dict[str, Any] = {}
-    if id_token:
-        claims = casdoor.verify_id_token(id_token, nonce, issuer)
-    info = await casdoor.fetch_userinfo(access_token, id_token, issuer)
-    merged = {**info, **claims}
-    user = casdoor.normalize_user(merged)
-    if not user["email"]:
-        raise HTTPException(status_code=400, detail="OIDC 未返回邮箱，无法建立身份")
+async def api_callback(request: Request) -> RedirectResponse:
+    """旧 Casdoor 回调兼容入口：不再处理授权码，只回到本地登录页。"""
+    return RedirectResponse(f"{_request_base(request)}/login", status_code=302)
 
-    # 回调后回到用户实际访问的主机名（IP 直连或域名都用同一入口）
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
-    proto = request.headers.get("x-forwarded-proto", "http")
-    base = f"{proto}://{host}" if host else settings.public_url
-    resp = RedirectResponse(f"{base}{entry.get('back') or '/'}", status_code=302)
-    set_session_cookies(
-        resp,
-        issue_session(user, pwd_reset=await _must_change_now(_account_name(user))),
-    )
-    return resp
 
 @router.post("/api/auth/logout")
 async def api_logout(
     request: Request, response: Response, _: None = Depends(require_csrf)
 ) -> dict[str, Any]:
     clear_session_cookies(response)
-    return {"ok": True, "logoutUrl": casdoor.logout_url(_casdoor_issuer(request))}
+    return {"ok": True, "logoutUrl": "/login"}
 
 @router.get("/api/auth/logout-redirect")
 async def api_logout_redirect(request: Request) -> RedirectResponse:
-    return RedirectResponse(casdoor.logout_url(_casdoor_issuer(request)), status_code=302)
+    """兼容旧登出入口：清除门户会话并回到本地登录页。"""
+    response = RedirectResponse("/login", status_code=302)
+    clear_session_cookies(response)
+    return response

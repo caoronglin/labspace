@@ -2,7 +2,7 @@
 
 > 适用主机：`192.0.2.10`（Tailscale：`198.51.100.71`），Debian 内网服务器
 > 生成时间：2026-11-03
-> 用途：架构优化前的**现状基线**。所有端口、路径、端点、行数均为当前真实配置（实测采集），非设计意图。
+> 用途：2026-11-03 的**历史架构基线**。文中 Casdoor、8090、Open WebUI、Quantum 等描述已过时；当前认证与同源入口以 README.md / DEPLOY.md 为准。
 > 配套文档：生信平台侧另有 `docs/architecture.md`、`filebrowser-integration.md`、`authentication.md` 等。
 
 ---

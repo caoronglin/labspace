@@ -5,12 +5,12 @@ const pg = await p.newPage();
 const BASE = process.env.BASE || 'http://127.0.0.1';
 const targets = [
   ['门户', `${BASE}/`],
-  ['统一认证', `${BASE}:8090/`],
-  ['生信实训平台', `${BASE}:8102/`],
-  ['draw.io', `${BASE}:8082/`],
-  ['IT-Tools', `${BASE}:8084/`],
-  ['Linux Command', `${BASE}:8086/`],
-  ['JBrowse', `${BASE}:8091/index.html?config=data/demo/config.zh.json`],
+  ['本地登录', `${BASE}/login`],
+  ['生信实训平台', `${BASE}/apps/bioinfo/`],
+  ['Primer3', `${BASE}/apps/primer/`],
+  ['draw.io', `${BASE}/apps/drawio/`],
+  ['Linux Command', `${BASE}/apps/commands/`],
+  ['JBrowse', `${BASE}/jbrowse/index.html?config=data/demo/config.zh.json`],
   ['植物数据库(门户页)', `${BASE}/databases`],
 ];
 for (const [name, url] of targets) {

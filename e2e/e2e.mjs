@@ -38,14 +38,12 @@ async function login(ctx) {
   } else {
     await page.goto(`${BASE}/api/auth/login`, { waitUntil: 'domcontentloaded' });
   }
-  // 跳转至 Casdoor 授权页（IP:8090，域名入口仅作兼容别名）
-  await page.waitForURL(/login\/oauth\/authorize/, { timeout: 25000 });
-  await page.waitForSelector('input[type="password"]', { timeout: 20000 });
-  await page.locator('input[type="text"], input:not([type])').first().fill(USER);
-  await page.locator('input[type="password"]').first().fill(PASS);
-  await page.getByRole('button', { name: /登录|Login/ }).first().click();
-  // Casdoor 登录后会自动跳回门户
-  await page.waitForURL(/192\.168\.5\.12|portal\.lab\.internal/, { timeout: 25000 }).catch(() => {});
+  // 门户自有认证：本地账号口令表单，不再跳转独立 IdP。
+  await page.waitForSelector('#username', { timeout: 20000 });
+  await page.locator('#username').fill(USER);
+  await page.locator('#password').fill(PASS);
+  await page.locator('button.ant-btn-primary').first().click();
+  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(2500);
   await page.close();
 }
@@ -81,7 +79,7 @@ console.log('== 匿名访问 ==');
 }
 
 // ---------------------------------------------------------------- 登录
-console.log('== Casdoor 登录 ==');
+console.log('== 门户本地认证登录 ==');
 const ctx = await newCtx();
 try {
   await login(ctx);
@@ -93,7 +91,7 @@ try {
   console.log('   角色:', roles);
   await page.close();
 } catch (e) {
-  check('Casdoor 登录流程', false, e.message.split('\n')[0]);
+  check('门户本地认证登录流程', false, e.message.split('\n')[0]);
 }
 
 // ---------------------------------------------------------------- 页面巡检

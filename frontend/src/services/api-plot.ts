@@ -1,7 +1,7 @@
 /** 绘图工作台与 LaTeX 写作的类型与客户端（从 api.ts 整块拆出）。 */
 import { request } from './api-http';
 
-export const loginUrl = '/api/auth/login';
+export const loginUrl = '/login';
 
 // ---------------------------------------------------------------- 绘图工作台
 export interface PlotOutput {

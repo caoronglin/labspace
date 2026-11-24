@@ -75,7 +75,7 @@ const CAP_LABELS: Record<string, string> = {
   database_dsn: '数据库连接',
   health_probes: '健康探测',
   service_token: '内部服务令牌',
-  casdoor_client: 'Casdoor 客户端',
+  portal_oidc: '门户 OIDC',
   agent_gateway: 'Agent 网关',
   labgo_core: 'Go 核心',
 };

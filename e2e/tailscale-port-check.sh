@@ -14,14 +14,12 @@ HOST="${1:-198.51.100.71}"
 
 PORTS=(
   "80:门户 D509 工作台"
-  "8090:统一认证 Casdoor"
   "8080:Quantum 文件"
   "8082:draw.io"
   "8084:IT-Tools"
   "8086:Linux 命令速查"
   "8091:JBrowse 2"
   "8092:SnapOtter"
-  "8102:生信实训平台"
   "445:SMB 文件共享"
 )
 
@@ -64,7 +62,7 @@ done
 echo
 
 echo "[3] HTTP 抽样"
-for url in "http://$HOST/" "http://$HOST:8090/" "http://$HOST:8102/" "http://$HOST/cropgenome/"; do
+for url in "http://$HOST/" "http://$HOST/login" "http://$HOST/apps/bioinfo/" "http://$HOST/apps/primer/"; do
   code=$(curl -s -o /dev/null -m 8 -w '%{http_code}' "$url" 2>/dev/null)
   printf '  %-42s %s\n' "$url" "${code:-无响应}"
 done

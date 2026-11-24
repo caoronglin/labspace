@@ -4,7 +4,6 @@ import { currentHost, hostUrl } from '../utils/host';
 
 const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '门户首页', url: hostUrl('/') },
-  { name: '统一认证', url: hostUrl('/', 8090) },
   { name: '统一搜索', url: '/search' },
   { name: '文件空间', url: '/files' },
   { name: '种子管理', url: '/seeds' },
@@ -17,7 +16,7 @@ const IP_ENTRIES: { name: string; url: string }[] = [
   { name: '流程图', url: '/drawio' },
   { name: 'Linux 命令', url: '/commands' },
   { name: '植物数据库', url: '/databases' },
-  { name: '引物设计', url: hostUrl('/', 8097) },
+  { name: '引物设计', url: '/apps/primer/' },
 ];
 
 /** 两个入口主机：内网 LAN 与 Tailscale，端口完全一致。 */

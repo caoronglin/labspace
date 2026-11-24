@@ -158,18 +158,13 @@ func Default() *Service {
 				Description: "课程、实验环境、终端工作区、提交与批阅（门户内嵌统一入口）",
 				URL:         "/bioinfo", Icon: "CodeOutlined",
 				OpenMode: "link",
-				// 生信平台用自己的 OIDC 客户端（client_id=bioinfo-training），
-				// 不认门户会话 cookie —— 门户直接内嵌会是一个 401 的空壳。
-				// 这里给出它的登录入口，前端「一键登录」调用后走 Casdoor 授权；
-				// 用户已经登录过 Casdoor，因此这一跳无需再次输密码（等效 SSO）。
-				// 用绝对地址而不是 /bioinfo/...：门户 80 的 /bioinfo 是 SPA 路由，
-				// 不是到 8102 的透传代理（实测返回 index.html 而非 302）。
-				// adaptText 会把 192.0.2.10 换成用户当前访问的主机。
-				SSOURL: "http://192.0.2.10:8102/api/v1/auth/login",
+				// 生信平台使用门户 OIDC Provider（client_id=bioinfo-training）。
+				// 同源路径由 Nginx 反代到 8102，浏览器无需直连 IP+端口。
+				SSOURL: "/apps/bioinfo/api/v1/auth/login",
 				Tags:   []string{"生信", "实训", "终端", "课程"},
 				Guide: []string{
 					"门户 /bioinfo 是统一入口，按「总览 / 课程 / 实验 / 终端工作区 / 提交记录」分区内嵌平台。",
-					"统一使用 Casdoor 账号登录；教师可发布课程与实验，学生在受控终端里完成作业。",
+					"统一使用门户认证账号登录；教师可发布课程与实验，学生在受控终端里完成作业。",
 					"每个会话分配独立 cgroup（standard：1 核 / 1.5GiB / 256 进程），用完自动回收。",
 				},
 				Enabled: true, Status: "preserved", Engine: "bioinfo-training",
@@ -186,7 +181,7 @@ func Default() *Service {
 				Guide: []string{
 					"由门户 8093 端口反向代理到 192.0.2.29:5244，内网与 Tailscale 两个入口均可访问。",
 					"反代保留访问方 Host 并改写上游重定向，图纸平台生成的链接不会跳回内网地址。",
-					"与 LabSpace 共用 Casdoor 账号体系（如该平台已接入）。",
+					"与 LabSpace 共用门户统一认证账号体系（如该平台已接入）。",
 				},
 				Enabled: true, Status: "external", Engine: "external drawing platform",
 				Health: HealthSpec{URL: "http://127.0.0.1:8093/", Kind: "http"},

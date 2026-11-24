@@ -3,9 +3,9 @@
 # 用法: LAB_PASS=<口令> ./run-regression.sh [脚本名...]
 set -uo pipefail
 cd /opt/labspace/e2e
-: "${LAB_PASS:?请先 export LAB_PASS=<student01 口令>（见 /etc/labspace/casdoor-users.txt）}"
+: "${LAB_PASS:?请先 export LAB_PASS=<student01 口令>（见 /etc/labspace/casdoor-users.txt，沿用账号台账文件名）}"
 export LAB_PASS
-: "${LAB_ADMIN_PASS:?请先 export LAB_ADMIN_PASS=<labadmin 口令>（见 /etc/labspace/casdoor-users.txt）}"
+: "${LAB_ADMIN_PASS:?请先 export LAB_ADMIN_PASS=<labadmin 口令>（见 /etc/labspace/casdoor-users.txt，沿用账号台账文件名）}"
 export LAB_ADMIN_PASS
 
 ALL=(api-integration.mjs e2e.mjs snapotter-integration.mjs agent-integration.mjs

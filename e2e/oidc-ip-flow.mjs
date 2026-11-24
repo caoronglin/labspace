@@ -1,55 +1,37 @@
-// 真实 OIDC 浏览器流程验证：门户 → Casdoor(IP:8090) → 登录 → 回调 → 已登录
+// 门户认证入口回归：本地口令登录 + 门户 OIDC discovery/JWKS 可用。
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE || 'http://127.0.0.1';
 const user = process.env.LAB_USER || 'student01';
 const pass = process.env.LAB_PASS;
-
 const b = await chromium.launch({ args: ['--no-sandbox'] });
 const ctx = await b.newContext({ locale: 'zh-CN' });
 const p = await ctx.newPage();
-const seen = [];
-p.on('request', (r) => {
-  const u = r.url();
-  if (u.includes('/login/oauth/authorize') || u.includes('/api/auth/callback') || u.includes('oauth/oidc/callback')) {
-    seen.push(u.split('?')[0]);
-  }
-});
 
 await p.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-await p.waitForTimeout(4000);
-console.log('  跳转后的地址:', p.url().split('?')[0]);
-console.log('  是否含域名 auth.lab.internal:', p.url().includes('auth.lab.internal'));
-console.log('  是否为 IP 授权端点:', p.url().includes(`${process.env.LAB_HOST || '127.0.0.1'}:8090/login/oauth/authorize`));
-
-// 在 Casdoor 登录页完成登录
-await p.waitForSelector('input[type="password"]', { timeout: 20000 });
-await p.locator('input[type="text"], input:not([type])').first().fill(user);
-await p.locator('input[type="password"]').first().fill(pass);
-await p.getByRole('button', { name: /登录|Login/ }).first().click();
-
-// 授权同意页（如出现）
-await p.waitForTimeout(3000);
-const consent = p.getByRole('button', { name: /授权|允许|同意|Authorize|Allow|Accept/ }).first();
-if (await consent.count()) {
-  await consent.click().catch(() => {});
-}
-await p.waitForTimeout(6000);
-
-const finalUrl = p.url();
+await p.waitForSelector('#username', { timeout: 20000 });
+await p.locator('#username').fill(user);
+await p.locator('#password').fill(pass);
+await p.locator('button.ant-btn-primary').first().click();
+await p.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 25000 }).catch(() => {});
+await p.waitForTimeout(2500);
 const body = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
 const loggedIn = /工作台|全部服务|我的收藏/.test(body);
-console.log('  最终地址:', finalUrl.split('?')[0]);
-console.log('  是否登录成功（页面含工作台/全部服务）:', loggedIn);
-console.log('  经过的关键端点:', [...new Set(seen)].join(' -> '));
-await p.screenshot({ path: '/opt/labspace/e2e/shots/oidc-ip-flow.png' });
+console.log('  最终地址:', p.url().split('?')[0]);
+console.log('  是否登录成功:', loggedIn);
 
-// 会话可用性检查
-const me = await p.evaluate(async () => {
-  const r = await fetch('/api/auth/me', { credentials: 'include' });
-  return { status: r.status, body: (await r.text()).slice(0, 120) };
+const disc = await p.evaluate(async () => {
+  const r = await fetch('/oidc/.well-known/openid-configuration');
+  return { status: r.status, body: await r.json() };
 });
-console.log('  /api/auth/me:', me.status, me.body);
-
+const jwks = await p.evaluate(async () => {
+  const r = await fetch('/oidc/.well-known/jwks.json');
+  return { status: r.status, body: await r.json() };
+});
+console.log('  discovery:', disc.status, disc.body.issuer);
+console.log('  JWKS:', jwks.status, jwks.body.keys?.[0]?.alg);
+await p.screenshot({ path: '/opt/labspace/e2e/shots/oidc-ip-flow.png' });
 await b.close();
-console.log(loggedIn && !seen.join(' ').includes('auth.lab.internal') ? '结果: OIDC 全程 IP 化 ✓' : '结果: 失败 ✗');
+const ok = loggedIn && disc.status === 200 && disc.body.issuer === `${BASE}/oidc` && jwks.status === 200 && jwks.body.keys?.[0]?.alg === 'RS256';
+console.log(ok ? '结果: 门户本地认证 + OIDC ✓' : '结果: 失败 ✗');
+process.exit(ok ? 0 : 1);

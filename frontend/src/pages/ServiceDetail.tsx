@@ -57,7 +57,7 @@ export default function ServiceDetail() {
   const open = () => {
     // 记录最近访问（真实数据，供首页“最近访问”使用）
     void api.touchRecent(service.id);
-    // 带 OIDC 的服务直接打开其登录启动端点，复用门户已建立的 Casdoor 会话
+    // 带 OIDC 的服务直接打开其登录启动端点，复用门户已建立的统一认证会话
     window.open(service.ssoUrl || service.url, '_blank', 'noopener');
   };
 

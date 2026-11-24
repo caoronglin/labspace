@@ -1,20 +1,7 @@
-"""一键登录（SSO）入口：按当前访问主机自适应切换第三方服务的 OIDC 配置。
+"""一键登录（SSO）兼容入口。
 
-门户支持两个入口主机：内网 ``192.0.2.10`` 与 Tailscale ``198.51.100.71``。
-门户自身与 Casdoor issuer 已按请求 Host 自适应，但第三方服务（生信实训、
-CropGenome 等）的 OIDC issuer 与回调地址是静态配置，需要在用户点击
-“一键登录”时按当前入口切换到同一个主机，保证远程用户也能免密进入。
-
-除了显式的一键登录，本模块还会**观测**来访客户端属于内网还是 Tailscale 网段，
-仅用于状态展示；**不会**因此自动重建第三方服务容器。自动跟随会带来真实故障：
-issuer 一翻转就要重建对应的服务容器（约 30 秒），期间直连该服务端口会命中
-docker-proxy 的 **502 Bad Gateway**，内网与 Tailscale 用户交替访问时就会反复出现。
-
-切换只发生在用户明确点击“一键登录”时（/api/sso/{id}/prepare）：
-宿主机侧改完配置会等容器 healthy 才返回登录地址，前端据此跳转。
-
-宿主机侧由 ``/opt/labspace/ops/oidc-sync.py``（systemd: lab-oidc-sync）
-执行切换，本模块只做编排与鉴权。
+Casdoor 与旧 OIDC 同步服务已下线；当前没有需要宿主机级切换的第三方服务。
+保留 /api/sso/status 与 /api/sso/{id}/prepare 供旧客户端探测，未知服务返回 404。
 """
 from __future__ import annotations
 

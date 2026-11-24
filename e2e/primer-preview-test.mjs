@@ -1,7 +1,7 @@
 // primer3 序列预览：长序列分段渲染、换行开关与内容一致性。
 import { launch, loginContext, BASE } from './_auth.mjs';
 
-const primerUrl = process.env.PRIMER_BASE || `${new URL(BASE).protocol}//${new URL(BASE).hostname}:8097`;
+const primerUrl = process.env.PRIMER_BASE || `${BASE}/apps/primer`;
 const sequence = ['>seq1_preview', ...Array.from({ length: 1004 }, () => 'ACGTACGTACGT')].join('\n');
 let pass = 0, fail = 0;
 const record = (name, ok, detail = '') => {
@@ -27,7 +27,7 @@ try {
     await p.locator('button.ant-btn-primary').first().click();
     await p.waitForTimeout(3500);
   }
-  record('门户会话进入 primer3', p.url().includes(':8097'), p.url().slice(0, 90));
+  record('门户会话进入 primer3 同源路径', p.url().includes('/apps/primer/'), p.url().slice(0, 90));
 
   await p.evaluate(() => { window.location.hash = '#/primer-design'; });
   await p.waitForTimeout(3500);

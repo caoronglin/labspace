@@ -279,7 +279,7 @@ const api = async (path, init = {}) => {
   // 不再自动跳 Casdoor。原来的「授权端点使用 IP」断言针对旧流程。
   record(
     '登录页使用门户本地认证（不自跳外部 IdP）',
-    authUrl.startsWith(`${BASE}/login`) || authUrl.startsWith(`${BASE}:8090/login/oauth/authorize`),
+    authUrl.startsWith(`${BASE}/login`),
     authUrl.split('?')[0],
   );
   try {

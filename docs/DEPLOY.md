@@ -9,7 +9,7 @@
 | 服务 | 端口 | 内网入口 | Tailscale 入口 |
 |---|---|---|---|
 | 门户（D509 工作台） | 80 | http://192.0.2.10/ | http://198.51.100.71/ |
-| 统一认证 Casdoor | 8090 | http://192.0.2.10:8090/ | http://198.51.100.71:8090/ |
+| 统一认证（门户） | 80 | http://192.0.2.10/login | http://198.51.100.71/login |
 | Open WebUI | 3000 | http://192.0.2.10:3000/ | http://198.51.100.71:3000/ |
 | Quantum 文件（唯一权威存储） | 8080 | http://192.0.2.10:8080/files/ | http://198.51.100.71:8080/files/ |
 | draw.io 绘图 | 8082 | http://192.0.2.10:8082/ | http://198.51.100.71:8082/ |
@@ -17,7 +17,8 @@
 | Linux 命令速查 | 8086 | http://192.0.2.10:8086/ | http://198.51.100.71:8086/ |
 | JBrowse 2 | 8091 | http://192.0.2.10:8091/ | http://198.51.100.71:8091/ |
 | SnapOtter 文件工坊 | 8092 | http://192.0.2.10:8092/ | http://198.51.100.71:8092/ |
-| 生物信息学实习实训平台 | 8102 | http://192.0.2.10:8102/ | http://198.51.100.71:8102/ |
+| 生物信息学实习实训平台 | 80 | http://192.0.2.10/apps/bioinfo/ | http://198.51.100.71/apps/bioinfo/ |
+| 引物设计 Primer3 | 80 | http://192.0.2.10/apps/primer/ | http://198.51.100.71/apps/primer/ |
 
 要点：
 
@@ -26,8 +27,7 @@
 - nftables 对 `tailscale0` 接口整体放行，平台端口集合 `svc_ports` 同时含 `100.64.0.0/10`。
 - **改监听地址必须 `systemctl restart nginx`**：`reload` 不会改绑 socket
   （生信平台 8102 早期只绑 `192.0.2.10`，导致 Tailscale 访问 000）。
-- OIDC issuer 随入口自动切换：Casdoor 按请求 Host 回显；Open WebUI / Quantum 由
-  `lab-oidc-sync` 按来访客户端网段改写 issuer（见 4.3）。
+- 认证已收口到门户自身：账号口令在 `/login` 校验；生信与 Primer3 使用门户 OIDC Provider。Casdoor 与 `lab-oidc-sync` 已下线。
 
 ## 0. 内网 DNS（可选但推荐）
 
@@ -42,30 +42,20 @@ systemctl enable --now dnsmasq
 Docker 容器解析内网主机名：daemon.json 已设置 `"dns": ["192.0.2.10","192.0.2.1"]`，
 **新建**的容器会自动生效；早于该设置创建的容器需重建或手工写 `/etc/hosts`。
 
-## 1. Casdoor（统一身份源）
+## 1. 门户统一认证
 
 ```bash
 cd /opt/labspace/deploy
-docker compose up -d casdoor
-# Casdoor 以 IP 专属端口对外（8090），授权地址不含域名，容器/客户端均无需 DNS
-# 注意：不再配置任何 *.lab.internal 域名，全部走 192.0.2.10 + 端口
+# 账号数据库沿用原 Casdoor PostgreSQL 库（容器已下线、数据保留）
+docker compose up -d lab-postgres
+docker compose build backend && docker compose up -d backend
+curl -fsS http://127.0.0.1:8088/api/health
 ```
 
-初始化（组织/组/应用/用户，见 `lab-casdoor-init`）：
-
-```bash
-lab-casdoor-init            # 幂等；管理员口令写入 /etc/labspace/casdoor-admin.txt
-```
-Casdoor 使用 beego `app.conf`，Postgres 连接串通过**同名环境变量**覆盖（`driverName` / `dataSourceName` / `dbName`），
-注意 `dataSourceName` 必须自带 `dbname=casdoor`（Casdoor 不会为 postgres 追加库名）。
-
-已注册的 OIDC 客户端：
-
-| client_id | 用途 | 回调地址 |
-| --- | --- | --- |
-| `labspace` | LabSpace 门户 | `http://192.0.2.10/api/auth/callback` |
-| `openwebui` | Open WebUI | `http://192.0.2.10:3000/oauth/oidc/callback` |
-| `quantum` | FileBrowser Quantum | `http://192.0.2.10:8080/files/api/auth/oidc/callback` |
+- 登录：`POST /api/auth/login-direct`（账号 + 口令，bcrypt）。
+- 会话：门户自签 HS256 JWT，HttpOnly + SameSite=Lax Cookie。
+- 内网服务 SSO：Go OIDC Provider，`/oidc/.well-known/openid-configuration`。
+- 原 Casdoor 容器、8090 监听与 `lab-oidc-sync` 均已移除；不要重新启动。
 
 ## 2. LabSpace 后端
 
@@ -76,9 +66,9 @@ docker compose build backend && docker compose up -d backend
 curl -fsS http://127.0.0.1:8088/api/health
 ```
 
-`.env` 关键项：`LABSPACE_ISSUER`（Casdoor issuer）、`LABSPACE_CLIENT_ID/SECRET`、
-`LABSPACE_REDIRECT_URI`、`LABSPACE_SESSION_SECRET`（`openssl rand -hex 32`）、
-`LABSPACE_DB_DSN`（`postgresql://labspace:<pwd>@lab-postgres:5432/labspace`）。
+`.env` 关键项：`LABSPACE_SESSION_SECRET`（`openssl rand -hex 32`）、
+`LABSPACE_DB_DSN`（`postgresql://labspace:<pwd>@lab-postgres:5432/labspace`）、
+`CASDOOR_DB_*`（沿用账号数据库连接；名称保留是为了兼容既有数据）。
 
 ## 3. 前端
 
@@ -220,7 +210,7 @@ curl -s -X POST http://172.28.0.1:8111/sync \
 > - 服务只监听 `172.28.0.1:8111`（docker 网桥），外部无法直连；调用方是门户后端。
 > - Open WebUI 的真值是容器环境变量（`/opt/lab-core-stack/.env`），Quantum 是
 >   `/etc/lab-quantum/quantum.env`；两者改动后**必须重建容器**（Quantum 不支持热加载）。
-> - 切换会自动把新的回调地址登记进 Casdoor `application.redirect_uris`（幂等）。
+> - 同源回调路径由门户 OIDC Provider 白名单校验，不再需要改写第三方应用配置。
 > - 每次切换会重建容器（约 10~30 秒），期间服务短暂不可用。
 
 ## 5. Nginx
@@ -248,7 +238,7 @@ antd info Button     # 组件 Props/Token 速查（离线）
 
 ```bash
 cd /opt/labspace/e2e
-export LAB_PASS='<casdoor 口令>'      # 不带这个变量，登录会静默失败、断言全红
+export LAB_PASS='<门户账号口令>'      # 不带这个变量，登录会静默失败、断言全红
 node e2e.mjs                          # 浏览器端到端 + 截图
 node api-integration.mjs              # API 集成体检（含 SnapOtter 与统一语料断言）
 node snapotter-integration.mjs        # 文件工坊全链路（含真实图片处理）
@@ -259,7 +249,7 @@ node i18n-full.mjs                    # 全站中文化
 ./run-regression.sh                    # 或者一键跑全部 16 个脚本
 node oidc-multi.mjs                   # LAN / Tailscale 双入口 OIDC
 curl -sI http://192.0.2.10/ | head -1
-for p in 80 8090 3000 8080 8082 8084 8086 8091 8092; do
+for p in 80 8082 8086 8091 8092; do
   printf ":%-5s " $p; curl -s -o /dev/null -w "%{http_code}\n" http://192.0.2.10:$p/
 done
 ```

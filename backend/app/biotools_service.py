@@ -42,4 +42,4 @@ app.include_router(biotools.router)
 @app.get("/health", include_in_schema=False)
 async def health() -> dict[str, Any]:
     """探活：nginx / compose healthcheck 用，不触发任何计算。"""
-    return {"ok": True, "service": "biotools", "version": "1.0.0"}
+    return {"ok": True, "service": "biotools", "version": "2026.11.24"}

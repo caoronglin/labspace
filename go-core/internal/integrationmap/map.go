@@ -4,7 +4,7 @@ type Binding struct{ ID, Surface, Owner, Mode, Status, Contract string }
 
 func All() []Binding {
 	return []Binding{
-		{"portal-auth", "/api/auth/*", "Casdoor + existing session gateway", "preserve", "existing", "OIDC code+PKCE; labspace_session; double-submit CSRF"},
+		{"portal-auth", "/api/auth/*", "Portal native auth + OIDC provider", "preserve", "existing", "OIDC code+PKCE; labspace_session; double-submit CSRF"},
 		{"portal-catalog", "/api/services/*", "Go catalog + configured health probes", "adapter", "partial", "existing service IDs and host-adaptive URLs"},
 		{"portal-search", "/api/search*", "Go aggregator + SearXNG + research API", "adapter", "planned", "keep source labels, type caps, ranking and fallback"},
 		{"plant-db", "/api/databases/*", "existing curated catalog + 32 research adapters", "preserve", "existing", "import real catalog and provider schemas"},

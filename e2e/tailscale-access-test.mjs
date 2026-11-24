@@ -43,13 +43,13 @@ const PASS = process.env.LAB_PASS;
 
   // 3) 生信平台入口经 Tailscale（跨端口，浏览器会拦 CORS，改用 Node 侧直连）
   let bio = 'ERR';
-  try { const rr = await fetch(`${BASE}:8102/api/v1/health`); bio = rr.status + ' ' + (await rr.text()).slice(0,60); } catch (e) { bio = 'ERR ' + e.message; }
-  ok('生信实训平台 8102 经 Tailscale 可达', bio.startsWith('200'), bio);
+  try { const rr = await fetch(`${BASE}/apps/bioinfo/api/v1/health`); bio = rr.status + ' ' + (await rr.text()).slice(0,60); } catch (e) { bio = 'ERR ' + e.message; }
+  ok('生信实训平台同源路径经 Tailscale 可达', bio.startsWith('200'), bio);
 
   // 4) OIDC 统一认证经 Tailscale
   let auth = 'ERR';
-  try { const rr = await fetch(`${BASE}:8090/login/oauth/authorize?client_id=app-labspace&response_type=code&redirect_uri=` + encodeURIComponent(BASE + '/api/auth/callback') + '&state=t&scope=openid+profile+email', { redirect: 'manual' }); auth = 'HTTP ' + rr.status; } catch (e) { auth = 'ERR ' + e.message; }
-  ok('Casdoor 统一认证 8090 经 Tailscale 可达', auth.includes('302') || auth.includes('200'), auth);
+  try { const rr = await fetch(`${BASE}/oidc/.well-known/openid-configuration`); auth = 'HTTP ' + rr.status + ' ' + (await rr.text()).slice(0,80); } catch (e) { auth = 'ERR ' + e.message; }
+  ok('门户 OIDC 经 Tailscale 可达', auth.includes('HTTP 200'), auth);
 
   await b.close();
   console.log(fails.length ? `\n失败 ${fails.length} 项: ${fails.join('; ')}` : '\n全部通过');

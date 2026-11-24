@@ -1,5 +1,5 @@
 // Package httpapi exposes a signed internal API. It is an incremental bridge
-// behind an existing Casdoor/CSRF gateway, not a public authentication server.
+// behind the portal auth/CSRF gateway, not a public authentication server.
 package httpapi
 
 import (
