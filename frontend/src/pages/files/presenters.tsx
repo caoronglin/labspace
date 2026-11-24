@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Flex, Space, Table, Tag, Typography } from 'antd';
-import { extOf, fileVisual, isImageFile } from '../../components/files/fileMeta';
+import { extOf, fileVisual, isCodeFile, isImageFile } from '../../components/files/fileMeta';
 import type { FileEntry, FilePreview, FileSortKey, FileSource } from '../../services/api';
 
 /**
@@ -92,7 +92,13 @@ function CodePreview({
   truncated?: boolean;
 }) {
   const [wrap, setWrap] = useState(false);
+  const [copied, setCopied] = useState(false);
   const lines = useMemo(() => text.split('\n'), [text]);
+  // 服务端最多返回 60k 字符，极端情况可能有 6 万行；一次渲染全部行会
+  // 产生数万个 DOM 节点。按 1000 行分段显示，复制仍包含完整预览文本。
+  const [visibleLines, setVisibleLines] = useState(1000);
+  useEffect(() => setVisibleLines(1000), [text]);
+  const rendered = lines.slice(0, visibleLines);
   return (
     <Flex vertical gap={8}>
       <Flex justify="space-between" align="center" gap={8}>
@@ -105,11 +111,17 @@ function CodePreview({
           </Button>
           <Button
             size="small"
-            onClick={() => {
-              void navigator.clipboard?.writeText(text);
+            onClick={async () => {
+              try {
+                await navigator.clipboard?.writeText(text);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch {
+                /* 非安全上下文或用户拒绝剪贴板权限时静默忽略 */
+              }
             }}
           >
-            复制
+            {copied ? '已复制' : '复制'}
           </Button>
         </Space>
       </Flex>
@@ -127,7 +139,7 @@ function CodePreview({
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         }}
       >
-        {lines.map((line, i) => (
+        {rendered.map((line, i) => (
           <div key={i} style={{ display: 'flex', gap: 12 }}>
             <span
               style={{
@@ -143,6 +155,14 @@ function CodePreview({
           </div>
         ))}
       </pre>
+      {visibleLines < lines.length ? (
+        <Button
+          block
+          onClick={() => setVisibleLines((n) => Math.min(n + 1000, lines.length))}
+        >
+          显示后续 {Math.min(1000, lines.length - visibleLines)} 行（剩余 {lines.length - visibleLines} 行）
+        </Button>
+      ) : null}
     </Flex>
   );
 }
@@ -343,7 +363,9 @@ const BIO_PREVIEW_EXTS = new Set([
 export function preferNativePreview(name: string | undefined): boolean {
   if (!name) return false;
   const ext = name.toLowerCase().split('.').pop() ?? '';
-  return BIO_PREVIEW_EXTS.has(ext);
+  // 源码走门户原生 CodePreview（行号 / 换行 / 复制 / 分段渲染），
+  // 不再先交给第三方 OFV；生信格式仍走后端结构化解析。
+  return BIO_PREVIEW_EXTS.has(ext) || isCodeFile(name);
 }
 
 /** 把 Go 核心的英文拒绝原因翻译成界面用语，避免只剩一个裸状态码。 */

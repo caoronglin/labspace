@@ -35,6 +35,14 @@ const CODE_EXTS = new Set([
   'py', 'js', 'ts', 'tsx', 'jsx', 'go', 'rs', 'sh', 'bash', 'json', 'yaml', 'yml',
   'toml', 'c', 'cpp', 'h', 'hpp', 'java', 'r', 'sql', 'html', 'css',
 ]);
+// 与 Go preview.codeLang 对齐的源码扩展名；json/yaml 等文本配置不走源码预览。
+const SOURCE_CODE_EXTS = new Set([
+  'py', 'ipynb', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'go', 'rs', 'java',
+  'c', 'h', 'cpp', 'hpp', 'cs', 'rb', 'php', 'sh', 'bash', 'zsh', 'ps1',
+  'sql', 'css', 'scss', 'html', 'vue', 'toml', 'ini', 'cfg', 'conf',
+  'dockerfile', 'mk', 'lua', 'r', 'pl', 'kt', 'swift', 'scala',
+]);
+const SOURCE_CODE_NAMES = new Set(['dockerfile', 'makefile', 'cmakelists.txt', 'pyproject.toml']);
 const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm']);
 const AUDIO_EXTS = new Set(['mp3', 'wav', 'flac', 'ogg', 'm4a']);
 const BIO_EXTS = new Set([...GENOME_EXTS, 'fastq', 'fq', 'bam', 'sam', 'pdb', 'gb', 'gbk', 'genbank']);
@@ -72,11 +80,17 @@ export function fileVisual(name: string, dir: boolean): FileVisual {
   return { icon: <FileOutlined />, color: '#64748B' };
 }
 
-/** 是否为可在浏览器里直接编辑的纯文本文件（无扩展名的文件不算）。 */
+/** 是否为可在线编辑的纯文本文件（无扩展名的文件不算）。 */
 export function isTextEditable(name: string): boolean {
   const ext = extOf(name);
   if (!ext) return false;
   return TEXT_EDITABLE_EXTS.has(ext);
+}
+
+/** 是否为源码文件：门户原生代码预览（行号 / 换行 / 复制 / 分段渲染）优先。 */
+export function isCodeFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return SOURCE_CODE_NAMES.has(lower) || SOURCE_CODE_EXTS.has(extOf(lower));
 }
 
 /** 是否为图片（有缩略图）。 */

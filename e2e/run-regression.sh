@@ -22,6 +22,7 @@ ALL=(api-integration.mjs e2e.mjs snapotter-integration.mjs agent-integration.mjs
      agent-admin-config-test.mjs agent-quota-test.mjs
      catalog-parity.mjs workbench-parity.mjs go-next-api.mjs
      recent-test.mjs translate-test.mjs code-preview-test.mjs
+     code-preview-long-test.mjs bioinfo-preview-test.mjs primer-preview-test.mjs
      help-center-test.mjs sider-collapse-test.mjs pubscholar-test.mjs
      oidc-portal-test.mjs oidc-ip-flow.mjs drawio-ip.mjs
      ports-test.mjs network-ports.mjs perf3.mjs)

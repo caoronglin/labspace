@@ -1,10 +1,11 @@
 // 代码预览端到端：上传源码 → API kind=code 契约 → UI 弹窗渲染代码。
 //
-// UI 的预览弹窗优先走 Open File Viewer（第三方，能渲染常见文本/代码格式），
-// 后端 kind=code 是它的回落层（OFV 不支持的格式 + 大文件服务端 60k 截断）。
-// 本用例两条都覆盖：
-//   1. API：/api/files/{id}/preview 必须返回 kind=code + language + lines（labgo）；
-//   2. UI ：单击文件名弹窗必须渲染出代码内容与行号（OFV 或回落层皆可）。
+// 源码文件优先走门户原生 CodePreview（行号 / 换行 / 复制 / 分段渲染）；
+// Open File Viewer 仅处理图片、Office、PDF 等非源码格式。
+// 本用例覆盖：
+//   1. API：/api/files/{id}/preview 返回 kind=code + language + lines（labgo）；
+//   2. UI ：单击文件名弹窗渲染代码与行号；
+//   3. 长文件分段渲染由 code-preview-long-test.mjs 覆盖。
 // 测试文件自建自删（overwrite=1 幂等），不依赖共享区已有数据。
 import { launch, loginContext, BASE } from './_auth.mjs';
 
@@ -77,7 +78,11 @@ try {
   const modalText = (await modal.innerText().catch(() => '')).replace(/\s+/g, ' ');
   record('弹窗标题为文件名', await modal.count() > 0 && modalText.includes(FILE_NAME));
   record('弹窗渲染代码内容', modalText.includes('def greet') && modalText.includes('hello {name}'));
-  record('弹窗含行号序列', /(^| )1 2 3 4 5/.test(modalText) || />\s*1\s*2\s*3/.test(modalText));
+  const codeRows = modal.locator('pre > div');
+  await codeRows.first().waitFor({ state: 'attached', timeout: 10000 });
+  const firstLineNo = await codeRows.first().locator('span').first().textContent().catch(() => '');
+  record('弹窗含行号序列', await codeRows.count() === 10 && firstLineNo?.trim() === '1',
+    `rows=${await codeRows.count()} first=${firstLineNo}`);
   await p.screenshot({ path: new URL('./shots/', import.meta.url).pathname + 'code-preview.png', fullPage: false });
 
   // 5) 清理测试文件（DELETE 走 CSRF）
