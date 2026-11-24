@@ -327,6 +327,18 @@ function Metric({
   );
 }
 
+function serviceDotClass(status?: string): string {
+  if (status === "up") return "d509-dot d509-dot-up d509-pulse";
+  if (status === "down") return "d509-dot d509-dot-down";
+  return "d509-dot d509-dot-unknown";
+}
+
+function serviceHealthText(status?: string): string {
+  if (status === "up") return "服务正常";
+  if (status === "down") return "服务不可用";
+  return "状态未知";
+}
+
 /** 首页服务卡：两行名称截断 + 分类 Tag + 状态点，悬停上浮 2px */
 function ServiceTile({
   service,
@@ -341,31 +353,13 @@ function ServiceTile({
   const [hover, setHover] = useState(false);
   const status = service.health?.status;
   const accent = CATEGORY_ACCENT[service.category] ?? tokens.colorPrimary;
-  const dotClass =
-    status === "up"
-      ? "d509-dot d509-dot-up d509-pulse"
-      : status === "down"
-        ? "d509-dot d509-dot-down"
-        : "d509-dot d509-dot-unknown";
+  const dotClass = serviceDotClass(status);
 
   return (
     <div
       className="lab-service-card"
-      role="button"
-      tabIndex={0}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => {
-        void api.touchRecent(service.id);
-        navigate(serviceTarget(service));
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          void api.touchRecent(service.id);
-          navigate(serviceTarget(service));
-        }
-      }}
       style={{
         position: "relative",
         overflow: "hidden",
@@ -381,8 +375,23 @@ function ServiceTile({
         cursor: "pointer",
       }}
     >
+      <button
+        type="button"
+        aria-label={`打开${service.name}`}
+        onClick={() => {
+          void api.touchRecent(service.id);
+          navigate(serviceTarget(service));
+        }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          border: 0,
+          background: "transparent",
+          cursor: "pointer",
+        }}
+      />
       <span
-        aria-hidden
         style={{
           position: "absolute",
           left: 0,
@@ -394,7 +403,7 @@ function ServiceTile({
           transition: "opacity 0.2s ease",
         }}
       />
-      <div style={{ padding: "14px 14px 12px 17px" }}>
+      <div style={{ padding: "14px 14px 12px 17px", position: "relative", zIndex: 2, pointerEvents: "none" }}>
         <Flex gap={10} align="flex-start">
           <span
             className="d509-icon"
@@ -429,6 +438,7 @@ function ServiceTile({
                 <Button
                   type="text"
                   size="small"
+                  style={{ position: "relative", zIndex: 3, pointerEvents: "auto" }}
                   icon={
                     favorited ? (
                       <StarFilled style={{ color: tokens.colorWarning }} />
@@ -452,15 +462,7 @@ function ServiceTile({
               >
                 {CATEGORY_LABEL[service.category] ?? service.category}
               </Tag>
-              <Tooltip
-                title={
-                  status === "up"
-                    ? "服务正常"
-                    : status === "down"
-                      ? "服务不可用"
-                      : "状态未知"
-                }
-              >
+              <Tooltip title={serviceHealthText(status)}>
                 <span className={dotClass} />
               </Tooltip>
             </Flex>
@@ -596,8 +598,7 @@ export default function Home() {
     ...(wb?.today?.dueToday ?? []),
   ].slice(0, 2);
 
-  const dotClass = (status?: string) =>
-    `d509-dot ${status === "up" ? "d509-dot-up" : status === "down" ? "d509-dot-down" : "d509-dot-unknown"}`;
+  const dotClass = serviceDotClass;
 
   /** 仅允许站内路径或 http(s) 链接，避免跳转异常地址。 */
   const openSearchHit = (url: string) => {
@@ -627,6 +628,102 @@ export default function Home() {
 
   const latestAnn = annData?.announcements?.[0];
   const cur = todayWeather?.current;
+
+  const renderSearchSuggestions = () => {
+    if (q.trim().length < 2) return null;
+    if (searching) {
+      return (
+        <Flex gap={10} align="center" style={{ marginTop: 6, minHeight: 22, overflow: "hidden" }}>
+          <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>检索中…</Typography.Text>
+        </Flex>
+      );
+    }
+    if ((searchData?.results?.length ?? 0) === 0) {
+      return (
+        <Flex gap={10} align="center" style={{ marginTop: 6, minHeight: 22, overflow: "hidden" }}>
+          <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>没有匹配结果</Typography.Text>
+        </Flex>
+      );
+    }
+    return (
+      <Flex gap={10} align="center" style={{ marginTop: 6, minHeight: 22, overflow: "hidden" }}>
+        <Typography.Text type="secondary" style={{ fontSize: 11.5, flexShrink: 0 }}>
+          共 {searchData?.results?.length} 条
+        </Typography.Text>
+        {suggestions.slice(0, 3).map((r, i) => (
+          <button
+            key={`${r.url || r.path}-${i}`}
+            type="button"
+            onClick={() => openSearchHit(r.url || r.path || "")}
+            style={{
+              border: 0,
+              background: "transparent",
+              padding: 0,
+              cursor: "pointer",
+              fontSize: 12,
+              color: "var(--hero-accent)",
+              maxWidth: 150,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            {r.title}
+          </button>
+        ))}
+        <Typography.Link
+          onClick={() => navigate(`/search?q=${encodeURIComponent(q.trim())}`)}
+          style={{ fontSize: 11.5, flexShrink: 0, whiteSpace: "nowrap" }}
+        >
+          查看全部 <ArrowRightOutlined style={{ fontSize: 10 }} />
+        </Typography.Link>
+      </Flex>
+    );
+  };
+
+  const renderServices = () => {
+    if (error && services.length === 0) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          title="服务列表加载失败"
+          description={error instanceof Error ? error.message : "请稍后重试"}
+          action={<Button size="small" onClick={() => void refetch()}>重试</Button>}
+        />
+      );
+    }
+    if (isLoading && services.length === 0) {
+      return (
+        <Row gutter={[14, 14]}>
+          {Array.from({ length: HOME_SERVICE_COUNT }).map((_, i) => (
+            <Col key={i} xs={24} sm={12} lg={8}>
+              <Card size="small" styles={{ body: { padding: 16 } }}>
+                <Skeleton active title={{ width: "52%" }} paragraph={{ rows: 1, width: ["80%", "45%"] }} />
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      );
+    }
+    if (homeServices.length === 0) {
+      return <Card size="small"><Empty description="暂无可用服务" /></Card>;
+    }
+    return (
+      <Row gutter={[14, 14]}>
+        {homeServices.map((s) => (
+          <Col key={s.id} xs={24} sm={12} lg={8}>
+            <ServiceTile
+              service={s}
+              favorited={favorites.has(s.id)}
+              onToggleFavorite={(id) => favMutation.mutate({ id, on: !favorites.has(id) })}
+            />
+          </Col>
+        ))}
+      </Row>
+    );
+  };
 
   return (
     <Flex vertical gap={18} className="d509-enter">
@@ -704,11 +801,11 @@ export default function Home() {
                     <span className="d509-hero-weather-icon" aria-hidden>
                       {weatherGlyph(cur.code)}
                     </span>
-                    {cur.temperature != null ? (
+                    {cur.temperature == null ? null : (
                       <span className="d509-hero-weather-temp">
                         {Math.round(cur.temperature)}°C
                       </span>
-                    ) : null}
+                    )}
                     <span className="d509-hero-weather-desc">
                       {cur.description}
                     </span>
@@ -747,72 +844,7 @@ export default function Home() {
                 style={{ width: "100%", maxWidth: 560 }}
               />
               {/* 实时建议（api.search）：固定单行，避免挤压 Hero 高度 */}
-              {q.trim().length >= 2 ? (
-                <Flex
-                  gap={10}
-                  align="center"
-                  style={{ marginTop: 6, minHeight: 22, overflow: "hidden" }}
-                >
-                  {searching ? (
-                    <Typography.Text
-                      type="secondary"
-                      style={{ fontSize: 11.5 }}
-                    >
-                      检索中…
-                    </Typography.Text>
-                  ) : (searchData?.results?.length ?? 0) > 0 ? (
-                    <>
-                      <Typography.Text
-                        type="secondary"
-                        style={{ fontSize: 11.5, flexShrink: 0 }}
-                      >
-                        共 {searchData?.results?.length} 条
-                      </Typography.Text>
-                      {suggestions.slice(0, 3).map((r, i) => (
-                        <button
-                          key={`${r.url || r.path}-${i}`}
-                          type="button"
-                          onClick={() => openSearchHit(r.url || r.path || "")}
-                          style={{
-                            border: 0,
-                            background: "transparent",
-                            padding: 0,
-                            cursor: "pointer",
-                            fontSize: 12,
-                            color: "var(--hero-accent)",
-                            maxWidth: 150,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {r.title}
-                        </button>
-                      ))}
-                      <Typography.Link
-                        onClick={() =>
-                          navigate(`/search?q=${encodeURIComponent(q.trim())}`)
-                        }
-                        style={{
-                          fontSize: 11.5,
-                          flexShrink: 0,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        查看全部 <ArrowRightOutlined style={{ fontSize: 10 }} />
-                      </Typography.Link>
-                    </>
-                  ) : (
-                    <Typography.Text
-                      type="secondary"
-                      style={{ fontSize: 11.5 }}
-                    >
-                      没有匹配结果
-                    </Typography.Text>
-                  )}
-                </Flex>
-              ) : null}
+              {renderSearchSuggestions()}
             </div>
           </Col>
 
@@ -964,18 +996,11 @@ export default function Home() {
           data-tour="quick"
         >
           {QUICK_ENTRIES.map((it) => (
-            <div
+            <button
               key={it.key}
+              type="button"
               className="d509-tile"
-              role="button"
-              tabIndex={0}
               onClick={() => navigate(it.path)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  navigate(it.path);
-                }
-              }}
             >
               <span
                 className="d509-icon"
@@ -990,17 +1015,15 @@ export default function Home() {
               >
                 {it.icon}
               </span>
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.25 }}
-                >
+              <span style={{ minWidth: 0, textAlign: "left" }}>
+                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, lineHeight: 1.25 }}>
                   {it.label}
-                </div>
+                </span>
                 <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
                   {it.desc}
                 </Typography.Text>
-              </div>
-            </div>
+              </span>
+            </button>
           ))}
         </div>
       </section>
@@ -1024,53 +1047,7 @@ export default function Home() {
               </Flex>
             </Flex>
 
-            {error && services.length === 0 ? (
-              <Alert
-                type="error"
-                showIcon
-                title="服务列表加载失败"
-                description={
-                  error instanceof Error ? error.message : "请稍后重试"
-                }
-                action={
-                  <Button size="small" onClick={() => void refetch()}>
-                    重试
-                  </Button>
-                }
-              />
-            ) : isLoading && services.length === 0 ? (
-              <Row gutter={[14, 14]}>
-                {Array.from({ length: HOME_SERVICE_COUNT }).map((_, i) => (
-                  <Col key={i} xs={24} sm={12} lg={8}>
-                    <Card size="small" styles={{ body: { padding: 16 } }}>
-                      <Skeleton
-                        active
-                        title={{ width: "52%" }}
-                        paragraph={{ rows: 1, width: ["80%", "45%"] }}
-                      />
-                    </Card>
-                  </Col>
-                ))}
-              </Row>
-            ) : homeServices.length === 0 ? (
-              <Card size="small">
-                <Empty description="暂无可用服务" />
-              </Card>
-            ) : (
-              <Row gutter={[14, 14]}>
-                {homeServices.map((s) => (
-                  <Col key={s.id} xs={24} sm={12} lg={8}>
-                    <ServiceTile
-                      service={s}
-                      favorited={favorites.has(s.id)}
-                      onToggleFavorite={(id) =>
-                        favMutation.mutate({ id, on: !favorites.has(id) })
-                      }
-                    />
-                  </Col>
-                ))}
-              </Row>
-            )}
+            {renderServices()}
           </section>
         </Col>
 
@@ -1319,12 +1296,6 @@ export default function Home() {
             style={{ fontSize: 12.5 }}
           >
             文件共享
-          </Typography.Link>
-          <Typography.Link
-            onClick={() => navigate("/agent?mode=kb")}
-            style={{ fontSize: 12.5 }}
-          >
-            Agent 与知识库
           </Typography.Link>
         </Flex>
       </Flex>

@@ -56,6 +56,47 @@ try {
   const autoOpen = await openCount();
   record('进入子菜单页面自动展开所属项', autoOpen >= 1, `展开数=${autoOpen}`);
 
+  // 桌面折叠悬浮：子弹菜单挂在侧栏外壳内，鼠标移入弹层不会让侧栏重新折叠。
+  await p.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.mouse.move(800, 200);
+  await p.waitForTimeout(300);
+  await p.locator('.d509-sider-shell').hover({ position: { x: 34, y: 240 } });
+  await p.locator('.ant-layout-sider-collapsed').waitFor({ state: 'detached', timeout: 10000 });
+  await p.locator('.ant-menu-submenu-title[aria-expanded="false"]').first().click();
+  const inlineLink = p.locator('.ant-menu-submenu-open a').first();
+  await inlineLink.waitFor({ state: 'visible', timeout: 10000 });
+  const inlineHref = await inlineLink.getAttribute('href');
+  let inlineClicked = false;
+  if (inlineHref) {
+    await inlineLink.click();
+    await p.waitForURL(u => u.pathname === inlineHref, { timeout: 10000 });
+    inlineClicked = new URL(p.url()).pathname === inlineHref;
+  }
+  record('桌面折叠悬浮后可点击子菜单项', inlineClicked, inlineHref || '未找到子菜单链接');
+
+  // 移动端 Drawer 不能复用桌面折叠守卫，否则 onOpenChange 全被忽略。
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await p.waitForTimeout(800);
+  await p.getByRole('button', { name: '打开导航菜单' }).click();
+  await p.locator('.ant-drawer-content-wrapper').waitFor({ state: 'visible' });
+  const mobileTitles = p.locator('.ant-drawer-content-wrapper .ant-menu-submenu-title');
+  record('移动端抽屉显示子菜单', (await mobileTitles.count()) >= 2, `子菜单 ${await mobileTitles.count()} 个`);
+  await mobileTitles.first().click();
+  await p.waitForTimeout(300);
+  record('移动端子菜单可展开', (await p.locator('.ant-drawer-content-wrapper .ant-menu-submenu-open').count()) >= 1);
+  const mobileLink = p.locator('.ant-drawer-content-wrapper .ant-menu-submenu-open a').first();
+  const mobileHref = await mobileLink.getAttribute('href');
+  let mobileClicked = false;
+  if (mobileHref) {
+    await mobileLink.click();
+    await p.waitForURL(u => u.pathname === mobileHref, { timeout: 10000 });
+    await p.locator('.ant-drawer-content-wrapper').waitFor({ state: 'hidden', timeout: 10000 });
+    mobileClicked = new URL(p.url()).pathname === mobileHref;
+  }
+  record('移动端子菜单可跳转并关闭抽屉', mobileClicked, mobileHref || '未找到子菜单链接');
+
   await p.screenshot({ path: new URL('./shots/', import.meta.url).pathname + 'sider-collapse.png', fullPage: false });
 } finally {
   await b.close();

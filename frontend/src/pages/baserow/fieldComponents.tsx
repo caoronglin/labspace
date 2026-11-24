@@ -561,11 +561,9 @@ function LinkRowField({
     <Select
       mode="multiple"
       allowClear
-      showSearch
+      showSearch={{ onSearch: setKeyword, filterOption: false }}
       value={selected}
       onChange={(v) => onChange?.(v)}
-      onSearch={setKeyword}
-      filterOption={false}
       loading={query.isFetching}
       placeholder="搜索并选择关联行"
       options={options}
@@ -751,7 +749,21 @@ export function FieldControl({
         <Select
           mode="multiple"
           allowClear
-          showSearch
+          showSearch={{
+            filterOption: (input, option) => {
+              const p = peopleByRow.get(Number(option?.value));
+              const haystack = [
+                p?.displayName,
+                p?.name,
+                p?.email,
+                ...(p?.groups ?? []),
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+              return haystack.includes(input.trim().toLowerCase());
+            },
+          }}
           value={selected}
           onChange={(v) => onChange?.(v)}
           loading={false}
@@ -775,19 +787,6 @@ export function FieldControl({
                 ) : null}
               </Flex>
             );
-          }}
-          filterOption={(input, option) => {
-            const p = peopleByRow.get(Number(option?.value));
-            const haystack = [
-              p?.displayName,
-              p?.name,
-              p?.email,
-              ...(p?.groups ?? []),
-            ]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase();
-            return haystack.includes(input.trim().toLowerCase());
           }}
         />
       );

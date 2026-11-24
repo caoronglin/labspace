@@ -642,9 +642,10 @@ export default function BioTools() {
                   <Upload
                     accept={tool.upload.accept}
                     maxCount={1}
-                    beforeUpload={(f) => {
-                      setFile(f);
-                      return false;
+                    beforeUpload={() => false}
+                    onChange={({ fileList }) => {
+                      const next = fileList[0]?.originFileObj as File | undefined;
+                      setFile(next ?? null);
                     }}
                     onRemove={() => setFile(null)}
                     fileList={file ? [{ uid: '1', name: file.name, size: file.size }] : []}

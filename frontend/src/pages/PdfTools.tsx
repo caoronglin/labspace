@@ -399,6 +399,48 @@ export default function PdfTools() {
 
   const disabled = files.filter((f) => f.originFileObj).length === 0 || run.isPending;
 
+  const renderResult = () => {
+    if (run.isPending) {
+      return (
+        <Flex vertical gap={12} align="center" style={{ padding: '48px 0' }}>
+          <Spin />
+          <Typography.Text type="secondary">正在本机处理，请稍候…</Typography.Text>
+        </Flex>
+      );
+    }
+    if (result) {
+      return (
+        <Flex vertical gap={12}>
+          <Alert
+            type="success"
+            showIcon
+            title="处理完成"
+            description="文件已在本机生成，未上传到任何外部服务。"
+          />
+          <Flex gap={10} align="center" wrap>
+            <Tag color="green" icon={<FilePdfOutlined />}>{result.name}</Tag>
+            <Button type="primary" icon={<DownloadOutlined />} href={result.url} download={result.name}>
+              下载
+            </Button>
+            <Button onClick={() => setResult(null)}>继续处理</Button>
+          </Flex>
+        </Flex>
+      );
+    }
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="选好操作与文件后点「执行」，结果会出现在这里"
+      >
+        <Space orientation="vertical" size={4} align="center">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            转换由 Stirling PDF 在本机执行：子进程并发数、单任务超时与上传体积都已设上限。
+          </Typography.Text>
+        </Space>
+      </Empty>
+    );
+  };
+
   return (
     <PageShell
       title="PDF 工具箱"
@@ -447,22 +489,22 @@ export default function PdfTools() {
               }}
               onFinish={(v) => run.mutate(v)}
             >
-              {(current.fields ?? []).map((f) => (
-                <Form.Item
-                  key={f.name}
-                  label={f.label}
-                  name={f.name}
-                  rules={f.required ? [{ required: true, message: `请填写${f.label}` }] : undefined}
-                >
-                  {f.kind === 'select' ? (
-                    <Select options={f.options} />
-                  ) : f.kind === 'number' ? (
-                    <InputNumber style={{ width: '100%' }} min={1} />
-                  ) : (
-                    <Input placeholder={f.placeholder} />
-                  )}
-                </Form.Item>
-              ))}
+              {(current.fields ?? []).map((f) => {
+                let control;
+                if (f.kind === 'select') control = <Select options={f.options} />;
+                else if (f.kind === 'number') control = <InputNumber style={{ width: '100%' }} min={1} />;
+                else control = <Input placeholder={f.placeholder} />;
+                return (
+                  <Form.Item
+                    key={f.name}
+                    label={f.label}
+                    name={f.name}
+                    rules={f.required ? [{ required: true, message: `请填写${f.label}` }] : undefined}
+                  >
+                    {control}
+                  </Form.Item>
+                );
+              })}
             </Form>
           </Card>
 
@@ -472,15 +514,8 @@ export default function PdfTools() {
               multiple={current.multi}
               disabled={!current.multi}
               fileList={files}
-              beforeUpload={(file) => {
-                const item: UploadFile = {
-                  uid: (file as File & { uid: string }).uid,
-                  name: file.name,
-                  originFileObj: file,
-                };
-                setFiles((prev) => (current.multi ? [...prev, item] : [item]));
-                return false;
-              }}
+              beforeUpload={() => false}
+              onChange={({ fileList }) => setFiles(fileList)}
               onRemove={(f: UploadFile) => setFiles((prev) => prev.filter((x) => x.uid !== f.uid))}
             >
               <p className="ant-upload-drag-icon">
@@ -513,46 +548,7 @@ export default function PdfTools() {
 
         <Col xs={24} lg={15}>
           <Card title="结果" size="small">
-            {run.isPending ? (
-              <Flex vertical gap={12} align="center" style={{ padding: '48px 0' }}>
-                <Spin />
-                <Typography.Text type="secondary">正在本机处理，请稍候…</Typography.Text>
-              </Flex>
-            ) : result ? (
-              <Flex vertical gap={12}>
-                <Alert
-                  type="success"
-                  showIcon
-                  title="处理完成"
-                  description="文件已在本机生成，未上传到任何外部服务。"
-                />
-                <Flex gap={10} align="center" wrap>
-                  <Tag color="green" icon={<FilePdfOutlined />}>
-                    {result.name}
-                  </Tag>
-                  <Button
-                    type="primary"
-                    icon={<DownloadOutlined />}
-                    href={result.url}
-                    download={result.name}
-                  >
-                    下载
-                  </Button>
-                  <Button onClick={() => setResult(null)}>继续处理</Button>
-                </Flex>
-              </Flex>
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="选好操作与文件后点「执行」，结果会出现在这里"
-              >
-                <Space orientation="vertical" size={4} align="center">
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    转换由 Stirling PDF 在本机执行：子进程并发数、单任务超时与上传体积都已设上限。
-                  </Typography.Text>
-                </Space>
-              </Empty>
-            )}
+            {renderResult()}
           </Card>
         </Col>
       </Row>

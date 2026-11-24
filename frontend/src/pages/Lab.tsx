@@ -37,7 +37,7 @@ export default function Lab() {
     },
   });
 
-  if (params.get('tab') === 'bookings') return <Navigate to="/agent?mode=lab" replace />;
+  if (params.get('tab') === 'bookings') return <Navigate to="/workbench?tab=records" replace />;
   if (params.get('tab') === 'eln') return <Navigate to="/workbench?tab=records" replace />;
   // 旧深链：流水线已下线，统一回到表格视图
   if (params.get('tab') === 'pipelines') return <Navigate to="/lab" replace />;
@@ -71,8 +71,7 @@ export default function Lab() {
           <Alert
             type="info"
             showIcon
-            closable
-            onClose={() => setMergedNotice(false)}
+            closable={{ onClose: () => setMergedNotice(false) }}
             title="库存台账"
             description="库存台账不再单独作为页签，请在多维表格里打开工作区「实验室物资」。"
           />

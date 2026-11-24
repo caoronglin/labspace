@@ -56,13 +56,12 @@ export function renderMoveModal(deps: FilesDeps) {
               : '目标目录仅列出你在当前存储源中有读权限的文件夹；目标处同名条目会被拒绝，不会覆盖。'}
           </Typography.Text>
           <Select
-            showSearch
+            showSearch={{ optionFilterProp: 'label' }}
             open
             value={moveTo}
             onChange={(v) => setMoveTo(v)}
             style={{ width: '100%' }}
             placeholder="选择目标文件夹"
-            optionFilterProp="label"
             options={moveTargets.map((d) => ({
               value: d,
               label: d ? d.split('/').join(' / ') : '（存储源根目录）',
@@ -78,6 +77,39 @@ export function renderPreviewModal(deps: FilesDeps) {
     previewId, setPreviewId, previewEntry, canWrite, openOffice,
     nativePreview, bioDirect, preview, setNativePreview,
   } = deps;
+  const renderPreviewContent = () => {
+    if (!nativePreview && !bioDirect) {
+      return (
+        <OpenFilePreview
+          key={previewId}
+          id={previewId!}
+          name={previewEntry?.name ?? ''}
+          onUnsupported={() => setNativePreview(true)}
+        />
+      );
+    }
+    if (preview.isLoading) {
+      return (
+        <Flex justify="center" style={{ padding: 40 }}>
+          <Spin />
+        </Flex>
+      );
+    }
+    if (preview.isError) {
+      return <Alert type="error" showIcon title="无法预览该文件" description={(preview.error as Error)?.message} />;
+    }
+    if (preview.data) {
+      return (
+        <Flex vertical gap={12}>
+          <PreviewBody data={preview.data} />
+          {preview.data.truncated ? (
+            <Typography.Text type="secondary">内容较大，仅展示前一部分。</Typography.Text>
+          ) : null}
+        </Flex>
+      );
+    }
+    return null;
+  };
   return (
       <Modal
         open={Boolean(previewId)}
@@ -110,38 +142,22 @@ export function renderPreviewModal(deps: FilesDeps) {
           ) : null
         }
       >
-        {!nativePreview && !bioDirect ? (
-          <OpenFilePreview
-            key={previewId}
-            id={previewId!}
-            name={previewEntry?.name ?? ''}
-            onUnsupported={() => setNativePreview(true)}
-          />
-        ) : preview.isLoading ? (
-          <Flex justify="center" style={{ padding: 40 }}>
-            <Spin />
-          </Flex>
-        ) : preview.isError ? (
-          <Alert type="error" showIcon title="无法预览该文件" description={(preview.error as Error)?.message} />
-        ) : preview.data ? (
-          <Flex vertical gap={12}>
-            <PreviewBody data={preview.data} />
-            {preview.data.truncated ? (
-              <Typography.Text type="secondary">内容较大，仅展示前一部分。</Typography.Text>
-            ) : null}
-          </Flex>
-        ) : null}
+        {renderPreviewContent()}
       </Modal>
   );
 }
 
 export function renderNameDialog(deps: FilesDeps) {
   const { dialog, setDialog, dialogName, setDialogName, busy, submitDialog, baseDir } = deps;
+  const isMkdir = dialog?.mode === 'mkdir';
+  const dialogTitle = isMkdir ? '新建文件夹' : '重命名';
+  const dialogOkText = isMkdir ? '创建' : '保存';
+  const dialogPlaceholder = isMkdir ? '文件夹名称' : '新名称';
   return (
       <Modal
         open={Boolean(dialog)}
-        title={dialog?.mode === 'mkdir' ? '新建文件夹' : '重命名'}
-        okText={dialog?.mode === 'mkdir' ? '创建' : '保存'}
+        title={dialogTitle}
+        okText={dialogOkText}
         cancelText="取消"
         confirmLoading={busy}
         onOk={submitDialog}
@@ -152,7 +168,7 @@ export function renderNameDialog(deps: FilesDeps) {
           autoFocus
           value={dialogName}
           maxLength={120}
-          placeholder={dialog?.mode === 'mkdir' ? '文件夹名称' : '新名称'}
+          placeholder={dialogPlaceholder}
           onChange={(e) => setDialogName(e.target.value)}
           onPressEnter={submitDialog}
         />
@@ -396,7 +412,7 @@ export function renderTrashModal(deps: FilesDeps) {
                       <FileOutlined style={{ color: 'var(--ant-color-text-tertiary)' }} />
                     )}
                     <Typography.Text ellipsis>{name}</Typography.Text>
-                    {!r.dir ? <ExtTag name={name} /> : null}
+                    {r.dir ? null : <ExtTag name={name} />}
                   </Space>
                 ),
               },
@@ -534,11 +550,18 @@ export function renderAuditModal(deps: FilesDeps) {
                 title: '动作',
                 dataIndex: 'action',
                 width: 80,
-                render: (v: string) => (
-                  <Tag color={v === 'download' ? 'blue' : v === 'preview' ? 'green' : 'default'}>
-                    {v === 'download' ? '下载' : v === 'preview' ? '预览' : v}
-                  </Tag>
-                ),
+                render: (v: string) => {
+                  let color = 'default';
+                  let label = v;
+                  if (v === 'download') {
+                    color = 'blue';
+                    label = '下载';
+                  } else if (v === 'preview') {
+                    color = 'green';
+                    label = '预览';
+                  }
+                  return <Tag color={color}>{label}</Tag>;
+                },
               },
               {
                 title: '文件',

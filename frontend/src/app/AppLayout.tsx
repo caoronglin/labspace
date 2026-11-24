@@ -28,7 +28,6 @@ import HelpOnboarding from '../components/HelpOnboarding';
 import OnboardingTour from '../components/OnboardingTour';
 import { requestTour } from '../components/onboardingState';
 import ForcePasswordChange from '../components/ForcePasswordChange';
-import { safeExternalUrl } from '../utils/safeNavigate';
 
 
 const { Header, Sider, Content } = Layout;
@@ -65,8 +64,6 @@ export default function AppLayout() {
   // 默认折叠，仅保留图标栏；鼠标悬浮时以浮层展开显示文字，不挤压内容
   const [collapsed, setCollapsed] = useState(true);
   const [siderHover, setSiderHover] = useState(false);
-  /** 实际呈现形态：折叠且没在悬浮 → 只剩图标；否则是展开列表。 */
-  const siderCollapsed = collapsed && !siderHover;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -76,6 +73,8 @@ export default function AppLayout() {
   const { resolved, setMode, primary, setPrimary, resetPrimary } = useThemeMode();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.lg;
+  /** 实际呈现形态：桌面折叠且未悬浮时收起；移动端 Drawer 始终按展开菜单处理。 */
+  const siderCollapsed = !isMobile && collapsed && !siderHover;
 
   // 全局 ⌘K / Ctrl+K 唤起命令面板；首页按钮通过事件触发
   useEffect(() => {
@@ -94,6 +93,12 @@ export default function AppLayout() {
     };
   }, []);
 
+  // 移动端子菜单跳转后统一关闭抽屉；不能只依赖 Menu.onClick，
+  // 链接点击在部分 AntD 嵌套场景下不会冒泡到 Menu。
+  useEffect(() => {
+    if (isMobile) setMobileOpen(false);
+  }, [isMobile, location.pathname]);
+
   const menuItems = useMemo(() => {
     // 侧栏直接由 navigation.tsx 注册表生成，避免菜单、面包屑、命令面板各写一份。
     // 高频页面平铺，低频页面进子菜单：折叠态只留十几个入口，一眼能数完。
@@ -110,17 +115,25 @@ export default function AppLayout() {
               children: entry.children.map((child) => ({
                 key: child.key,
                 icon: child.icon,
-                label: <Link to={child.key}>{child.label}</Link>,
+                label: (
+                  <Link to={child.key} onClick={() => isMobile && setMobileOpen(false)}>
+                    {child.label}
+                  </Link>
+                ),
               })),
             }
           : {
               key: entry.key,
               icon: entry.icon,
-              label: <Link to={entry.key}>{entry.label}</Link>,
+              label: (
+                <Link to={entry.key} onClick={() => isMobile && setMobileOpen(false)}>
+                  {entry.label}
+                </Link>
+              ),
             },
       ),
     }));
-  }, [isAdmin, isTeacher]);
+  }, [isAdmin, isTeacher, isMobile]);
 
   const goSearch = useCallback(
     (q: string) => navigate(`/search?q=${encodeURIComponent(q)}`),
@@ -163,7 +176,7 @@ export default function AppLayout() {
         : []),
       { key: 'profile', icon: <UserOutlined />, label: '个人资料' },
       { key: 'files', icon: <FolderOpenOutlined />, label: <Link to="/files">我的文件</Link> },
-      { key: 'kb', icon: <BookOutlined />, label: <Link to="/agent?mode=kb">知识库问答</Link> },
+      { key: 'kb', icon: <BookOutlined />, label: <Link to="/agent?mode=kb">知识与记忆</Link> },
       { key: 'workbench', icon: <DashboardOutlined />, label: <Link to="/workbench">个人工作台</Link> },
       { key: 'help', icon: <QuestionCircleOutlined />, label: <Link to="/help">帮助中心</Link> },
       // 引导的「重看」入口：移动端顶栏按钮被隐藏，头像菜单是唯一稳定入口
@@ -182,27 +195,15 @@ export default function AppLayout() {
       if (key === 'help') navigate('/help');
       if (key === 'theme') setMode(resolved === 'dark' ? 'light' : 'dark');
       if (key === 'logout') {
-        // 登出后要跳到 IdP 的登出地址；该地址来自服务端响应，
-        // 但仍按"只允许 http(s) 且必须是本站或已配置的门户主机"校验，
-        // 避免响应被篡改时把用户带去钓鱼站点。
-        const fallback = '/api/auth/logout-redirect';
-        let target = fallback;
+        // Casdoor 已下线：登出只清理门户会话，不再信任服务端返回的外部 URL。
+        // POST 成功回本地登录页；若 CSRF/网络异常，走兼容 GET 清 Cookie 后回登录页。
+        let target = '/login';
         try {
-          const res = await api.logout();
-          target = safeExternalUrl(res.logoutUrl, fallback);
+          await api.logout();
         } catch {
-          target = fallback;
+          target = '/api/auth/logout-redirect';
         }
-        // 只允许站内相对路径或 http(s) 绝对地址：
-        // target 已在 safeExternalUrl 里校验过，这里再显式判一次，
-        // 让"跳转目标是受控的"在赋值现场就能看出来。
-        if (target.startsWith('/') && !target.startsWith('//')) {
-          window.location.replace(target);
-        } else if (/^https?:\/\//i.test(target)) {
-          window.location.replace(target);
-        } else {
-          window.location.replace(fallback);
-        }
+        window.location.replace(target);
       }
     },
   };
@@ -235,6 +236,11 @@ export default function AppLayout() {
         // 折叠态没有可见子菜单（inlineCollapsed 自动转成悬浮弹层），
         // openKeys 的值不会造成视觉异常，回来时状态还在。
         openKeys={openKeys}
+        // 桌面折叠态的子菜单弹层挂到侧栏外壳内：鼠标从图标移到弹层时
+        // 不会触发外壳 mouseleave 并把 Sider 重新折叠，子弹菜单才点得进去。
+        getPopupContainer={(node) =>
+          (node.closest('.d509-sider-shell') as HTMLElement | null) ?? document.body
+        }
         onOpenChange={(keys) => {
           // 折叠态（鼠标必在侧栏外，用户不可能在点子菜单）期间，AntD 在
           // inline ↔ vertical 模式切换时会回灌空数组甚至部分 key 的快照——
@@ -306,11 +312,17 @@ export default function AppLayout() {
         }}
       >
         {isMobile ? (
-          <Button type="text" icon={<MenuUnfoldOutlined />} onClick={() => setMobileOpen(true)} />
+          <Button
+            type="text"
+            icon={<MenuUnfoldOutlined />}
+            aria-label="打开导航菜单"
+            onClick={() => setMobileOpen(true)}
+          />
         ) : (
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            aria-label={collapsed ? '展开侧栏' : '折叠侧栏'}
             onClick={() => setCollapsed(!collapsed)}
           />
         )}
@@ -423,7 +435,13 @@ export default function AppLayout() {
             size={240}
             styles={{ body: { padding: 0 } }}
           >
-            {mobileSider}
+            <div
+              onClickCapture={(event) => {
+                if ((event.target as HTMLElement).closest('a')) setMobileOpen(false);
+              }}
+            >
+              {mobileSider}
+            </div>
           </Drawer>
         ) : (
           desktopSider

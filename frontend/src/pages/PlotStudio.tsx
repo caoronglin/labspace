@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Badge, Button, Descriptions, Drawer, Empty, Flex, Image, Input,
-  Modal, Segmented, Select, Space, Spin, Table, Tag, Typography, Upload, message,
+  Alert, App, Badge, Button, Descriptions, Drawer, Empty, Flex, Image, Input,
+  Modal, Segmented, Select, Space, Spin, Table, Tag, Typography, Upload,
 } from 'antd';
 import {
   CopyOutlined, DeleteOutlined, DownloadOutlined,
@@ -48,6 +48,7 @@ const PRESETS: { key: string; label: string; chart: string; sample: string }[] =
 ];
 
 export default function PlotStudio() {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const queryClient = useQueryClient();
@@ -207,11 +208,11 @@ export default function PlotStudio() {
 
   const chartOptions = useMemo(() => {
     const groups = new Map<string, PlotChart[]>();
-    charts.forEach((c) => {
+    for (const c of charts) {
       const list = groups.get(c.group) ?? [];
       list.push(c);
       groups.set(c.group, list);
-    });
+    }
     return [...groups.entries()].map(([label, list]) => ({
       label,
       options: list.map((c) => ({ value: c.id, label: `${c.name} · ${c.library}` })),
@@ -445,7 +446,7 @@ export default function PlotStudio() {
                           </Button>
                         ))}
                         <Button size="small" icon={<FileTextOutlined />} onClick={() => openLog(currentJob.id)}>运行日志</Button>
-                        <Button size="small" icon={<CopyOutlined />} onClick={() => copyShareLink(currentJob)}>复制图片链接</Button>
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => copyShareLink(currentJob, message)}>复制图片链接</Button>
                       </Space>
                     )}
                     {currentJob.status === 'failed' && (
@@ -610,7 +611,7 @@ function chartName(charts: PlotChart[], id: string): string {
   return charts.find((c) => c.id === id)?.name ?? id;
 }
 
-async function copyShareLink(job: PlotJob) {
+async function copyShareLink(job: PlotJob, message: ReturnType<typeof App.useApp>['message']) {
   const png = job.outputs.find((o) => o.path.endsWith('.png'));
   if (!png) return;
   const url = `${window.location.origin}${plotApi.fileUrl(job.id, png.path)}`;

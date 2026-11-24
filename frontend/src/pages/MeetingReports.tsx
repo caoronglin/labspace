@@ -23,7 +23,6 @@ import {
   Flex,
   Grid,
   InputNumber,
-  List,
   Modal,
   Popconfirm,
   Select,
@@ -95,6 +94,7 @@ export default function MeetingReports() {
     if (cur && weekList.some((w) => w.yearWeek === cur)) return cur;
     return weekList[0]?.yearWeek ?? '';
   }, [selected, weeks.data?.currentWeek, weekList]);
+  const currentGrants = weekList.find((w) => w.yearWeek === current)?.grants ?? [];
 
   const files = useQuery({
     queryKey: ['meetings', 'files', current],
@@ -382,7 +382,7 @@ export default function MeetingReports() {
           <Statistic
             title="当前周"
             value={weeks.data?.currentWeek ?? '—'}
-            valueStyle={{ fontSize: 20 }}
+            styles={{ content: { fontSize: 20 } }}
           />
         </Card>
       </Flex>
@@ -491,11 +491,10 @@ export default function MeetingReports() {
         <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           <Select
             style={{ width: '100%' }}
-            showSearch
+            showSearch={{ optionFilterProp: 'label' }}
             allowClear
             mode="multiple"
             placeholder="选择要授权的成员"
-            optionFilterProp="label"
             value={grantPicks}
             onChange={setGrantPicks}
             options={peopleOptions.filter((o) => !grantedIds.has(o.value))}
@@ -523,16 +522,20 @@ export default function MeetingReports() {
 
         <div style={{ height: 1, background: 'rgba(5,5,5,0.06)', margin: '16px 0' }} />
         <Text strong>当前周已授权人员</Text>
-        <List
-          size="small"
-          style={{ marginTop: 8 }}
-          dataSource={weekList.find((w) => w.yearWeek === current)?.grants ?? []}
-          locale={{ emptyText: '这一周还没有授权任何人' }}
-          renderItem={(g) => (
-            <List.Item
-              actions={[
+        {currentGrants.length ? (
+          <Flex vertical gap={8} style={{ marginTop: 8 }}>
+            {currentGrants.map((g) => (
+              <Flex key={g.userId} align="center" justify="space-between" gap={12}>
+                <Space size={8}>
+                  <TeamOutlined />
+                  <Flex vertical gap={0}>
+                    <Text strong>{g.name}</Text>
+                    {g.grantedBy ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>由 {g.grantedBy} 授权</Text>
+                    ) : null}
+                  </Flex>
+                </Space>
                 <Popconfirm
-                  key="revoke"
                   title="收回该成员的访问权？"
                   description="只收回访问权，目录里的材料仍然保留。"
                   okText="收回"
@@ -542,17 +545,15 @@ export default function MeetingReports() {
                   <Button size="small" danger icon={<DeleteOutlined />} aria-label="收回访问权">
                     收回
                   </Button>
-                </Popconfirm>,
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<TeamOutlined />}
-                title={g.name}
-                description={g.grantedBy ? `由 ${g.grantedBy} 授权` : undefined}
-              />
-            </List.Item>
-          )}
-        />
+                </Popconfirm>
+              </Flex>
+            ))}
+          </Flex>
+        ) : (
+          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+            这一周还没有授权任何人
+          </Typography.Text>
+        )}
       </Drawer>
 
       {/* 压缩旧目录 */}
@@ -570,14 +571,16 @@ export default function MeetingReports() {
           把最近 <Text strong>{keepWeeks}</Text> 周以外的目录打包成 tar.gz，
           省空间但不再能直接浏览里面的文件。
         </Paragraph>
-        <InputNumber
-          min={1}
-          max={52}
-          value={keepWeeks}
-          onChange={(v) => setKeepWeeks(Number(v) || 1)}
-          addonAfter="周"
-          style={{ width: 160 }}
-        />
+        <Space.Compact style={{ width: 160 }}>
+          <InputNumber
+            min={1}
+            max={52}
+            value={keepWeeks}
+            onChange={(v) => setKeepWeeks(Number(v) || 1)}
+            style={{ width: '100%' }}
+          />
+          <Button disabled>周</Button>
+        </Space.Compact>
       </Modal>
     </PageShell>
   );

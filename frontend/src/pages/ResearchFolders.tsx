@@ -273,7 +273,7 @@ export default function ResearchFolders() {
                 }
               >
                 <Flex vertical gap={12}>
-                  <Statistic title="目录名" value={folder.name} valueStyle={{ fontSize: 16 }} />
+                  <Statistic title="目录名" value={folder.name} styles={{ content: { fontSize: 16 } }} />
                   <Paragraph type="secondary" style={{ marginBottom: 0 }}>
                     目录按「进组时间-姓名」命名，导师与管理员也能看到这个目录；
                     进入后即可上传实验数据、原始测序结果与分析脚本。
@@ -337,7 +337,7 @@ export default function ResearchFolders() {
               title="已开通授权"
               value={stats.granted}
               suffix="个"
-              valueStyle={{ color: palette.brand.olive700 }}
+              styles={{ content: { color: palette.brand.olive700 } }}
             />
           </Card>
         </Col>

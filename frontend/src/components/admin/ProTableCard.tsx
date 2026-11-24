@@ -1,8 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Button, Card, Flex, Input, Segmented, Space, Tooltip, Typography } from 'antd';
+import { Button, Card, Flex, Input, Segmented, Space, Table, Tooltip, Typography, type TableProps } from 'antd';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import type { TableProps } from 'antd/es/table';
-import Table from 'antd/es/table';
 
 type Size = 'small' | 'middle' | 'large';
 

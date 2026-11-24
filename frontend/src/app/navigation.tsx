@@ -136,7 +136,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Agent 个人助手',
     icon: <RobotOutlined />,
     group: 'work',
-    hint: '对话 · 知识库 · 能力中心',
+    hint: '对话 · 知识与记忆 · 能力中心',
     keywords: ['agent', 'ai', 'chat', '助手', '对话', '知识库', 'kb', 'rag',
       'agentscope', '能力中心', 'IM', '渠道', '定时', 'SOP', '工作区', 'MCP', '技能'],
   },

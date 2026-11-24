@@ -55,7 +55,7 @@ export default function ForcePasswordChange({ mustChange, onChanged }: Props) {
       }
       // 不可关闭：服务端已经用 428 挡住其它接口，这里必须与之一致。
       closable={false}
-      maskClosable={false}
+      mask={{ closable: false }}
       keyboard={false}
       onCancel={() => undefined}
       okText="保存新口令"

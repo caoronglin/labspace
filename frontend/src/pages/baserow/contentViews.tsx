@@ -317,7 +317,7 @@ export function renderContentViews(
                 setTableId(null);
                 setPage(1);
               }}
-              suffixIcon={<DatabaseOutlined />}
+              suffix={<DatabaseOutlined />}
             />
             <Tooltip title="重命名工作区">
               <Button

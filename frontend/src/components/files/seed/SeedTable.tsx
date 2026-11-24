@@ -391,7 +391,7 @@ export function SeedStatsBar({
           <Statistic
             title={it.title}
             value={it.value}
-            valueStyle={{ fontSize: 24, color: it.color }}
+            styles={{ content: { fontSize: 24, color: it.color } }}
           />
         </Card>
       ))}

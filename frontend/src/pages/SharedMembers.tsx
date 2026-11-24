@@ -216,14 +216,11 @@ export default function SharedMembers({ embedded = false }: { embedded?: boolean
       dataIndex: 'status',
       key: 'status',
       width: 90,
-      render: (v: string) =>
-        v === '已出组' ? (
-          <Tag color="default">已出组</Tag>
-        ) : v === '暂休' ? (
-          <Tag color="warning">暂休</Tag>
-        ) : (
-          <Tag color="success">在研</Tag>
-        ),
+      render: (v: string) => {
+        if (v === '已出组') return <Tag color="default">已出组</Tag>;
+        if (v === '暂休') return <Tag color="warning">暂休</Tag>;
+        return <Tag color="success">在研</Tag>;
+      },
     },
     {
       title: '门户账号',
@@ -430,17 +427,17 @@ export default function SharedMembers({ embedded = false }: { embedded?: boolean
         </Col>
         <Col xs={24} sm={8} lg={6}>
           <Card>
-            <Statistic title="已开通账号" value={stats.withAccount} suffix="人" valueStyle={{ color: tokens.colorSuccess }} />
+            <Statistic title="已开通账号" value={stats.withAccount} suffix="人" styles={{ content: { color: tokens.colorSuccess } }} />
           </Card>
         </Col>
         <Col xs={24} sm={8} lg={6}>
           <Card>
-            <Statistic title="待开通账号" value={stats.pending} suffix="人" valueStyle={{ color: tokens.colorWarning }} />
+            <Statistic title="待开通账号" value={stats.pending} suffix="人" styles={{ content: { color: tokens.colorWarning } }} />
           </Card>
         </Col>
         <Col xs={24} lg={6}>
           <Card>
-            <Statistic title="共享树" value={data?.treeName ?? '共享文件-组员'} valueStyle={{ fontSize: 16 }} />
+            <Statistic title="共享树" value={data?.treeName ?? '共享文件-组员'} styles={{ content: { fontSize: 16 } }} />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {data?.tree ?? ''}
             </Text>

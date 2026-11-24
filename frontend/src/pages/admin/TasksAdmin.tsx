@@ -248,7 +248,7 @@ export default function TasksAdmin() {
             title="失败项"
             value={failed}
             suffix="个"
-            valueStyle={{ color: failed ? tokens.colorError : tokens.colorSuccess }}
+            styles={{ content: { color: failed ? tokens.colorError : tokens.colorSuccess } }}
           />
         </Card>
       </Flex>

@@ -638,16 +638,16 @@ export default function LatexStudio() {
       <Flex justify="space-between" align="center" wrap gap={10}>
         <Space wrap size={8}>
           <Select
-            showSearch
+            showSearch={{
+              filterOption: (input, option) =>
+                `${option?.label ?? ''}`.toLowerCase().includes(input.trim().toLowerCase()),
+            }}
             style={{ minWidth: 280 }}
             value={selectedInList ? (selectedId ?? undefined) : undefined}
             placeholder={documents.length ? '选择文稿' : '还没有文稿'}
             loading={listQuery.isLoading}
             options={documents.map((d) => ({ value: d.id, label: d.title }))}
             onChange={(id) => switchDoc(String(id))}
-            filterOption={(input, option) =>
-              `${option?.label ?? ''}`.toLowerCase().includes(input.trim().toLowerCase())
-            }
             optionRender={(option) => {
               const d = documents.find((x) => x.id === option.value);
               return (

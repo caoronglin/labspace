@@ -13,7 +13,6 @@ import { useAuth } from '../../../app/AuthContext';
 import ChannelsTab from './ChannelsTab';
 import ScheduleTab from './ScheduleTab';
 import SopTab from './SopTab';
-import KnowledgeTab from './KnowledgeTab';
 import WorkspaceTab from './WorkspaceTab';
 import HubTab from './HubTab';
 import { asErrorText } from './common';
@@ -92,37 +91,36 @@ export default function AgentHub({ embedded = false, extra }: { embedded?: boole
   /**
    * 能力中心页签按身份分档。
    *
-   * IM 渠道 / 定时任务 / SOP / 工作区 / 技能-MCP 都是**管理员配置面**：
-   * 普通成员打开只会看到一堆自己不负责的开关，既看不懂也不知道该不该动。
-   * 普通用户真正会用到的只有「知识库」（挑一个库提问）。
-   * 教师额外保留「技能 / MCP」，因为备课常要挑工具。
+   * IM 渠道 / 定时任务 / SOP / 工作区都是**管理员配置面**：
+   * 普通成员打开只会看到一堆自己不负责的开关，既看不懂也不知道该该动。
+   * 知识库问答与长期记忆已合并到 Agent 的「知识与记忆」入口，
+   * 能力中心只保留技能 / MCP 与管理员能力，避免同一功能两处维护。
    */
-  const { isAdmin, isSuperAdmin, isTeacher } = useAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const canAdmin = isAdmin || isSuperAdmin;
   const tabs = useMemo(() => {
     const all = [
       { key: 'channels', label: 'IM 渠道', children: <ChannelsTab />, adminOnly: true },
       { key: 'schedule', label: '定时任务', children: <ScheduleTab />, adminOnly: true },
       { key: 'sop', label: 'SOP 工作流', children: <SopTab />, adminOnly: true },
-      { key: 'knowledge', label: '知识库', children: <KnowledgeTab />, adminOnly: false },
       { key: 'workspace', label: '工作区', children: <WorkspaceTab />, adminOnly: true },
       {
         key: 'hub',
         label: '技能 / MCP',
         children: <HubTab />,
-        adminOnly: !(isTeacher || canAdmin),
+        adminOnly: false,
       },
     ];
     return all
       .filter((t) => canAdmin || !t.adminOnly)
       .map(({ adminOnly: _adminOnly, ...rest }) => rest);
-  }, [canAdmin, isTeacher]);
+  }, [canAdmin]);
 
   return (
     <PageShell
       embedded={embedded}
       title="能力中心"
-      description="AgentScope 的原生能力在这里按门户会话鉴权后展示：渠道、定时任务、SOP、知识库、工作区与技能 / MCP。"
+      description="AgentScope 的原生能力在这里按门户会话鉴权后展示：渠道、定时任务、SOP、工作区与技能 / MCP。"
       extra={extra}
     >
       <Alert
@@ -171,7 +169,7 @@ export default function AgentHub({ embedded = false, extra }: { embedded?: boole
         </Col>
       </Row>
 
-      <Tabs defaultActiveKey={canAdmin ? 'channels' : 'knowledge'} items={tabs} />
+      <Tabs defaultActiveKey={canAdmin ? 'channels' : 'hub'} items={tabs} />
     </PageShell>
   );
 }

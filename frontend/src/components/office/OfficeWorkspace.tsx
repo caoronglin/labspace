@@ -73,7 +73,7 @@ export default function OfficeWorkspace({ entry, open, mode, onClose, onSaved }:
       style={{ top: 24, maxWidth: '96vw' }}
       onCancel={onClose}
       destroyOnHidden
-      maskClosable={false}
+      mask={{ closable: false }}
       footer={null}
     >
       {loading ? (

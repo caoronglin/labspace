@@ -103,7 +103,7 @@ function SopRunDetail({ runId }: { runId: string }) {
       <Typography.Text strong>步骤状态</Typography.Text>
       <Steps
         size="small"
-        direction="vertical"
+        orientation="vertical"
         items={steps.map((step, index) => ({
           title: step.subject,
           description: step.description,
@@ -273,7 +273,7 @@ export default function SopTab() {
                 <AsEmpty description="该 SOP 没有步骤" />
               ) : (
                 <Steps
-                  direction="vertical"
+                  orientation="vertical"
                   size="small"
                   items={(detailOf?.data?.steps ?? []).map((step) => ({
                     title: step.subject,

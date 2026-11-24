@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   Checkbox,
-  Drawer,
   Dropdown,
   Empty,
   Flex,
@@ -17,6 +16,7 @@ import {
   Skeleton,
   Space,
   Tag,
+  Tabs,
   Tooltip,
   Typography,
 } from 'antd';
@@ -24,7 +24,6 @@ import {
   BookOutlined,
   CopyOutlined,
   DeleteOutlined,
-  ExperimentOutlined,
   MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -45,7 +44,6 @@ import type { AgentMessage, AgentModel, AgentSession } from '../services/api';
 import { errText } from '../utils/err';
 import { takeAgentHandoff } from '../utils/agentHandoff';
 import KnowledgeAsk from '../components/KnowledgeAsk';
-import ElnPanel from './lab/ElnPanel';
 import MarkdownView from '../components/MarkdownView';
 import PageShell from '../components/PageShell';
 import AgentHub from './agent/hub/AgentHub';
@@ -96,6 +94,8 @@ type ToolCall = {
   result: string;
   status: string;
 };
+
+type AgentMode = 'chat' | 'kb' | 'hub';
 
 /* ------------------------------------------------------------------ */
 /* 防御式解析工具                                                       */
@@ -436,9 +436,9 @@ export default function Agent() {
   const screens = Grid.useBreakpoint();
   const narrow = !screens.lg;
 
-  const [mode, setMode] = useState<'chat' | 'kb' | 'lab' | 'hub'>(() => {
+  const [mode, setMode] = useState<AgentMode>(() => {
     const wanted = searchParams.get('mode') || searchParams.get('tab');
-    return wanted === 'kb' || wanted === 'lab' || wanted === 'hub' ? wanted : 'chat';
+    return wanted === 'kb' || wanted === 'hub' ? wanted : 'chat';
   });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -446,7 +446,9 @@ export default function Agent() {
   const [streamError, setStreamError] = useState('');
   const [streamNotice, setStreamNotice] = useState('');
   const [pendingHitl, setPendingHitl] = useState<PendingHitl | null>(null);
-  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [knowledgeView, setKnowledgeView] = useState<'ask' | 'memory'>(() =>
+    searchParams.get('view') === 'memory' ? 'memory' : 'ask',
+  );
   const [memoryQ, setMemoryQ] = useState('');
   const [memoryKind, setMemoryKind] = useState('');
 
@@ -459,22 +461,43 @@ export default function Agent() {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const raw = searchParams.get('mode');
-    // 白名单必须和上面的初始值保持一致 —— 漏掉 'hub' 时，
-    // 挂载后这个 effect 会把 /agent?mode=hub 立刻覆盖成 'chat'，
-    // 于是「能力中心」深链永远打不开（页面停在对话页）。
-    const wanted: 'chat' | 'kb' | 'lab' | 'hub' =
-      raw === 'kb' || raw === 'lab' || raw === 'hub' ? raw : 'chat';
+    const raw = searchParams.get('mode') || searchParams.get('tab');
+    // 实验记录已统一到个人工作台；旧 Agent 深链继续可用，但不再维护第二份入口。
+    if (raw === 'lab') {
+      navigate('/workbench?tab=records', { replace: true });
+      return;
+    }
+    const wanted: AgentMode = raw === 'kb' || raw === 'hub' ? raw : 'chat';
     setMode((cur) => (cur === wanted ? cur : wanted));
-  }, [searchParams]);
+    setKnowledgeView(raw === 'kb' && searchParams.get('view') === 'memory' ? 'memory' : 'ask');
+  }, [searchParams, navigate]);
 
-  const switchMode = (next: 'chat' | 'kb' | 'lab' | 'hub') => {
+  const switchMode = (next: AgentMode) => {
     setMode(next);
+    setKnowledgeView('ask');
     const params = new URLSearchParams(searchParams);
-    // 能力中心与对话共用同一个页面：用 mode 参数切换，深链可直接到 hub
     if (next === 'chat') params.delete('mode');
     else params.set('mode', next);
     params.delete('tab');
+    params.delete('view');
+    setSearchParams(params, { replace: true });
+  };
+
+  const openMemory = () => {
+    setMode('kb');
+    setKnowledgeView('memory');
+    const params = new URLSearchParams(searchParams);
+    params.set('mode', 'kb');
+    params.set('view', 'memory');
+    params.delete('tab');
+    setSearchParams(params, { replace: true });
+  };
+
+  const changeKnowledgeView = (next: 'ask' | 'memory') => {
+    setKnowledgeView(next);
+    const params = new URLSearchParams(searchParams);
+    if (next === 'memory') params.set('view', 'memory');
+    else params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -522,7 +545,7 @@ export default function Agent() {
   const memoriesQuery = useQuery({
     queryKey: ['agent-memories', memoryQ, memoryKind],
     queryFn: () => api.agentMemories(memoryQ, memoryKind, 100),
-    enabled: memoryOpen,
+    enabled: mode === 'kb' && knowledgeView === 'memory',
     staleTime: 15_000,
   });
 
@@ -1021,8 +1044,7 @@ export default function Agent() {
     { key: 'todo', label: '记录实验待办', description: '把下一步计划写入个人工作台' },
   ];
 
-  /** 会话搜索默认折叠：侧栏窄，搜索框常驻会把它挤没。 */
-  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  /** 会话搜索框常驻即可，不再额外放一个重复的搜索切换按钮。 */
   const [sessionKeyword, setSessionKeyword] = useState('');
 
   /** 会话列表按「今天 / 更早」分组，用 X 的 Conversations 呈现。 */
@@ -1104,7 +1126,7 @@ export default function Agent() {
           <Tooltip title="长期记忆：跨会话保留的结论、偏好与方法">
             <Button
               icon={<SaveOutlined style={{ color: tokens.colorPrimary }} />}
-              onClick={() => setMemoryOpen(true)}
+              onClick={openMemory}
             >
               记忆{status?.memoryCount ? ` (${status.memoryCount})` : ''}
             </Button>
@@ -1357,18 +1379,6 @@ export default function Agent() {
           style={{ flex: 1 }}
           aria-label="搜索会话"
         />
-        <Tooltip title={sessionSearchOpen ? '收起搜索' : '搜索会话'}>
-          <Button
-            size="small"
-            type={sessionSearchOpen ? 'primary' : 'default'}
-            icon={<SearchOutlined />}
-            aria-label="搜索会话"
-            onClick={() => {
-              setSessionSearchOpen((v) => !v);
-              if (sessionSearchOpen) setSessionKeyword('');
-            }}
-          />
-        </Tooltip>
       </Flex>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--ant-color-border-secondary)', borderRadius: 10, padding: 4 }}>
         <Conversations
@@ -1413,7 +1423,9 @@ export default function Agent() {
         title={
           <Space orientation="horizontal" size={8}>
             <RobotOutlined style={{ color: tokens.colorPrimary }} />
-            <Typography.Text strong>Agent 助手</Typography.Text>
+            <Typography.Text strong ellipsis style={{ maxWidth: 280 }}>
+              {activeSession?.title || 'Agent 对话'}
+            </Typography.Text>
           </Space>
         }
         extra={
@@ -1617,14 +1629,79 @@ export default function Agent() {
     );
   };
 
+  const renderMemoryPanel = () => {
+    if (memoriesQuery.isLoading) return <Skeleton active paragraph={{ rows: 6 }} />;
+    if (memoriesQuery.isError) {
+      return <Alert type="error" showIcon title="记忆加载失败" description={errText(memoriesQuery.error)} />;
+    }
+    const memories = memoriesQuery.data?.memories ?? [];
+    if (memories.length === 0) {
+      return (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={memoryQ || memoryKind ? '没有匹配的记忆' : '还没有记忆，对话时可点“记住”或由助手自动写入'}
+        />
+      );
+    }
+    return (
+      <Flex vertical gap={10}>
+        {memories.map((m) => (
+          <Card
+            key={m.id}
+            size="small"
+            styles={{ body: { padding: 12 } }}
+            title={
+              <Flex align="center" gap={6} wrap>
+                <Tag variant="filled" color="blue">{m.kind}</Tag>
+                <Typography.Text strong ellipsis style={{ maxWidth: 280 }}>
+                  {m.title || '未命名记忆'}
+                </Typography.Text>
+              </Flex>
+            }
+            extra={
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label="删除记忆"
+                loading={deleteMemoryMut.isPending}
+                onClick={() => {
+                  modal.confirm({
+                    title: '删除这条记忆？',
+                    content: m.title || m.content.slice(0, 40),
+                    okText: '删除',
+                    okButtonProps: { danger: true },
+                    cancelText: '取消',
+                    onOk: () => deleteMemoryMut.mutateAsync(m.id),
+                  });
+                }}
+              />
+            }
+          >
+            <Typography.Paragraph
+              style={{ marginBottom: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+              ellipsis={{ rows: 4, expandable: true, symbol: '展开' }}
+            >
+              {m.content}
+            </Typography.Paragraph>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {m.updatedAt ? dayjs(m.updatedAt).fromNow() : ''}
+              {m.sourceSession ? ' · 来自会话' : ''}
+            </Typography.Text>
+          </Card>
+        ))}
+      </Flex>
+    );
+  };
+
   const modeSwitcher = (
     <Segmented
       value={mode}
-      onChange={(v) => switchMode(v as 'chat' | 'kb' | 'lab' | 'hub')}
+      onChange={(v) => switchMode(v as AgentMode)}
       options={[
         { label: 'Agent 对话', value: 'chat' },
-        { label: '知识库问答', value: 'kb' },
-        { label: '实验记录', value: 'lab' },
+        { label: '知识与记忆', value: 'kb' },
         { label: '能力中心', value: 'hub' },
       ]}
     />
@@ -1640,16 +1717,7 @@ export default function Agent() {
       description="多步深度调研、数据库检索、文献阅读与工作台协同；回答可沉淀到知识库。"
       extra={
         <Space orientation="horizontal" size={8} wrap>
-          <Segmented
-            value={mode}
-            onChange={(v) => switchMode(v as 'chat' | 'kb' | 'lab' | 'hub')}
-            options={[
-              { label: 'Agent 对话', value: 'chat' },
-              { label: '知识库问答', value: 'kb' },
-              { label: '实验记录', value: 'lab' },
-              { label: '能力中心', value: 'hub' },
-            ]}
-          />
+          {modeSwitcher}
           {mode === 'chat' && generating && (
             <Tag color="processing" variant="filled">
               正在生成…
@@ -1664,32 +1732,16 @@ export default function Agent() {
       }
     >
 
-      {mode === 'lab' ? (
+      {mode === 'kb' ? (
         <Card
           size="small"
           styles={{ body: { padding: 16 } }}
           title={
             <Space size={8}>
-              <ExperimentOutlined style={{ color: tokens.colorPrimary }} />
-              <Typography.Text strong>实验记录</Typography.Text>
+              <BookOutlined style={{ color: tokens.colorPrimary }} />
+              <Typography.Text strong>知识与记忆</Typography.Text>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                电子实验记录已并入个人助手，可直接沉淀为任务或知识库条目
-              </Typography.Text>
-            </Space>
-          }
-        >
-          <ElnPanel />
-        </Card>
-      ) : mode === 'kb' ? (
-        <Card
-          size="small"
-          styles={{ body: { padding: 16 } }}
-          title={
-            <Space size={8}>
-              <RobotOutlined style={{ color: tokens.colorPrimary }} />
-              <Typography.Text strong>知识库问答</Typography.Text>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                按知识库与分类检索，回答带原文引用
+                知识库问答、私有文档与跨会话长期记忆统一管理
               </Typography.Text>
             </Space>
           }
@@ -1699,7 +1751,57 @@ export default function Agent() {
             </Button>
           }
         >
-          <KnowledgeAsk bare height={narrow ? '48vh' : 'calc(100vh - 360px)'} />
+          <Tabs
+            activeKey={knowledgeView}
+            onChange={(key) => changeKnowledgeView(key as 'ask' | 'memory')}
+            items={[
+              {
+                key: 'ask',
+                label: '知识库问答',
+                children: <KnowledgeAsk bare height={narrow ? '48vh' : 'calc(100vh - 360px)'} />,
+              },
+              {
+                key: 'memory',
+                label: `长期记忆${status?.memoryCount ? ` (${status.memoryCount})` : ''}`,
+                children: (
+                  <Flex vertical gap={12}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      记忆会在每次对话开始时自动注入，助手可自行检索、写入或遗忘。共 {memoriesQuery.data?.total ?? 0} 条。
+                    </Typography.Text>
+                    <Flex gap={8} wrap>
+                      <Input.Search
+                        allowClear
+                        placeholder="搜索记忆内容"
+                        style={{ flex: 1, minWidth: 180 }}
+                        onSearch={(v) => setMemoryQ(v.trim())}
+                      />
+                      <Select
+                        style={{ width: 120 }}
+                        value={memoryKind}
+                        onChange={setMemoryKind}
+                        options={[
+                          { value: '', label: '全部类型' },
+                          { value: 'fact', label: '事实' },
+                          { value: 'preference', label: '偏好' },
+                          { value: 'lesson', label: '经验' },
+                          { value: 'project', label: '项目' },
+                          { value: 'note', label: '摘录' },
+                        ]}
+                      />
+                      <Tooltip title="刷新记忆">
+                        <Button
+                          icon={<ReloadOutlined />}
+                          loading={memoriesQuery.isFetching}
+                          onClick={() => void memoriesQuery.refetch()}
+                        />
+                      </Tooltip>
+                    </Flex>
+                    {renderMemoryPanel()}
+                  </Flex>
+                ),
+              },
+            ]}
+          />
         </Card>
       ) : (
         <Flex vertical gap={16}>
@@ -1708,114 +1810,6 @@ export default function Agent() {
         </Flex>
       )}
 
-      <Drawer
-        title="长期记忆"
-        size={narrow ? '100%' : 420}
-        open={memoryOpen}
-        onClose={() => setMemoryOpen(false)}
-        styles={{ body: { display: 'flex', flexDirection: 'column', gap: 12 } }}
-        extra={
-          <Tooltip title="刷新">
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              loading={memoriesQuery.isFetching}
-              onClick={() => void memoriesQuery.refetch()}
-            />
-          </Tooltip>
-        }
-      >
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          记忆会在每次对话开始时自动注入，助手可自行检索、写入或遗忘。共 {memoriesQuery.data?.total ?? 0} 条。
-        </Typography.Text>
-        <Flex gap={8} wrap>
-          <Input.Search
-            allowClear
-            placeholder="搜索记忆内容"
-            style={{ flex: 1, minWidth: 180 }}
-            onSearch={(v) => setMemoryQ(v.trim())}
-          />
-          <Select
-            style={{ width: 120 }}
-            value={memoryKind}
-            onChange={setMemoryKind}
-            options={[
-              { value: '', label: '全部类型' },
-              { value: 'fact', label: '事实' },
-              { value: 'preference', label: '偏好' },
-              { value: 'lesson', label: '经验' },
-              { value: 'project', label: '项目' },
-              { value: 'note', label: '摘录' },
-            ]}
-          />
-        </Flex>
-        {memoriesQuery.isLoading ? (
-          <Skeleton active paragraph={{ rows: 6 }} />
-        ) : memoriesQuery.isError ? (
-          <Alert
-            type="error"
-            showIcon
-            title="记忆加载失败"
-            description={errText(memoriesQuery.error)}
-          />
-        ) : (memoriesQuery.data?.memories ?? []).length === 0 ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={memoryQ || memoryKind ? '没有匹配的记忆' : '还没有记忆，对话时可点“记住”或由助手自动写入'}
-          />
-        ) : (
-          <Flex vertical gap={10} style={{ overflowY: 'auto' }}>
-            {(memoriesQuery.data?.memories ?? []).map((m) => (
-              <Card
-                key={m.id}
-                size="small"
-                styles={{ body: { padding: 12 } }}
-                title={
-                  <Flex align="center" gap={6} wrap>
-                    <Tag variant="filled" color="blue">
-                      {m.kind}
-                    </Tag>
-                    <Typography.Text strong ellipsis style={{ maxWidth: 220 }}>
-                      {m.title || '未命名记忆'}
-                    </Typography.Text>
-                  </Flex>
-                }
-                extra={
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label="删除记忆"
-                    loading={deleteMemoryMut.isPending}
-                    onClick={() => {
-                      modal.confirm({
-                        title: '删除这条记忆？',
-                        content: m.title || m.content.slice(0, 40),
-                        okText: '删除',
-                        okButtonProps: { danger: true },
-                        cancelText: '取消',
-                        onOk: () => deleteMemoryMut.mutateAsync(m.id),
-                      });
-                    }}
-                  />
-                }
-              >
-                <Typography.Paragraph
-                  style={{ marginBottom: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                  ellipsis={{ rows: 4, expandable: true, symbol: '展开' }}
-                >
-                  {m.content}
-                </Typography.Paragraph>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  {m.updatedAt ? dayjs(m.updatedAt).fromNow() : ''}
-                  {m.sourceSession ? ' · 来自会话' : ''}
-                </Typography.Text>
-              </Card>
-            ))}
-          </Flex>
-        )}
-      </Drawer>
     </PageShell>
   );
 }

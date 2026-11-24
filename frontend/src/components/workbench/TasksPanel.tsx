@@ -874,8 +874,9 @@ export default function TasksPanel() {
           <Statistic
             title="逾期"
             value={stats.overdue}
-            valueStyle={stats.overdue > 0 ? { color: '#DC2626' } : undefined}
-            styles={{ content: { fontSize: 22 } }}
+            styles={{
+              content: { fontSize: 22, ...(stats.overdue > 0 ? { color: '#DC2626' } : {}) },
+            }}
           />
           <Statistic title="本周完成" value={stats.doneThisWeek} styles={{ content: { fontSize: 22 } }} />
         </Flex>

@@ -10,11 +10,12 @@ import {
   Flex,
   Form,
   Input,
-  List,
+  Listy,
   Modal,
   Popconfirm,
   Select,
   Space,
+  Spin,
   Tag,
   Tree,
   Typography,
@@ -92,7 +93,10 @@ export default function LiteratureLibrary() {
   const folderItems = folders.data?.items ?? [];
 
   // folderParam：undefined = 整个库，'' = 未分类，其余是具体文件夹
-  const folderParam = folderKey === ALL_KEY ? undefined : folderKey === ROOT_KEY ? '' : folderKey;
+  let folderParam: string | undefined;
+  if (folderKey === ALL_KEY) folderParam = undefined;
+  else if (folderKey === ROOT_KEY) folderParam = '';
+  else folderParam = folderKey;
 
   const list = useQuery({
     queryKey: ['labops', 'literature', keyword, status, activeLibraryId, folderParam],
@@ -221,18 +225,34 @@ export default function LiteratureLibrary() {
     }
   };
 
+  const openLiterature = (item: LabopsLiterature) => {
+    const raw = item.url || (item.doi ? `https://doi.org/${item.doi}` : '');
+    if (!raw) return;
+    try {
+      const url = new URL(raw, window.location.origin);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    } catch {
+      /* 忽略非法链接 */
+    }
+  };
+
   const items = semanticQ ? semantic.data?.items ?? [] : list.data?.items ?? [];
+  const literatureLoading = semanticQ ? semantic.isFetching : list.isLoading;
+  const literatureEmptyText = semanticQ ? '没有匹配文献' : '这里还没有文献';
 
   const treeData = useMemo<TreeDataNode[]>(() => {
     const nodes = new Map<string, TreeDataNode>();
     const roots: TreeDataNode[] = [];
-    folderItems.forEach((f) => nodes.set(f.id, { key: f.id, title: `${f.name}（${f.item_count}）` }));
-    folderItems.forEach((f) => {
+    for (const f of folderItems) {
+      nodes.set(f.id, { key: f.id, title: `${f.name}（${f.item_count}）` });
+    }
+    for (const f of folderItems) {
       const node = nodes.get(f.id)!;
       const parent = f.parent_id ? nodes.get(f.parent_id) : undefined;
       if (parent) parent.children = [...(parent.children ?? []), node];
       else roots.push(node);
-    });
+    }
     return [
       { key: ALL_KEY, title: '全部文献' },
       { key: ROOT_KEY, title: '未分类' },
@@ -466,106 +486,102 @@ export default function LiteratureLibrary() {
                 已选 {selectedIds.length} 篇
               </Typography.Text>
             </Flex>
-            <List
-              loading={semanticQ ? semantic.isFetching : list.isLoading}
-              dataSource={items}
-              locale={{
-                emptyText: (
-                  <Empty description={semanticQ ? '没有匹配文献' : '这里还没有文献'}>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
-                      导入文献
-                    </Button>
-                  </Empty>
-                ),
-              }}
-              renderItem={(item: LabopsLiterature) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="open"
-                      size="small"
-                      icon={<LinkOutlined />}
-                      disabled={!item.url && !item.doi}
-                      onClick={() => window.open(item.url || `https://doi.org/${item.doi}`, '_blank')}
+            <Spin spinning={literatureLoading}>
+              {items.length === 0 ? (
+                <Empty description={literatureEmptyText}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
+                    导入文献
+                  </Button>
+                </Empty>
+              ) : (
+                <Listy
+                  items={items}
+                  rowKey="id"
+                  itemRender={(item: LabopsLiterature) => (
+                    <Flex
+                      align="flex-start"
+                      justify="space-between"
+                      gap={12}
+                      style={{ padding: '12px 0', borderBottom: '1px solid var(--ant-color-border-secondary)' }}
                     >
-                      原文
-                    </Button>,
-                    <Button key="move" size="small" icon={<FolderOpenOutlined />} onClick={() => openMove([item.id])}>
-                      移动到
-                    </Button>,
-                    <Button
-                      key="edit"
-                      size="small"
-                      icon={<EditOutlined />}
-                      onClick={() => {
-                        setEditItem(item);
-                        editForm.setFieldsValue({
-                          status: item.status,
-                          tags: item.tags ?? [],
-                          notes: item.notes ?? '',
-                        });
-                      }}
-                    >
-                      笔记
-                    </Button>,
-                    <Dropdown
-                      key="cite"
-                      menu={{
-                        items: [
-                          { key: 'gbt7714', label: 'GB/T 7714' },
-                          { key: 'bibtex', label: 'BibTeX' },
-                          { key: 'ris', label: 'RIS' },
-                          { key: 'apa', label: 'APA' },
-                        ],
-                        onClick: ({ key }) => showCite(item, key),
-                      }}
-                    >
-                      <Button size="small" icon={<CopyOutlined />}>
-                        引用
-                      </Button>
-                    </Dropdown>,
-                    <Popconfirm key="del" title="删除该文献？" okButtonProps={{ danger: true }} onConfirm={() => remove.mutate(item.id)}>
-                      <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space wrap size={6}>
-                        <Checkbox
-                          checked={selectedIds.includes(item.id)}
-                          onChange={(e) =>
-                            setSelectedIds((prev) =>
-                              e.target.checked ? [...prev, item.id] : prev.filter((x) => x !== item.id),
-                            )
-                          }
-                        />
-                        <Typography.Text strong>{item.title || '未命名文献'}</Typography.Text>
-                        <Tag color={STATUS[item.status]?.color}>{STATUS[item.status]?.label ?? item.status}</Tag>
-                        {typeof item.score === 'number' && item.score > 0 && (
-                          <Tag variant="filled">相关度 {item.score.toFixed(2)}</Tag>
-                        )}
-                      </Space>
-                    }
-                    description={
-                      <Flex vertical gap={4}>
-                        <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
-                          {[item.authors, item.journal, item.pub_year, item.doi].filter(Boolean).join(' · ')}
-                        </Typography.Text>
-                        {item.notes && (
-                          <Typography.Paragraph style={{ margin: 0, fontSize: 13 }} ellipsis={{ rows: 2 }}>
-                            笔记：{item.notes}
-                          </Typography.Paragraph>
-                        )}
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          更新于 {dayjs(item.updated_at).format('YYYY-MM-DD HH:mm')}
-                        </Typography.Text>
+                      <Flex vertical gap={4} style={{ minWidth: 0, flex: 1 }}>
+                        <Space wrap size={6}>
+                          <Checkbox
+                            checked={selectedIds.includes(item.id)}
+                            onChange={(e) =>
+                              setSelectedIds((prev) =>
+                                e.target.checked ? [...prev, item.id] : prev.filter((x) => x !== item.id),
+                              )
+                            }
+                          />
+                          <Typography.Text strong>{item.title || '未命名文献'}</Typography.Text>
+                          <Tag color={STATUS[item.status]?.color}>{STATUS[item.status]?.label ?? item.status}</Tag>
+                          {typeof item.score === 'number' && item.score > 0 && (
+                            <Tag variant="filled">相关度 {item.score.toFixed(2)}</Tag>
+                          )}
+                        </Space>
+                        <Flex vertical gap={4}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+                            {[item.authors, item.journal, item.pub_year, item.doi].filter(Boolean).join(' · ')}
+                          </Typography.Text>
+                          {item.notes && (
+                            <Typography.Paragraph style={{ margin: 0, fontSize: 13 }} ellipsis={{ rows: 2 }}>
+                              笔记：{item.notes}
+                            </Typography.Paragraph>
+                          )}
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            更新于 {dayjs(item.updated_at).format('YYYY-MM-DD HH:mm')}
+                          </Typography.Text>
+                        </Flex>
                       </Flex>
-                    }
-                  />
-                </List.Item>
+                      <Space wrap size={4}>
+                        <Button
+                          size="small"
+                          icon={<LinkOutlined />}
+                          disabled={!item.url && !item.doi}
+                          onClick={() => openLiterature(item)}
+                        >
+                          原文
+                        </Button>
+                        <Button size="small" icon={<FolderOpenOutlined />} onClick={() => openMove([item.id])}>
+                          移动到
+                        </Button>
+                        <Button
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => {
+                            setEditItem(item);
+                            editForm.setFieldsValue({
+                              status: item.status,
+                              tags: item.tags ?? [],
+                              notes: item.notes ?? '',
+                            });
+                          }}
+                        >
+                          笔记
+                        </Button>
+                        <Dropdown
+                          menu={{
+                            items: [
+                              { key: 'gbt7714', label: 'GB/T 7714' },
+                              { key: 'bibtex', label: 'BibTeX' },
+                              { key: 'ris', label: 'RIS' },
+                              { key: 'apa', label: 'APA' },
+                            ],
+                            onClick: ({ key }) => showCite(item, key),
+                          }}
+                        >
+                          <Button size="small" icon={<CopyOutlined />}>引用</Button>
+                        </Dropdown>
+                        <Popconfirm key="del" title="删除该文献？" okButtonProps={{ danger: true }} onConfirm={() => remove.mutate(item.id)}>
+                          <Button size="small" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>
+                      </Space>
+                    </Flex>
+                  )}
+                />
               )}
-            />
+            </Spin>
           </Card>
         </Flex>
       </Card>

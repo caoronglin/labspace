@@ -385,7 +385,7 @@ export default function PptPresentation({ entryId, name, open, slides, onClose }
         <Typography.Text style={{ color: '#94a3b8', fontSize: 12 }}>/ {total}</Typography.Text>
         <Button
           icon={<RightOutlined />}
-          iconPosition="end"
+          iconPlacement="end"
           onClick={() => setPage((n) => Math.min(total, n + 1))}
           disabled={page >= total}
         >

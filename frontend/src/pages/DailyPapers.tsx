@@ -9,7 +9,7 @@ import {
   Empty,
   Flex,
   Input,
-  List,
+  Listy,
   Pagination,
   Row,
   Skeleton,
@@ -71,7 +71,7 @@ function PaperItem({ paper }: { paper: DailyPaper }) {
   const authorText = authors.slice(0, 3).join('、') + (authors.length > 3 ? ' 等' : '');
   const title = paper.title || '（无标题）';
   return (
-    <List.Item style={{ padding: '14px 4px' }}>
+    <div style={{ padding: '14px 4px' }}>
       <Flex vertical gap={6} style={{ width: '100%' }}>
         <Flex gap={8} wrap align="baseline">
           <Tag variant="filled" color="purple" style={{ fontSize: 11, marginInlineEnd: 0 }}>
@@ -170,7 +170,7 @@ function PaperItem({ paper }: { paper: DailyPaper }) {
           </Button>
         </Space>
       </Flex>
-    </List.Item>
+    </div>
   );
 }
 
@@ -367,10 +367,10 @@ export default function DailyPapers({ embedded = false }: { embedded?: boolean }
             </Typography.Text>
           }
         >
-          <List
-            dataSource={papers}
+          <Listy
+            items={papers}
             rowKey={(p) => `${p.doi || p.title}-${p.year ?? ''}-${p.source}`}
-            renderItem={(p) => <PaperItem paper={p} />}
+            itemRender={(p) => <PaperItem paper={p} />}
           />
           {total > pageSize ? (
             <Flex justify="flex-end" style={{ marginTop: 12 }}>

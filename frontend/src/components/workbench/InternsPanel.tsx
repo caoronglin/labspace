@@ -154,7 +154,7 @@ export default function InternsPanel() {
           <Statistic
             title="我的导师"
             value={data?.myMentor?.mentorName ?? '未绑定'}
-            valueStyle={{ fontSize: 18 }}
+            styles={{ content: { fontSize: 18 } }}
           />
         </Card>
         <Card size="small" style={{ flex: '1 1 160px', minWidth: 150 }}>
@@ -165,7 +165,7 @@ export default function InternsPanel() {
             title="可绑定成员"
             value={data?.interns?.length ?? 0}
             suffix="人"
-            valueStyle={{ color: canBind ? '#2B5CE6' : '#8e99aa' }}
+            styles={{ content: { color: canBind ? '#2B5CE6' : '#8e99aa' } }}
           />
         </Card>
       </Flex>
@@ -218,8 +218,7 @@ export default function InternsPanel() {
                   setInternId(v);
                   setMentorId(undefined);
                 }}
-                showSearch
-                optionFilterProp="label"
+                showSearch={{ optionFilterProp: 'label' }}
                 options={(data?.interns ?? []).map((p) => ({
                   value: p.id,
                   label: `${p.name}${p.rankLabel ? ` · ${p.rankLabel}` : ''}`,
@@ -235,8 +234,7 @@ export default function InternsPanel() {
                 value={mentorId}
                 onChange={setMentorId}
                 disabled={!internId}
-                showSearch
-                optionFilterProp="label"
+                showSearch={{ optionFilterProp: 'label' }}
                 options={mentorOptions}
                 notFoundContent="没有年级更高的导师可选"
               />

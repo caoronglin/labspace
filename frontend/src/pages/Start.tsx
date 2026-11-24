@@ -70,7 +70,7 @@ const QUICK = [
   { key: 'bioinfo', name: '生信实训', url: '/bioinfo', icon: <ExperimentOutlined /> },
   { key: 'genomes', name: '公共基因组', url: '/genomes', icon: <ExperimentOutlined /> },
   { key: 'files', name: '文件共享', url: '/files', icon: <FolderOpenOutlined /> },
-  { key: 'knowledge', name: '知识库问答', url: '/agent?mode=kb', icon: <FileTextOutlined /> },
+  { key: 'knowledge', name: '知识与记忆', url: '/agent?mode=kb', icon: <FileTextOutlined /> },
   { key: 'snapotter', name: '文件工坊', url: '/snapotter', icon: <ThunderboltOutlined /> },
   { key: 'plot', name: '绘图工作台', url: '/plot', icon: <BarChartOutlined /> },
   { key: 'drawio', name: '流程图设计', url: '/drawio', icon: <PartitionOutlined /> },
