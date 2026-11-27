@@ -67,6 +67,7 @@ const SOURCES = [
 ];
 
 const QUICK = [
+  { key: 'ssh', name: 'SSH 工作台', url: '/ssh', icon: <CodeOutlined /> },
   { key: 'bioinfo', name: '生信实训', url: '/bioinfo', icon: <ExperimentOutlined /> },
   { key: 'genomes', name: '公共基因组', url: '/genomes', icon: <ExperimentOutlined /> },
   { key: 'files', name: '文件共享', url: '/files', icon: <FolderOpenOutlined /> },
@@ -198,7 +199,7 @@ export default function Start() {
               onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
             />
           </Tooltip>
-          {loading ? null : me?.authenticated ? (
+          {!loading && (me?.authenticated ? (
             <Dropdown
               placement="bottomRight"
               menu={{
@@ -228,7 +229,7 @@ export default function Start() {
             <Button type="primary" onClick={() => redirectSafely('/login', '/')}>
               登录
             </Button>
-          )}
+          ))}
         </Space>
       </Flex>
 
@@ -373,7 +374,7 @@ export default function Start() {
                 page={page}
                 pageSize={pageSize}
                 onPageChange={(p, ps) => {
-                  setPage(ps !== pageSize ? 1 : p);
+                  setPage(ps === pageSize ? p : 1);
                   setPageSize(ps);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}

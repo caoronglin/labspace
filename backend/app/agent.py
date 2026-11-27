@@ -1,12 +1,11 @@
-"""Agent 助手：对接宿主机上的 pi RPC 网关。
+"""Agent 助手：对接 AgentScope 2.0.12 Agent Service。
 
 架构：
-    浏览器 → FastAPI(`/api/agent/*`) → 宿主机 Node 网关(172.28.0.1:8110) → pi 子进程 → 模型
+    浏览器 → FastAPI(`/api/agent/*`) → AgentScope 容器 → 模型 / MCP 工具 / 知识库 / 工作区
 
 要点：
-- 网关只在 Docker `lab-tools` 网络可达，不对内网暴露。
-- 网关进程携带**用户自己的会话 JWT**（`LAB_PORTAL_BEARER`），插件调用门户接口时与浏览器
-  具有完全相同的权限边界；后端同时接受 `Authorization: Bearer <同一 JWT>`。
+- AgentScope 只经 Docker 网络访问，不直接暴露给内网。
+- 门户负责会话、模型白名单、配额与审计，AgentScope 负责会话执行、工具装配和长期记忆。
 - 消息落库 `labspace.agent_sessions` / `labspace.agent_messages`；管理员配置落
   `labspace.agent_config`（模型开关、默认模型、配额、系统提示词）。
 """

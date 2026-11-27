@@ -58,9 +58,49 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 512m
-    cpus: 1.0
+    mem_limit: 1g
+    cpus: 4.0
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------- 自研 SSH/SFTP 网关
+  # 只绑定宿主机回环，对外统一走 Nginx /ssh-api/ 的门户会话鉴权。
+  # 单 worker 保留 WebSocket 会话；数据库按门户 user_id 隔离连接、主机密钥与审计。
+  ssh-gateway:
+    build: ./ssh-gateway
+    image: lab/ssh-gateway:1.0.0
+    container_name: lab-ssh-gateway
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Asia/Shanghai
+      SSH_GATEWAY_DB_DSN: "${LABSPACE_DB_DSN:?deploy/.env 缺少 LABSPACE_DB_DSN}"
+      SSH_GATEWAY_SECRET_KEY: "${SSH_GATEWAY_SECRET_KEY:?deploy/.env 缺少 SSH_GATEWAY_SECRET_KEY}"
+      SSH_GATEWAY_ALLOWED_HOSTS: "${SSH_GATEWAY_ALLOWED_HOSTS:-}"
+      SSH_GATEWAY_ALLOWED_CIDRS: "${SSH_GATEWAY_ALLOWED_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10}"
+      SSH_GATEWAY_ALLOWED_PORTS: "${SSH_GATEWAY_ALLOWED_PORTS:-22}"
+    ports:
+      - "127.0.0.1:8118:8080"
+    networks:
+      - labspace
+      - lab-tools
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2.0
     pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=4).read(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging:
       driver: json-file
       options:
@@ -175,10 +215,17 @@ services:
     restart: unless-stopped
     init: true
     user: "1000:1000"
-    command: ["uvicorn", "app.biotools_service:app", "--host", "0.0.0.0", "--port", "8133"]
+    command: ["uvicorn", "app.biotools_service:app", "--host", "0.0.0.0", "--port", "8133", "--workers", "4", "--limit-concurrency", "64"]
     environment:
       TZ: Asia/Shanghai
       HOME: "/tmp"
+      # 每个请求/worker 只开一个 BLAS 线程，由 4 个 worker 提供真正的多核并行，
+      # 避免每个 NumPy/SciPy 请求各自再开满 16 线程造成严重超订。
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
     read_only: true
     tmpfs:
       - /tmp:size=256m,mode=1777
@@ -188,9 +235,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 1g
-    cpus: 2.0
-    pids_limit: 128
+    mem_limit: 2g
+    cpus: 4.0
+    pids_limit: 256
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8133/health',timeout=4)\""]
       interval: 30s

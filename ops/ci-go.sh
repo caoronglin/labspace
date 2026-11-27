@@ -2,7 +2,7 @@
 # Go 核心：零外部依赖前提下 vet / test / build 全绿。
 # GOPROXY=off 是硬约束——一旦有人加 require，这里立刻挂，而不是等上线才发现。
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)/labspace/go-core"
+cd "$(git rev-parse --show-toplevel)/go-core"
 
 export GOPROXY=off GOFLAGS=-mod=mod GOTOOLCHAIN=local CGO_ENABLED=1
 export GOCACHE="${GOCACHE:-/tmp/gocache}"

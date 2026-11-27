@@ -1,4 +1,7 @@
-# TEST.md — 验证记录
+# TEST.md — 历史验证记录
+
+> **历史文档**：本文记录 2026-11 早期的部署与验收状态，其中 Casdoor、Open WebUI、Quantum 等组件现已下线。
+> 当前认证、同源入口与部署流程请以 `docs/ARCHITECTURE.md`、`docs/DEPLOY.md` 为准；文中地址均为脱敏示例。
 
 环境：Debian 13 / 12 vCPU / 11.5G RAM；验证方式：curl 探活 + Playwright 真实浏览器（Chromium 156）。
 截图目录：`/opt/labspace/e2e/shots/`（home、services、service-detail、favorites、search、literature、

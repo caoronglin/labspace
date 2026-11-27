@@ -168,7 +168,7 @@ func TestDiscoveryAndJWKS(t *testing.T) {
 
 func TestDiscoveryForEntryHost(t *testing.T) {
 	p := testProvider(t)
-	issuer := "http://100.66.114.71/oidc"
+	issuer := "http://198.51.100.71/oidc"
 	d := p.DiscoveryFor(issuer)
 	if d["issuer"] != issuer {
 		t.Fatalf("issuer: %v", d["issuer"])
@@ -180,7 +180,7 @@ func TestDiscoveryForEntryHost(t *testing.T) {
 
 func TestTokenIssuerMatchesAuthorizationEntry(t *testing.T) {
 	p := testProvider(t)
-	issuer := "http://100.66.114.71/oidc"
+	issuer := "http://198.51.100.71/oidc"
 	q := url.Values{
 		"client_id":             {"bioinfo"},
 		"redirect_uri":          {"https://bio.example/apps/bioinfo/auth/callback"},

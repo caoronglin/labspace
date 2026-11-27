@@ -3,12 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Result, Space, Spin, Tag, Typography } from 'antd';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ArrowLeftOutlined, ExportOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
-import { api } from '../services/api';
-import { nativeRouteOf } from '../utils/serviceRoute';
-import { CATEGORY_LABEL } from '../components/ServiceCard';
-import EmbedFrame from '../components/EmbedFrame';
-import SsoButton from '../components/SsoButton';
-import { tokens } from '../theme/tokens';
+import { api } from '../services/api.ts';
+import { nativeRouteOf } from '../utils/serviceRoute.ts';
+import { sameHostUrl } from '../utils/safeNavigate.ts';
+import { CATEGORY_LABEL } from '../components/ServiceCard.tsx';
+import EmbedFrame from '../components/EmbedFrame.tsx';
+import SsoButton from '../components/SsoButton.tsx';
+import { tokens } from '../theme/tokens.ts';
+
+const HEALTH_META: Record<string, { label: string; color: string }> = {
+  up: { label: '正常', color: 'green' },
+  down: { label: '不可用', color: 'red' },
+  'external-down': { label: '外部离线', color: 'red' },
+  unknown: { label: '未知', color: 'default' },
+};
 
 export default function ServiceDetail() {
   const { id = '' } = useParams();
@@ -19,7 +27,7 @@ export default function ServiceDetail() {
   const { data: health } = useQuery({
     queryKey: ['service-health', id],
     queryFn: () => api.serviceHealth(id),
-    enabled: !!id,
+    enabled: Boolean(id),
     staleTime: 30_000,
   });
   const favMutation = useMutation({
@@ -28,7 +36,7 @@ export default function ServiceDetail() {
   const { data: embedInfo } = useQuery({
     queryKey: ['service-embed', id],
     queryFn: () => api.serviceEmbed(id),
-    enabled: !!id,
+    enabled: Boolean(id),
     staleTime: 300_000,
     retry: 0,
   });
@@ -53,18 +61,15 @@ export default function ServiceDetail() {
   }
 
   const favorited = (favData?.favorites ?? []).includes(service.id);
-
-  const open = () => {
-    // 记录最近访问（真实数据，供首页“最近访问”使用）
-    void api.touchRecent(service.id);
-    // 带 OIDC 的服务直接打开其登录启动端点，复用门户已建立的统一认证会话
-    window.open(service.ssoUrl || service.url, '_blank', 'noopener');
-  };
+  // 服务目录由服务端维护，但跳转仍在浏览器侧按当前主机白名单复核。
+  const openUrl = sameHostUrl(service.ssoUrl || service.url);
 
   const embedSrc = service.embedUrl || service.url;
-  const canEmbed = !!service.embed && embedInfo?.embeddable === true;
-  const healthLabel =
-    health?.status === 'up' ? '正常' : health?.status === 'down' ? '不可用' : health?.status === 'external-down' ? '外部离线' : '未知';
+  const canEmbed = Boolean(service.embed) && embedInfo?.embeddable === true;
+  const healthInfo = HEALTH_META[health?.status || ''] || { label: '未知', color: 'red' };
+  const embedDescription = service.embed
+    ? `服务端探测结果：${embedInfo?.reason ?? '检测中…'}。点击右上角「打开服务」在新标签页使用。`
+    : '点击右上角「打开服务」在新标签页使用。';
 
   return (
     <Flex vertical gap={12}>
@@ -88,14 +93,24 @@ export default function ServiceDetail() {
                 {t}
               </Tag>
             ))}
-            <Tag color={health?.status === 'up' ? 'green' : health?.status === 'unknown' ? 'default' : 'red'} variant="filled">
-              {healthLabel}
+            <Tag color={healthInfo.color} variant="filled">
+              {healthInfo.label}
               {health?.latency_ms != null ? ` · ${health.latency_ms}ms` : ''}
             </Tag>
           </Space>
         </Flex>
         <Space wrap>
-          <Button type="primary" icon={<ExportOutlined />} onClick={open}>
+          <Button
+            type="primary"
+            icon={<ExportOutlined />}
+            href={openUrl ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            disabled={!openUrl}
+            onClick={() => {
+              if (openUrl) void api.touchRecent(service.id);
+            }}
+          >
             打开服务
           </Button>
           {service.ssoUrl ? <SsoButton ssoUrl={service.ssoUrl} serviceId={service.id} size="middle" /> : null}
@@ -116,11 +131,7 @@ export default function ServiceDetail() {
           type="info"
           showIcon
           title="该服务未提供内嵌入口"
-          description={
-            service.embed
-              ? `服务端探测结果：${embedInfo?.reason ?? '检测中…'}。点击右上角「打开服务」在新标签页使用。`
-              : '点击右上角「打开服务」在新标签页使用。'
-          }
+          description={embedDescription}
         />
       )}
 

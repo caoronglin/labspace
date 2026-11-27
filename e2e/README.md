@@ -37,6 +37,14 @@ LAB_PASS=… LAB_ADMIN_PASS=… ./run-regression.sh api-integration.mjs e2e.mjs
 脚本默认连 `http://192.0.2.10`（双入口里的 LAN 地址），Tailscale 侧用
 `tailscale-access-test.mjs` 单独验。
 
+## SSH/SFTP 工作台回归
+
+`ssh-entry-test.mjs` 覆盖门户入口、未登录拒绝、连接加密保存、API 不回传凭据、跨账号不可见、
+公网目标拒绝与测试数据清理。真实 AsyncSSH/SFTP 集成测试位于 `deploy/ssh-gateway/tests/test_gateway.py`，
+覆盖首次主机指纹、终端回显、目录读写、改名删除与凭据加密。
+
+`concurrency-test.mjs` 验证 24 个门户会话查询与 8 个生信序列计算可并行完成，用于守护数据库池和多 worker 配置。
+
 ## 单个探针怎么写
 
 ```js

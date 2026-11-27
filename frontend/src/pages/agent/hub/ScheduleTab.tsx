@@ -112,7 +112,7 @@ export default function ScheduleTab() {
         timezone: values.timezone?.trim() || 'Asia/Shanghai',
         enabled: true,
       };
-      // AgentScope 2.0.11 的创建接口要求 chat_model_config；凭据与模型都选好才带上。
+      // AgentScope 2.0.12 的创建接口要求 chat_model_config；凭据与模型都选好才带上。
       if (values.credential_id && values.model) {
         const picked = (models.data?.models ?? []).find((m) => m.name === values.model);
         body.chat_model_config = {
@@ -229,6 +229,35 @@ export default function ScheduleTab() {
     },
   ];
 
+  const renderSchedules = () => {
+    if (schedules.isLoading) return <AsLoading rows={5} />;
+    if (schedules.error) {
+      return <AsErrorAlert error={schedules.error} onRetry={() => void schedules.refetch()} />;
+    }
+    if ((schedules.data?.schedules.length ?? 0) === 0) {
+      return (
+        <AsEmpty
+          description="还没有定时任务"
+          action={
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
+              新建任务
+            </Button>
+          }
+        />
+      );
+    }
+    return (
+      <Table<AsScheduleRecord>
+        rowKey="id"
+        size="small"
+        columns={columns}
+        dataSource={schedules.data?.schedules ?? []}
+        pagination={false}
+        scroll={{ x: 1000 }}
+      />
+    );
+  };
+
   return (
     <Flex vertical gap={12}>
       <Flex justify="space-between" align="center" wrap gap={8}>
@@ -245,29 +274,7 @@ export default function ScheduleTab() {
         </Button>
       </Flex>
 
-      {schedules.isLoading ? (
-        <AsLoading rows={5} />
-      ) : schedules.error ? (
-        <AsErrorAlert error={schedules.error} onRetry={() => void schedules.refetch()} />
-      ) : (schedules.data?.schedules.length ?? 0) === 0 ? (
-        <AsEmpty
-          description="还没有定时任务"
-          action={
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
-              新建任务
-            </Button>
-          }
-        />
-      ) : (
-        <Table<AsScheduleRecord>
-          rowKey="id"
-          size="small"
-          columns={columns}
-          dataSource={schedules.data?.schedules ?? []}
-          pagination={false}
-          scroll={{ x: 1000 }}
-        />
-      )}
+      {renderSchedules()}
 
       <Modal
         title="新建定时任务"
@@ -324,7 +331,7 @@ export default function ScheduleTab() {
           <Form.Item
             name="description"
             label="提示词"
-            extra="AgentScope 2.0.11 的定时任务没有独立的提示词字段，这里写入任务描述；助手的系统提示词仍取自所选助手。"
+            extra="AgentScope 2.0.12 的定时任务没有独立的提示词字段，这里写入任务描述；助手的系统提示词仍取自所选助手。"
           >
             <Input.TextArea
               rows={3}

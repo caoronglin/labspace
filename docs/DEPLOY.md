@@ -18,6 +18,7 @@
 | JBrowse 2 | 8091 | http://192.0.2.10:8091/ | http://198.51.100.71:8091/ |
 | SnapOtter 文件工坊 | 8092 | http://192.0.2.10:8092/ | http://198.51.100.71:8092/ |
 | 生物信息学实习实训平台 | 80 | http://192.0.2.10/apps/bioinfo/ | http://198.51.100.71/apps/bioinfo/ |
+| SSH/SFTP 工作台 | 80 | http://192.0.2.10/ssh | http://198.51.100.71/ssh |
 | 引物设计 Primer3 | 80 | http://192.0.2.10/apps/primer/ | http://198.51.100.71/apps/primer/ |
 
 要点：
@@ -124,94 +125,59 @@ grep -n svc_ports /etc/nftables.conf
 /usr/sbin/nft -c -f /etc/nftables.conf && /usr/sbin/nft -f /etc/nftables.conf
 ```
 
-## 4.2 Agent 网关（pi）与插件（宿主机服务，不进 Docker）
+## 4.2 AgentScope 2.0.12（独立容器）
 
 ```bash
-# 1) 配置文件（0600）：网关令牌、会话目录、插件路径、默认模型
-install -m 600 /dev/null /etc/labspace/agent-gateway.json
-cat >/etc/labspace/agent-gateway.json <<'JSON'
-{
-  "token": "<随机 48 位 hex>",
-  "session_dir": "/srv/labdata/labspace/agent/sessions",
-  "extensions": ["/opt/labspace/agent/extensions/lab-portal.js"],
-  "default_model": "minimax-cn/MiniMax-M3.1-Flash",
-  "system_prompt": "你是 D509 实验室门户的内置助手……只能使用 lab_* 工具……"
-}
-JSON
-
-# 2) 目录与 systemd 单元
-mkdir -p /srv/labdata/labspace/agent/{sessions,work}
-chmod 700 /srv/labdata/labspace/agent
-install -m 755 /opt/labspace/agent/gateway.mjs /opt/labspace/agent/gateway.mjs
-install -m 644 /etc/systemd/system/lab-agent-gateway.service /etc/systemd/system/lab-agent-gateway.service
-
-# 3) 启动（node 路径必须运行时解析：/root/.local/share/pi-node/current/bin/node）
-systemctl daemon-reload && systemctl enable --now lab-agent-gateway
-systemctl status lab-agent-gateway
-
-# 4) 门户后端需要知道网关地址与令牌（/opt/labspace/deploy/.env）
-#   LABSPACE_AGENT_GATEWAY=http://172.28.0.1:8110
-#   LABSPACE_AGENT_TOKEN=<与网关 json 相同的 token>
-#   LABSPACE_AGENT_DEFAULT_MODEL=minimax-cn/MiniMax-M3.1-Flash
-cd /opt/labspace/deploy && docker compose build backend && docker compose up -d backend
-
-# 5) 插件自测（需要门户服务令牌 + 一个用户会话 JWT）
-cd /opt/labspace/agent/extensions
-LAB_PORTAL_URL=http://192.0.2.10 \
-LAB_PORTAL_TOKEN=<服务令牌> \
-LAB_PORTAL_BEARER=<用户会话 JWT> \
-node test-lab-portal.mjs
+cd /opt/labspace/deploy
+docker compose build agentscope
+docker compose up -d agentscope
+curl -fsS http://127.0.0.1:8103/healthz
 ```
 
-> **注意**
-> - 网关只监听 `172.28.0.1:8110`（docker 网桥地址），**外部客户端无法直连**；所有调用都经门户后端中继。
-> - pi 的 `--model` 必须是 `provider/id` 形式；网关会把裸模型名自动补全。
-> - 插件工具只能通过门户 API 取数据，**无法读写宿主机文件系统**。
-> - 用户的会话 JWT 由门户后端在建会话时透传给网关，网关注入为 `LAB_PORTAL_BEARER`。
+- 服务只绑回环 `127.0.0.1:8103`，外部请求经 Nginx `auth_request` 鉴权后注入 `X-User-ID`。
+- 模型凭据放 `/etc/labspace/agent-model.env`（0600），由 compose 注入容器。
+- 知识库向量库存放于 Qdrant；长期记忆与工作区位于 `/srv/agentscope/workspaces`。
+- 工具确认与 AskUser 走 HITL；前端不能自行批准任意工具。
+- 旧 pi 网关与 `lab-agent-gateway.service` 已下线，不要再部署。
 
-## 4.3 OIDC 入口自适应服务（宿主机服务，不进 Docker）
-
-让 Open WebUI / Quantum 的 OIDC issuer 与回调地址跟随用户当前访问入口主机
-（内网 `192.0.2.10` 或 Tailscale `198.51.100.71`），保证远程用户也能免密登录。
+## 4.3 自研 SSH/SFTP 网关
 
 ```bash
-# 1) 配置文件（0600）：监听地址与令牌
-install -m 600 /dev/null /etc/labspace/oidc-sync.json
-cat >/etc/labspace/oidc-sync.json <<JSON
-{
-  "listen_host": "172.28.0.1",
-  "listen_port": 8111,
-  "token": "$(openssl rand -hex 24)"
-}
-JSON
-
-# 2) 脚本与 systemd 单元
-install -m 755 /opt/labspace/ops/oidc-sync.py /opt/labspace/ops/oidc-sync.py
-install -m 644 /etc/systemd/system/lab-oidc-sync.service /etc/systemd/system/lab-oidc-sync.service
-
-# 3) 启动
-systemctl daemon-reload && systemctl enable --now lab-oidc-sync
-systemctl status lab-oidc-sync
-curl -s http://172.28.0.1:8111/health        # {"ok":true,"service":"lab-oidc-sync"}
-
-# 4) 门户后端需要知道同步服务地址与令牌（/opt/labspace/deploy/.env）
-#   LABSPACE_OIDC_SYNC_URL=http://172.28.0.1:8111
-#   LABSPACE_OPS_TOKEN=<与 oidc-sync.json 相同的 token>
-cd /opt/labspace/deploy && docker compose build backend && docker compose up -d backend
-
-# 5) 手动切换（通常由门户「一键登录」自动触发）
-TOKEN=$(python3 -c "import json;print(json.load(open('/etc/labspace/oidc-sync.json'))['token'])")
-curl -s -X POST http://172.28.0.1:8111/sync \
-  -H "X-Ops-Token: $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"service":"open-webui","host":"198.51.100.71"}'
+cd /opt/labspace/deploy
+# 生成 Fernet 密钥并写入 deploy/.env（0600）；只保留在部署机
+../backend/.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+docker compose build ssh-gateway
+docker compose up -d ssh-gateway
+curl -fsS http://127.0.0.1:8118/healthz
+nginx -t && systemctl reload nginx
 ```
 
-> **注意**
-> - 服务只监听 `172.28.0.1:8111`（docker 网桥），外部无法直连；调用方是门户后端。
-> - Open WebUI 的真值是容器环境变量（`/opt/lab-core-stack/.env`），Quantum 是
->   `/etc/lab-quantum/quantum.env`；两者改动后**必须重建容器**（Quantum 不支持热加载）。
-> - 同源回调路径由门户 OIDC Provider 白名单校验，不再需要改写第三方应用配置。
-> - 每次切换会重建容器（约 10~30 秒），期间服务短暂不可用。
+`.env` 关键项：`SSH_GATEWAY_SECRET_KEY`（Fernet 密钥）、`SSH_GATEWAY_ALLOWED_HOSTS`、
+`SSH_GATEWAY_ALLOWED_CIDRS`、`SSH_GATEWAY_ALLOWED_PORTS`。默认只允许私网、回环与 Tailscale CGNAT，
+端口默认 22；服务仅绑定 `127.0.0.1:8118`，浏览器统一走门户 `/ssh` 与同源 `/ssh-api/`。
+
+- 门户 Nginx `auth_request` 校验会话后注入 `X-User-ID`，网关按该 ID 隔离连接、主机密钥、会话和审计。
+- SSH 口令/私钥加密保存在 PostgreSQL `ssh_gateway` schema；不要将 `.env` 或密钥提交到仓库。
+- 首次连接必须确认服务器主机指纹；指纹变化会拒绝连接。
+- 单 worker 保留 WebSocket 会话状态；默认单人 2 个、全局 8 个会话，空闲 30 分钟回收。
+- SFTP 上传先写临时文件再改名；失败会清理临时文件，不覆盖目标文件。
+
+## 4.4 门户 OIDC Provider（LabGo，无独立同步服务）
+
+LabGo 同时提供服务目录与最小 OIDC Provider：
+
+```bash
+cd /opt/labspace/go-core
+CGO_ENABLED=0 GOPROXY=off go build -trimpath -ldflags='-s -w' -o /tmp/labgo ./cmd/labgo
+install -m 0755 /tmp/labgo /usr/local/bin/labgo
+systemctl restart labgo
+curl -fsS http://127.0.0.1:8122/v1/oidc/.well-known/openid-configuration
+```
+
+- 对外路径是 `/oidc/*`，Nginx 映射到 LabGo 内部 `/v1/oidc/*`。
+- 未登录授权回跳必须使用公开 `/oidc/authorize`，不能泄露内部前缀。
+- issuer 跟随白名单入口 Host；生信回调使用当前同源 `/apps/bioinfo/api/v1/auth/callback`。
+- Casdoor、8090 监听与 `lab-oidc-sync` 均已下线；不需要 issuer 同步脚本或第三方容器重建。
 
 ## 5. Nginx
 

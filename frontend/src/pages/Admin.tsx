@@ -47,6 +47,7 @@ import PageShell from '../components/PageShell';
 import ProStat from '../components/admin/ProStat';
 import ProTableCard from '../components/admin/ProTableCard';
 import AgentAdmin from './admin/AgentAdmin';
+import AccountAuditPanel from './admin/AccountAuditPanel';
 import GroupPermissions from './admin/GroupPermissions';
 import TasksAdmin from './admin/TasksAdmin';
 import SharedMembers from './SharedMembers';
@@ -110,9 +111,7 @@ const EMAIL_RULE = {
 };
 
 /** 生成带大小写、数字与符号的初始口令（避开易混淆字符）。 */
-/** 与服务端 backend/app/accounts.py 的 INITIAL_PASSWORD 保持一致。 */
-const INITIAL_PASSWORD = 'ChangeMe#2026';
-
+/** 生成强口令用于管理员重置；新账号口令由服务端生成。 */
 function generatePassword(length = 16): string {
   const bytes = new Uint32Array(length);
   crypto.getRandomValues(bytes);
@@ -217,14 +216,14 @@ function AccountsAdmin() {
 
   const create = useMutation({
     mutationFn: (v: { name: string; displayName?: string; email?: string; groups: string[] }) =>
-      api.createAccount({ ...v, password: INITIAL_PASSWORD }),
+      api.createAccount(v),
     onSuccess: (res, v) => {
       message.success(`账号 ${res.account.name} 已创建`);
       // 口令由服务端统一生成（不接受管理员自选），必须显示服务端回传的那个值，
       // 否则管理员交付给用户的口令是无效的、用户登不进去。
       setCreated({
         name: res.account.name,
-        password: res.initialPassword ?? INITIAL_PASSWORD,
+        password: res.initialPassword ?? '',
         groups: v.groups,
       });
       setCreating(false);
@@ -974,14 +973,10 @@ function AccountsAdmin() {
           >
             <Select mode="multiple" options={groupOptions} placeholder="选择角色组" />
           </Form.Item>
-          {/* 初始口令由服务端统一生成并强制首次改密：这里只做展示，
-              不再让管理员自选 —— 自选了也不会生效，交付给用户的口令就是错的。 */}
+          {/* 初始口令由服务端随机生成，创建成功后仅显示一次。 */}
           <Form.Item label="初始口令">
-            <Typography.Text code copyable>
-              {INITIAL_PASSWORD}
-            </Typography.Text>
-            <Typography.Text type="secondary" style={{ marginInlineStart: 8, fontSize: 12 }}>
-              首次登录强制改密；创建完成后会在结果窗里再次展示以便交付。
+            <Typography.Text type="secondary">
+              创建成功后由服务端生成随机一次性口令，首次登录强制修改。
             </Typography.Text>
           </Form.Item>
         </Form>
@@ -1766,6 +1761,7 @@ export default function Admin() {
               <AccountsAdmin />
               {/* 组员名册并入账号管理：学号↔账号、身份、在研/出组都在这里维护 */}
               <SharedMembers embedded />
+              <AccountAuditPanel />
               <Card size="small" title="角色映射（门户认证）">
                 <Descriptions
                   column={1}

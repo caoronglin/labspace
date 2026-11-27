@@ -1,55 +1,33 @@
 """auth 路由（由 ops/split_main_module.py 从 main.py 搬出）。"""
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+import urllib.parse
+from datetime import date
+from typing import Any
+from urllib.parse import urlsplit
 
-from .. import (
-    account_security as account_security,
-)
-from .. import (
-    accounts as accounts_mod,
-)
-from .. import (
-    db,
-    db_apis,
-)
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
+
+from .. import account_security, audit
+from .. import accounts as accounts_mod
 from ..config import settings
-from ..routers.deps import (
-    client_host as _client_host,
-)
+from ..routers.deps import client_host as _client_host
 from ..security import (
     clear_session_cookies,
     current_user,
-    has_role,
     issue_session,
-    read_session,
-    require_admin,
     require_csrf,
     require_user,
-    require_user_or_service,
     session_pwd_reset,
     set_session_cookies,
     verify_csrf,
 )
-from datetime import date
-from fastapi import (
-    Body,
-    Depends,
-    FastAPI,
-    HTTPException,
-    Query,
-    Request,
-    Response,
-)
-from fastapi.responses import JSONResponse, RedirectResponse
-from starlette.concurrency import run_in_threadpool
-from typing import Any
-from urllib.parse import urlsplit
-import asyncio
-import httpx
-import time
-import urllib.parse
-from fastapi import APIRouter
 
 log = logging.getLogger("labspace.routers.auth")
 
@@ -176,15 +154,15 @@ async def api_change_password(
     user: dict[str, Any] = Depends(require_user),
     _csrf: None = Depends(require_csrf),
 ) -> Response:
-    """用户自助改密：必须校验旧口令；新口令 ≥10 位且不得与初始口令相同。"""
+    """用户自助改密：必须校验旧口令；新口令 ≥10 位且不能与当前口令相同。"""
     old = str(body.get("oldPassword") or "")
     new = str(body.get("newPassword") or "")
     if not old or not new:
         raise HTTPException(status_code=400, detail="旧口令与新口令都必须填写")
     if len(new) < 10:
         raise HTTPException(status_code=400, detail="新口令至少 10 个字符")
-    if new == accounts_mod.INITIAL_PASSWORD:
-        raise HTTPException(status_code=400, detail="新口令不能与初始口令相同")
+    if new == old:
+        raise HTTPException(status_code=400, detail="新口令不能与当前口令相同")
     name = _account_name(user)
     if not accounts_mod.verify_password(name, old):
         raise HTTPException(status_code=400, detail="旧口令不正确")
@@ -356,7 +334,7 @@ def _safe_back(raw: str, request: Request | None = None) -> str:
     if value.startswith("//"):
         return ""
     if value.startswith("/"):
-        return value[:200]
+        return value[:4096]
     if value.startswith(("http://", "https://")):
         if request is None:
             return ""
@@ -369,7 +347,7 @@ def _safe_back(raw: str, request: Request | None = None) -> str:
             return ""
         # 端口保留：同主机不同端口是本平台的不同服务
         port = f":{target.port}" if target.port else ""
-        return f"{target.scheme}://{host}{port}{target.path or '/'}"[:200]
+        return f"{target.scheme}://{host}{port}{target.path or '/'}"[:4096]
     return ""
 
 # ------------------------------------------------------------------ 直连登录
@@ -377,26 +355,49 @@ def _safe_back(raw: str, request: Request | None = None) -> str:
 # bcrypt），会话也是门户自签的 HS256 JWT（security.issue_session）。
 # 这里只需要一个「用户名 + 口令 → 门户会话」的入口。
 
-#: 失败计数：同一账号连续失败达到上限后短暂锁定，防口令爆破。
-_LOGIN_FAILS: dict[str, list[float]] = {}
+#: 失败计数：账号与来源 IP 联合限流，兼顾定向爆破与分布式撞库。
+_LOGIN_FAILS: dict[tuple[str, str], list[float]] = {}
 _LOGIN_WINDOW = 900.0        # 15 分钟窗口
-_LOGIN_MAX_FAILS = 8         # 窗口内允许的失败次数
+_LOGIN_MAX_FAILS = 8         # 单账号允许的失败次数
+_LOGIN_IP_MAX_FAILS = 32     # 单 IP 允许的失败次数
 
 
-def _login_locked(name: str) -> bool:
-    """该账号当前是否因连续失败被锁定。"""
+def _client_ip(request: Request) -> str:
+    # Nginx 会用 X-Real-IP 覆盖为真实直连客户端；X-Forwarded-For 可能含客户端伪造前缀。
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip[:64]
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    return (forwarded or (request.client.host if request.client else "") or "unknown")[:64]
+
+
+def _login_key(name: str, ip: str) -> tuple[str, str]:
+    return name, ip
+
+
+def _login_locked(name: str, ip: str = "") -> bool:
+    """该账号或来源 IP 当前是否因连续失败被锁定。"""
     now = time.time()
-    hits = [t for t in _LOGIN_FAILS.get(name, []) if now - t <= _LOGIN_WINDOW]
-    _LOGIN_FAILS[name] = hits
-    return len(hits) >= _LOGIN_MAX_FAILS
+    for key in list(_LOGIN_FAILS):
+        hits = [t for t in _LOGIN_FAILS[key] if now - t <= _LOGIN_WINDOW]
+        if hits:
+            _LOGIN_FAILS[key] = hits
+        else:
+            _LOGIN_FAILS.pop(key, None)
+    account_hits = len(_LOGIN_FAILS.get(_login_key(name, ip), []))
+    ip_hits = sum(len(hits) for (_account, source), hits in _LOGIN_FAILS.items() if source == ip)
+    return account_hits >= _LOGIN_MAX_FAILS or ip_hits >= _LOGIN_IP_MAX_FAILS
 
 
-def _login_failed(name: str) -> None:
-    _LOGIN_FAILS.setdefault(name, []).append(time.time())
+def _login_failed(name: str, ip: str = "") -> None:
+    key = _login_key(name, ip)
+    hits = [t for t in _LOGIN_FAILS.get(key, []) if time.time() - t <= _LOGIN_WINDOW]
+    hits.append(time.time())
+    _LOGIN_FAILS[key] = hits
 
 
-def _login_succeeded(name: str) -> None:
-    _LOGIN_FAILS.pop(name, None)
+def _login_succeeded(name: str, ip: str = "") -> None:
+    _LOGIN_FAILS.pop(_login_key(name, ip), None)
 
 
 @router.post("/api/auth/login-direct")
@@ -409,11 +410,15 @@ async def api_login_direct(request: Request) -> JSONResponse:
     「账号不存在」与「口令错误」，避免账号枚举。
     """
     payload = await request.json()
-    username = str(payload.get("username") or "").strip().lower()
+    username = str(payload.get("username") or "").strip().lower()[:128]
     password = str(payload.get("password") or "")
     if not username or not password:
         raise HTTPException(status_code=400, detail="请输入账号与口令")
-    if _login_locked(username):
+    ip = _client_ip(request)
+    if _login_locked(username, ip):
+        await run_in_threadpool(
+            audit.record, username, "auth.login.blocked", "portal", {"reason": "rate_limit"}, ip
+        )
         raise HTTPException(status_code=429, detail="失败次数过多，请稍后再试")
 
     # 账号状态先查（禁用/删除的账号即使用对口令也不放行）。
@@ -422,14 +427,24 @@ async def api_login_direct(request: Request) -> JSONResponse:
     except HTTPException:
         row = None
     if row is None or row.get("is_forbidden") or row.get("is_deleted"):
-        _login_failed(username)
+        _login_failed(username, ip)
+        await run_in_threadpool(
+            audit.record, username, "auth.login.failed", "portal", {"reason": "invalid_credentials"}, ip
+        )
         raise HTTPException(status_code=401, detail="账号或口令不正确")
 
     ok = await run_in_threadpool(accounts_mod.verify_password, username, password)
     if not ok:
-        _login_failed(username)
+        _login_failed(username, ip)
+        await run_in_threadpool(
+            audit.record, username, "auth.login.failed", "portal", {"reason": "invalid_credentials"}, ip
+        )
         raise HTTPException(status_code=401, detail="账号或口令不正确")
-    _login_succeeded(username)
+    _login_succeeded(username, ip)
+    try:
+        await run_in_threadpool(accounts_mod.record_login, username)
+    except Exception as exc:  # noqa: BLE001 - 最近登录时间是辅助信息，不应阻断登录
+        log.warning("更新最近登录时间失败（%s）：%s", username, exc)
 
     email = str(row.get("email") or "").strip().lower() or f"{username}@lab.local"
     display = str(row.get("display_name") or "") or username
@@ -444,6 +459,9 @@ async def api_login_direct(request: Request) -> JSONResponse:
     # Set-Cookie 会丢，浏览器拿不到会话（表现为「登录成功但立刻掉线」）。
     resp = JSONResponse({"ok": True, "user": {"email": email, "name": display, "roles": groups}})
     set_session_cookies(resp, issue_session(user, pwd_reset=await _must_change_now(username)))
+    await run_in_threadpool(
+        audit.record, username, "auth.login.success", "portal", {"subject": user["id"]}, ip
+    )
     return resp
 
 

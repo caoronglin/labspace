@@ -1,11 +1,13 @@
 # SERVICE_INTEGRATION.md — 各服务集成方式与限制
 
-集成原则：**能自绘的用门户原生 Ant Design 页面**（Baserow 多维表格、PDF 工具箱、邮件列表、内网主机台；WebSSH 因无法与门户无缝登录已下架）；不能自绘的走链接或受控 iframe，并统一由 nginx 做 auth_request 会话鉴权。
+集成原则：**能自绘的用门户原生 Ant Design 页面**（Baserow 多维表格、PDF 工具箱、邮件列表、SSH/SFTP 工作台）；不能自绘的走链接或受控 iframe，并统一由 nginx 做门户会话鉴权。旧第三方 WebSSH 已下架，现由自研 SSH 网关承担。
 
 | 服务 | 集成方式 | 入口 | 验证 |
 | --- | --- | --- | --- |
 | 文件管理（门户原生网盘） | 门户内原生页面（Go 核心 `labfiles` 索引 + 按用户 ACL 授权） | 门户 `/files` | ✅ Go 核心实现，含单元测试 |
-| Agent 助手 | 门户内 IM 页 → AgentScope 2.0.11（独立容器） | 门户 `/agent` | ✅ SSE 流式回复、12 个 `lab_*` MCP 工具、知识库 RAG、会话落库 |
+| Agent 助手 | 门户内 IM 页 → AgentScope 2.0.12（独立容器） | 门户 `/agent` | ✅ SSE 流式回复、12 个 `lab_*` MCP 工具、知识库 RAG、会话落库 |
+| SSH/SFTP 工作台 | 门户原生页面 → 同源 `/ssh-api/` → 自研 FastAPI + AsyncSSH 网关 | 门户 `/ssh` | ✅ 连接加密保存、首次主机指纹确认、真实终端回显、SFTP 目录操作、跨账号隔离与公网目标拒绝 |
+| 生信实训平台 | 门户 `/bioinfo` → 同源 iframe → 生信 OIDC 自动 SSO | 门户 `/bioinfo` | ✅ 门户会话自动登录，课程、实验、提交与批阅闭环 |
 | draw.io | 独立页面 + 门户受控保存/导出 | `http://192.0.2.10/draw/` | ✅ 绘图页可打开、可另存 XML 到个人目录 |
 | Linux Command | 官方仓库静态构建，Nginx 直接托管 | `http://192.0.2.10:8086/` | ✅ 页面加载，标题“Linux命令搜索引擎” |
 | IT-Tools | 官方镜像，独立页面 | `http://192.0.2.10:8084/` | ✅ 页面加载，标题“IT Tools - Handy online tools” |
@@ -13,7 +15,6 @@
 | 统一搜索 | 门户内页面 → 后端代理 SearXNG | 门户 `/search` | ✅ 中文/学术/视频分类切换 |
 | 文档解析 | 门户内页面 → OXR-1.0（Docling 回退） | 门户 `/docparse` | ✅ OXR 官方免费实例可用，PDF 真实解析出 Markdown |
 | 个人工作台 | 门户内原生页面（AntD） | 门户 `/workbench` | ✅ 捕获→分类→确认写入、计划与方向、简报 |
-| Agent 助手 | 门户内 IM 页 → AgentScope 2.0.11（独立容器） | 门户 `/agent` | ✅ SSE 流式回复、12 个 `lab_*` MCP 工具、知识库 RAG、会话落库 |
 | 论文翻译（文本） | 门户内页面 → Hy-MT2（本地引擎回退） | 门户 `/translation` | ✅ Hy-MT2 未部署时自动回退到本地引擎并标注来源 |
 | 天气预测 | 门户内页面 → Open-Meteo | 门户 `/weather` | ✅ 实时天气 + 5~7 日预报 |
 | 数据库速查 + API | 门户内页面 → 32 个真实适配器 | 门户 `/databases` | ✅ 107 个资源、32 个适配器实测返回真实结果 |
@@ -22,6 +23,19 @@
 | PDF 工具箱 | 门户 **antd 自绘** → 同源 `/pdf-api/` → Stirling PDF 3.3 | 门户 `/pdf` | ✅ 合并/拆分/压缩/密码等 14 项实测，文件不出内网 |
 | 邮件（只收不发） | Mailbox 0.7.5（容器内加密凭据），门户自绘前端 + 同源 `/mail/` 代理 | 门户 `/mail/` | ✅ 服务 healthy、`/mail/health` 200；具体邮箱账号待配置 |
 | 组员共享与课题资料 | 门户原生页面 + Go 核心 ACL | 门户 `/shared`、`/research`、`/meetings` | ✅ 仅教师可见课题资料；逐周授权、沿用上周、48h 删除窗回归通过 |
+
+## SSH/SFTP 工作台（自研网关）
+
+- 入口：门户 `/ssh`；后端路径：同源 `/ssh-api/`；容器：`lab-ssh-gateway`，仅绑定 `127.0.0.1:8118`。
+- 身份：Nginx 先调用门户 `/api/auth/check`，再覆盖注入 `X-User-ID`；SSH 网关不提供第二套登录。
+- 隔离：连接、主机密钥、活动会话与审计都按门户 `user_id` 过滤；远端文件权限仍由目标 SSH 账号决定。
+- 凭据：SSH 口令/私钥用 Fernet 加密后写入 `ssh_gateway.connections`，API 永不返回明文或密文。
+- 目标：默认只允许私网、回环和 Tailscale CGNAT；域名先解析并校验全部地址，再固定到已校验 IP 连接，防 DNS 重绑定。
+- 主机密钥：首次连接必须人工确认 SHA256 指纹；后续严格校验，指纹变化直接拒绝。
+- 配额：默认单人 2 个会话、全局 8 个会话、每人每分钟 6 次连接/指纹探测，空闲 30 分钟回收。
+- 文件：SFTP 列目录、文本预览、上传、下载、新建目录、重命名、删除；上传先写临时文件，成功后原子改名。
+- 审计：连接保存/删除、指纹确认、会话启停、终端挂接和文件操作均记录到 `ssh_gateway.audit`。
+- 旧第三方 WebSSH 的 socket.io 协议与独立账号体系不再使用；当前终端协议为原生 WebSocket JSON。
 
 ## draw.io 的集成（与官方建议的差异及原因）
 
@@ -46,15 +60,16 @@
 
 ## OIDC 入口自适应（跟随访问入口主机）
 
-门户支持两个入口主机：内网 `192.0.2.10` 与 Tailscale `198.51.100.71`。
-门户、Casdoor issuer、服务目录地址都已自适应。
+门户支持内网与 Tailscale 入口。LabGo OIDC Provider、服务目录地址与生信回调都跟随当前同源主机。
 
 | 事实 | 说明 |
 | --- | --- |
-| Casdoor issuer 随请求 Host 回显 | `origin` / `originFrontend` 留空，授权码流建立浏览器会话，跨应用免密 |
-| 门户回调动态生成 | 后端按请求 Host 推导 issuer 与 `redirect_uri`（写入 `state`） |
-| 生信实训平台回调固定 | `http://192.0.2.10:8102/api/v1/auth/callback`（`BIOINFO_OIDC_REDIRECT_URI`） |
-| 门户内原生页面全部随入口自适应 | 文件管理 `/files`、Agent 助手 `/agent`、文件工坊 `/snapotter` 等地址由 `adapt_host()` 按当前 Host 生成 |
+| 门户认证 | `/login` 本地账号口令 + bcrypt；会话为门户自签 JWT |
+| OIDC issuer | LabGo 按白名单请求 Host 发布 `http(s)://<host>/oidc` |
+| 未登录回跳 | 使用公开 `/oidc/authorize?...`，保留完整 PKCE 参数 |
+| 生信回调 | `/apps/bioinfo/api/v1/auth/callback`，与当前入口同主机 |
+| 原生页面 | `/files`、`/agent`、`/snapotter` 等按当前 Host 生成地址 |
+| Casdoor | 容器与 8090 监听已下线；原账号库仅保留兼容数据 |
 
 ## Linux 命令库（门户内完整版）
 
@@ -75,7 +90,7 @@
 
 | 能力 | 实现 |
 | --- | --- |
-| 登录 | 复用 Casdoor 会话：右上角显示头像/姓名与下拉（个人资料、退出登录），未登录显示「登录」按钮 |
+| 登录 | 复用门户会话：右上角显示头像/姓名与下拉（个人资料、退出登录），未登录显示「登录」按钮 |
 | 换背景 | 5 套本地 CSS 渐变/纹理（实验蓝、松石绿、晨曦、网格、深空）+ 深浅色主题切换，选择持久化在 localStorage（`labspace.bg`），**不拉外链图片，离线可用** |
 | 多元搜索 | 大搜索框 + 来源切换（全部=general,science,videos / 网页 / 学术 / 视频），走门户后端 `/api/search` → SearXNG 多引擎聚合；回车跳到结果页并带上 categories |
 | 快捷入口 | 文件共享、文件工坊、知识库问答、绘图、Linux 命令、文献检索 |
@@ -85,28 +100,18 @@
 
 ## OIDC 登录的两条硬规则（踩过的坑）
 
-### 规则 1：口令必须统一
+### 规则 1：口令由门户账号库统一管理
 
-Casdoor 是唯一身份源。历史上 Quantum / Open WebUI 另有本地口令，导致同名账号在 Casdoor 登录页
-被拒、页面反复退回登录框；当时用 `lab-sync-passwords`（每日 06:50 定时 + 可手动执行）把
-**同名账号在 Casdoor / Quantum / Open WebUI 三处的口令统一**，统一后的清单在
-`/etc/labspace/casdoor-users.txt`（0600）。这两个服务下线后，口令统一只需覆盖 Casdoor 与生信实训平台。
+门户 `/login` 直接校验账号库中的 bcrypt 哈希。新账号使用服务端随机一次性口令，首次登录强制修改；
+管理员重置口令同样要求本人修改。登录成功/失败/锁定均写入审计，并按账号与可信来源 IP 联合限流。
 
 ### 规则 2：OIDC 回调必须与登录入口同主机
 
-浏览器的会话 Cookie 是**按主机隔离**的。OIDC 流程是「在 A 主机登录 → IdP → 回到 A 主机回调」，
-若中间换了主机，回调时浏览器不会带上会话 Cookie，服务端就报 `mismatching_state`（页面显示
-“Sign-in with your identity provider failed”）。
+浏览器会话 Cookie 按主机隔离。LabGo OIDC Provider 按白名单 Host 发布 issuer，生信客户端按当前
+入口生成 `/apps/bioinfo/api/v1/auth/callback`，避免 LAN/Tailscale 之间丢失会话。
 
-因此本部署统一 **IP 优先**：
-
-| 应用 | 固定回调（redirect_uri） | 必须从这个入口登录 |
-| --- | --- | --- |
-| LabSpace 门户 | **动态**（后端按请求 Host 生成） | 任意（IP 或域名均可） |
-| 生信实训平台 | `http://192.0.2.10:8102/api/v1/auth/callback` | `http://192.0.2.10:8102/` |
-
-若要用其它入口登录 OIDC，必须把对应应用的
-`redirect_uri` 改回域名形式并重启对应服务。
+登录回跳必须保留完整 `/oidc/authorize` 查询参数（尤其是 PKCE `code_challenge`），且不能把 Nginx
+内部路径 `/v1/oidc/*` 返回给浏览器。
 
 ## JBrowse 2 基因组浏览器（/jbrowse/）
 
@@ -212,27 +217,26 @@ ChEBI、NCBI Taxonomy、HGNC、PRIDE、Enrichr、Brain Atlas。
 | 落库 | `workbench_items` / `workbench_projects` / `workbench_plans` / `workbench_briefs` 四张表（schema `labspace`） |
 | 权限 | 所有读写按 session 里的用户 id 隔离；后端不信任前端传入的任何 user id |
 
-## Agent 助手（/agent，底层 pi）
+## Agent 助手（/agent，AgentScope 2.0.12）
 
-门户里的 IM 形态助手，底层是本机 **pi**（`pi --mode rpc`），会话、模型、配额全部由门户管理。
+门户里的 IM 形态助手，底层是 **AgentScope 2.0.12 Agent Service**（容器 `lab-agentscope`）。
+门户负责账号、模型白名单、配额与审计，AgentScope 负责会话、工具装配、知识库、长期记忆与工作区。
 
 | 项 | 说明 |
 | --- | --- |
-| 网关 | `/opt/labspace/agent/gateway.mjs`（Node 22，仅标准库），监听 `172.28.0.1:8110`（仅 docker 网段可达） |
-| 守护 | systemd `lab-agent-gateway.service`（root、`Restart=always`、`ProtectSystem=full`）；配置 `/etc/labspace/agent-gateway.json`（0600） |
-| 协议 | pi RPC：stdin 写 `{"id","type":"prompt","message"}`，stdout 事件 `agent_start / turn_start / message_update / tool_execution_* / turn_end / agent_settled` |
-| 子进程 | 每个会话一个 `pi --mode rpc --session-dir … --session-id … --model … --no-builtin-tools --no-mcp --no-skills --no-context-files --tools lab_* --extension lab-portal.js` |
-| 安全边界 | 禁用内置 read/bash/edit/write，只允许 `lab_*` 插件工具；子进程 cwd 指向空目录 `/srv/labdata/labspace/agent/work` |
-| 插件 | `agent/extensions/lab-portal.js`：`lab_services`、`lab_database_query`、`lab_web_search`、`lab_workbench_capture`、`lab_workbench_list`；用用户自己的会话 JWT（`LAB_PORTAL_BEARER`）回调门户 |
-| 后端 | `backend/app/agent.py`：会话 CRUD、消息落库、SSE 中继、配额统计、管理员配置与用量 |
-| 接口 | `GET /status`、`GET /models`、`GET/POST /sessions`、`GET/DELETE /sessions/{id}`、`GET/POST /sessions/{id}/messages`、`POST /sessions/{id}/abort`、`GET /sessions/{id}/stream`、`GET /quota`、`GET/PUT /admin/config`、`GET /admin/usage` |
-| 配额 | 每小时消息数 / 每日消息数 / 每日 token / 最大活动会话（默认 30 / 200 / 500000 / 8），超限 429；**会话上限只在建会话时校验**，发消息不受影响 |
-| 管理面板 | 门户 `/admin` 的「Agent 模型与配额」页：模型白名单、默认模型、4 项配额、插件开关、系统提示词、用量统计 |
+| 服务 | `deploy/agentscope/app.py`，容器 `lab-agentscope`，仅回环 `127.0.0.1:8103` 暴露给 Nginx |
+| 存储 | PostgreSQL 库 `agentscope` + Qdrant 向量库；长期记忆落在每用户 AgentScope 工作区 |
+| 工具 | `lab_mcp_server.py` 以进程内 MCP server 接入门户业务工具；身份由 Nginx 核验后的 `X-User-ID` 断言签名，模型不能伪造 |
+| 后端 | `backend/app/agent.py` 会话 CRUD、消息落库、SSE 中继、配额与管理员配置；`agentscope_adapter.py` 将 AgentScope 事件翻译为 `ready/delta/tool/done/error` |
+| 接口 | `/api/agent/status`、`/models`、`/sessions`、`/sessions/{id}/messages`、`/abort`、`/stream`、`/hitl`、`/quota`、`/admin/config`、`/admin/usage` |
+| HITL | 工具确认与 AskUser 经服务端重建事件后回传；前端只展示服务端问题，不自行批准任意工具 |
+| 前端 | `pages/Agent.tsx` 只做模式编排；`pages/agent/` 下拆分流式 Hook、Ant Design X 消息/会话/输入区、HITL 与知识记忆面板 |
+| 全站入口 | 顶栏与移动端菜单「让 Agent 分析当前页」通过结构化一次性交接带入来源、路径与选中文本 |
+| 权限 | 普通用户只能访问自己的资源；教师/管理员可跨用户只读助手与知识库，凭据永不共享；上游失败按无权限处理 |
 
-> **两个必须记住的坑**
-> 1. pi 的 `--model` 必须写 `provider/id`（如 `minimax-cn/MiniMax-M3.1-Flash`），网关内部会自动补全 provider。
-> 2. pi 启动阶段也会发一次 `agent_settled`，SSE 中继**只有拿到 assistant_message 之后**才允许按 settled 结束流，
->    否则会丢掉本轮增量（表现为「消息已落库但前端一个字都收不到」）。
+> AgentScope 原始流与门户翻译流路径不同：`/api/agent/as/sessions/{id}/stream`、
+> `/api/agent/agentscope/sessions/{id}/stream`、`/api/agent/sessions/{id}/stream`。
+> 门户 UI 只依赖统一后的五类 SSE 事件，不直接依赖上游私有事件形状。
 
 ## 文本论文翻译（/translation，Hy-MT2）
 

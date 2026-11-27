@@ -333,7 +333,7 @@ export default function KnowledgeTab() {
           </Typography.Paragraph>
         ) : (
           <Typography.Paragraph type="warning" style={{ marginBottom: 12 }}>
-            没有查到可用的嵌入模型，AgentScope 2.0.11 创建知识库时必须绑定一个嵌入模型。
+            没有查到可用的嵌入模型，AgentScope 2.0.12 创建知识库时必须绑定一个嵌入模型。
           </Typography.Paragraph>
         )}
         <Form<KnowledgeFormValues>

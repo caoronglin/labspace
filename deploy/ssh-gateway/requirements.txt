@@ -1,0 +1,6 @@
+fastapi==0.135.1
+uvicorn[standard]==0.54.0
+asyncssh==2.21.0
+cryptography==46.0.3
+asyncpg==0.32.0
+python-multipart==0.0.22

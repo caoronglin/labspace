@@ -102,11 +102,12 @@ export const NAV_GROUPS: NavGroup[] = [
  */
 export const NAV_SUBS: Record<string, NavSub> = {
   data: { key: 'data', label: '文件与数据', icon: <DatabaseOutlined /> },
-  // 写作与分析：LaTeX、翻译、流程图、绘图、基因组都归这里。
+  // 写作与分析：LaTeX、翻译、流程图、绘图都归这里。
   writing: { key: 'writing', label: '分析与写作', icon: <FileTextOutlined /> },
-  // 「实验工具」与「学习与小工具」曾经是两个子菜单，语义几乎重合
-  // （都是"偶尔用一次的辅助工具"），合并成一个「实用工具」，按用途排序：
-  // 处理材料 → 查资料 → 上手帮助。
+  // 文档处理独立成组，避免在「分析」「工具」两个一级组里重复出现「实用工具」。
+  docTools: { key: 'docTools', label: '文档工具', icon: <FilePdfOutlined /> },
+  // 生信类资源统一收口，不再让「科研工具」下出现意义不明的「文件与数据」。
+  bioResources: { key: 'bioResources', label: '生信资源', icon: <ExperimentOutlined /> },
   utility: { key: 'utility', label: '实用工具', icon: <ToolOutlined /> },
   admin: { key: 'admin', label: '后台管理', icon: <CloudServerOutlined /> },
 };
@@ -139,6 +140,14 @@ export const NAV_ITEMS: NavItem[] = [
     hint: '对话 · 知识与记忆 · 能力中心',
     keywords: ['agent', 'ai', 'chat', '助手', '对话', '知识库', 'kb', 'rag',
       'agentscope', '能力中心', 'IM', '渠道', '定时', 'SOP', '工作区', 'MCP', '技能'],
+  },
+  {
+    path: '/ssh',
+    label: 'SSH 工作台',
+    icon: <CodeOutlined />,
+    group: 'work',
+    hint: '内网 SSH/SFTP · 终端与文件目录 · 账号隔离',
+    keywords: ['ssh', 'sftp', 'terminal', '服务器', '内网主机', '远程终端', '文件目录'],
   },
   {
     path: '/knowledge',
@@ -212,7 +221,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '数据库速查',
     icon: <DatabaseOutlined />,
     group: 'tools',
-    sub: 'data',
+    sub: 'bioResources',
     hint: '生物数据库目录',
     keywords: ['databases', 'plant', '数据库', '植物库'],
   },
@@ -241,7 +250,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '生信工具',
     icon: <ExperimentOutlined />,
     group: 'tools',
-    sub: 'writing',
+    sub: 'bioResources',
     hint: '序列 · 克隆 · 引物 · 比对建树',
     keywords: [
       'bio', 'biotools', '生信', '序列', 'gc', 'orf', '翻译', '酶切', '质粒', '引物', 'tm',
@@ -253,7 +262,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '公共基因组',
     icon: <ExperimentOutlined />,
     group: 'tools',
-    sub: 'writing',
+    sub: 'bioResources',
     hint: 'JBrowse 浏览 · 序列分析',
     keywords: ['genomes', 'genome', 'jbrowse', 'fasta', '基因组', '序列', 'orf', 'gc', 'rust-bio'],
   },
@@ -311,7 +320,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'PDF 工具箱',
     icon: <FilePdfOutlined />,
     group: 'analysis',
-    sub: 'utility',
+    sub: 'docTools',
     hint: '合并 · 拆分 · 压缩 · 旋转 · 删页',
     keywords: ['pdf', '合并', '拆分', '压缩', '水印', 'stirling', '论文'],
   },
@@ -320,7 +329,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: '文件工坊',
     icon: <ThunderboltOutlined />,
     group: 'analysis',
-    sub: 'utility',
+    sub: 'docTools',
     hint: '文件与媒体处理',
     keywords: ['snapotter', 'media', '转换', '文件'],
   },
@@ -337,7 +346,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: '统一搜索',
     icon: <GlobalOutlined />,
     group: 'work',
-    sub: 'utility',
     keywords: ['search', '搜索'],
   },
   {

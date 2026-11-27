@@ -210,10 +210,17 @@ async def api_admin_audit(
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(["id", "actor", "action", "target", "detail", "ip", "created_at"])
+
+        def safe_cell(value: Any) -> Any:
+            if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+                return "'" + value
+            return value
+
         for r in rows:
             writer.writerow([
-                r["id"], r["actor"], r["action"], r["target"],
-                json.dumps(r["detail"], ensure_ascii=False), r["ip"], r["created_at"],
+                safe_cell(r["id"]), safe_cell(r["actor"]), safe_cell(r["action"]),
+                safe_cell(r["target"]), safe_cell(json.dumps(r["detail"], ensure_ascii=False)),
+                safe_cell(r["ip"]), safe_cell(r["created_at"]),
             ])
         from fastapi.responses import PlainTextResponse
 

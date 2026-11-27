@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -126,6 +127,14 @@ const HOME_SERVICE_COUNT = 12;
  * 还得再找一次；现在按“今天要干什么”排：找人/找资料 → 存东西 → 开会 → 写作。
  */
 const QUICK_ENTRIES = [
+  {
+    key: "ssh",
+    label: "SSH 工作台",
+    desc: "内网终端 · SFTP 目录",
+    icon: <CodeOutlined />,
+    path: "/ssh",
+    color: tokens.colorPrimary,
+  },
   {
     key: "agent",
     label: "AI 助手",
@@ -350,16 +359,29 @@ function ServiceTile({
   onToggleFavorite: (id: string) => void;
 }) {
   const navigate = useNavigate();
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState(false);
   const status = service.health?.status;
   const accent = CATEGORY_ACCENT[service.category] ?? tokens.colorPrimary;
   const dotClass = serviceDotClass(status);
 
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const onEnter = () => setHover(true);
+    const onLeave = () => setHover(false);
+    card.addEventListener("mouseenter", onEnter);
+    card.addEventListener("mouseleave", onLeave);
+    return () => {
+      card.removeEventListener("mouseenter", onEnter);
+      card.removeEventListener("mouseleave", onLeave);
+    };
+  }, []);
+
   return (
     <div
+      ref={cardRef}
       className="lab-service-card"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       style={{
         position: "relative",
         overflow: "hidden",

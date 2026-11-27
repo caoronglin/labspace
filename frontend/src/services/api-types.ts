@@ -278,6 +278,21 @@ export interface AccountItem {
   homeReady: boolean;
 }
 
+export interface AuditItem {
+  id: number;
+  actor: string;
+  action: string;
+  target: string;
+  detail: Record<string, unknown>;
+  ip: string;
+  created_at: string;
+}
+
+export interface AuditResponse {
+  items: AuditItem[];
+  count: number;
+}
+
 export interface AccountsResponse {
   accounts: AccountItem[];
   total: number;

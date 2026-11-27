@@ -1,63 +1,69 @@
-# AgentScope 2.0.11 接入说明（共用内核）
+# AgentScope 2.0.12 接入说明
 
-> 状态：**P1 最小闭环已可运行**（服务健康、库表已建）。pi 网关仍在服役，切换是后续阶段的事。
+> 状态：**生产运行中**。门户个人助手、知识库、长期记忆、HITL 与能力中心均由 AgentScope 2.0.12 承载；旧 pi 网关已下线。
 
-## 为什么是独立容器而不是塞进门户后端
+## 架构
 
-`agentscope==2.0.11` 的依赖很重，且带硬版本约束：`mcp>=2.0.0`、`httpx2>=2.5.0`、
-`anthropic`、`dashscope`、`opentelemetry-*`、`aiortc`。门户后端锁着 `httpx==0.28.1`
-等版本，塞进同一个镜像会直接打架，并把镜像再撑大几百 MB。
+```text
+浏览器 → Nginx `/api/agent/*` → 门户后端 → AgentScope 2.0.12（lab-agentscope）
+                                      │              │
+                                      │              ├─ PostgreSQL 库 agentscope
+                                      │              ├─ Qdrant 向量库
+                                      │              └─ 每用户工作区 / 长期记忆
+                                      └─ 会话、模型白名单、配额、审计、SSE 事件翻译
+```
 
-但**内核仍然是同一份**：同样的 `agentscope.app.create_app`、同样的 Session /
-KnowledgeBase / SOP 存储，只是进程边界清楚。业务侧不再自建平行的会话表。
+AgentScope 依赖较重且与门户后端的 `httpx` 版本约束不同，因此运行在独立容器中。门户不重复实现 AgentScope 的会话、知识库、工具与工作区栈，只负责鉴权、配额和统一事件契约。
 
 ## 组成
 
 | 文件 | 作用 |
 | --- | --- |
-| `deploy/agentscope/Dockerfile` | `python:3.11-slim` + `agentscope[service,storage-sql]==2.0.11` |
-| `deploy/agentscope/requirements.txt` | 依赖与 extras（**extras 不能省**，否则 import 期就缺 `apscheduler`） |
-| `deploy/agentscope/app.py` | 装配层：`create_app(storage, message_bus, workspace_manager)` + `/healthz` |
-| `deploy/nginx/agentscope.conf` | 对外 8104：`auth_request` → 门户 `/api/auth/check`，再注入 `X-User-ID` |
+| `deploy/agentscope/Dockerfile` | 独立运行镜像 |
+| `deploy/agentscope/requirements.txt` | 锁定 `agentscope[service,storage-sql,vdb-qdrant,rag,channel]==2.0.12` |
+| `deploy/agentscope/app.py` | `create_app` 装配、MCP 工具、身份注入、HITL 权限策略、长期记忆 |
+| `deploy/agentscope/lab_mcp_server.py` | 门户业务 MCP 工具，使用签名用户断言回调门户 |
+| `deploy/agentscope/lab_access.py` | 教师/管理员跨用户只读助手与知识库；凭据永不共享 |
+| `deploy/nginx/agentscope.conf` | 回环入口、门户会话鉴权、无条件覆盖 `X-User-ID` |
+| `backend/app/agentscope_adapter.py` | AgentScope 事件 → `ready/delta/tool/done/error` |
+| `frontend/src/pages/agent/` | Ant Design X 会话、消息、输入区、HITL 与知识记忆组件 |
 
-## 身份：X-User-ID 不可伪造
+## 身份与权限
 
-```text
-浏览器 ──cookie──▶ nginx :8104 ──auth_request──▶ 门户 :8088 /api/auth/check
-                        │                               └─ 204 + X-Auth-User: <sub>
-                        └──proxy_set_header X-User-ID $auth_user──▶ AgentScope :8103
-```
-
-`proxy_set_header` 是**无条件覆盖**：客户端自己带的 `X-User-ID` 会被替换掉，
-所以伪造无效。AgentScope 侧沿用官方 `get_current_user_id` 依赖，不需要改它的代码。
+- Nginx 先调用门户 `/api/auth/check`，再用 `X-Auth-User` 无条件覆盖 `X-User-ID`；客户端不能伪造身份。
+- AgentScope 的 `lab_*` MCP 工具使用进程内密钥签发短期用户断言，模型不能指定其它用户。
+- 普通用户只能访问自己的资源；教师/管理员可跨用户**只读**助手与知识库，不能改写或删除。
+- `credential` 资源永不共享；门户或角色读取失败时按无共享权限处理（fail closed）。
+- 工具确认与 AskUser 走 HITL：前端只展示服务端问题，门户后端重建事件后回传，不允许前端批准任意工具。
 
 ## 存储
 
-* 独立库 `agentscope`（与门户同实例、不同库）。
-  不用「同库不同 schema」是因为 AgentScope 自带 alembic，`search_path` 需要在
-  asyncpg 与 alembic 两侧都配好，漏一侧就会写到 `public`。
-* 当前单实例，`create_tables=True` 启动即建表（已建 13 张表）。
-  **多副本时必须改成独立迁移步骤**，否则两个副本会并发跑同一份 DDL。
+- PostgreSQL 库 `agentscope`：AgentScope 业务表。
+- Qdrant：知识库向量集合，API Key 仅从部署环境注入。
+- `/srv/agentscope/workspaces`：每用户工作区与长期记忆。
+- `/srv/agentscope/blobs`：知识库文档原件。
 
-## 运维命令
+## 门户事件契约
+
+| AgentScope 事件 | 门户 SSE |
+| --- | --- |
+| 会话就绪 | `ready` |
+| 文本增量 | `delta` |
+| 工具调用 / 结果 | `tool` |
+| 人工确认 / AskUser | `confirm` / `ask` |
+| 完成 | `done` |
+| 错误 | `error` |
+
+AgentScope 原始流与门户翻译流路径不同，前端只依赖统一后的五类事件，不直接耦合上游私有事件形状。
+
+## 运维
 
 ```bash
-# 构建 / 启动
-cd /opt/labspace/deploy && docker compose build agentscope && docker compose up -d agentscope
-
-# 探活（只绑回环）
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8103/healthz
-
-# 库表
+cd /opt/labspace/deploy
+docker compose build agentscope
+docker compose up -d agentscope
+curl -fsS http://127.0.0.1:8103/healthz
 docker exec lab-postgres psql -U labspace -d agentscope -c '\dt'
 ```
 
-## 后续阶段（未做）
-
-1. **事件适配**：把 AgentScope 事件映射成前端认的 `ready/delta/tool/done/error`。
-   `ToolCallStart/Result` 的字段名必须逐个核对 `agentscope/event/_event.py`，不要按猜测写。
-2. **工具**：现有 13 个 `lab_*` 工具（`agent/extensions/lab-portal.js`）迁成 MCP server，
-   用 `MCPHubBase` 接入；不足的用 `extra_agent_tools` 补。
-3. **额度**：`MiddlewareBase` 钩子上做预留/结算，与门户 `/api/agent/quota` 统一口径。
-4. **知识库**：`CollectionPerKbManager` + `QdrantStore`；`lab-rag` 保持现状不重建。
-5. **灰度下线 pi**：按用户/会话分流，观察期后再移除 `agent/gateway.mjs`。
+多副本部署前必须把 AgentScope 的建表步骤改为独立迁移，不能依赖两个副本同时执行 `create_tables=True`。

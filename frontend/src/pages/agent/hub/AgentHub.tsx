@@ -126,7 +126,7 @@ export default function AgentHub({ embedded = false, extra }: { embedded?: boole
       <Alert
         type="info"
         showIcon
-        title="这些能力由 AgentScope 2.0.11 原生提供，门户只做鉴权与展示。"
+        title="这些能力由 AgentScope 2.0.12 原生提供，门户只做鉴权与展示。"
         description="所有请求都经门户后端 /api/agent/as 受控代理转发，能力组在白名单内、身份固定为当前登录用户；上游不可用时这里会显示原因，不会用占位数据填充。"
       />
 

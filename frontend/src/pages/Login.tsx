@@ -9,7 +9,7 @@ import BrandMark from '../components/BrandMark';
 function safeBack(raw: string): string {
   const value = (raw || '').trim();
   if (!value || value.startsWith('//') || /[\\\n\r]/.test(value)) return '/';
-  return value.startsWith('/') ? value.slice(0, 200) : '/';
+  return value.startsWith('/') ? value.slice(0, 4096) : '/';
 }
 
 /**
@@ -33,8 +33,8 @@ export default function Login() {
   useEffect(() => {
     if (loading || !me?.authenticated || navigated.current) return;
     navigated.current = true;
-    navigate(back, { replace: true });
-  }, [back, loading, me, navigate]);
+    window.location.assign(back);
+  }, [back, loading, me]);
 
   const submitPassword = async () => {
     if (!username.trim() || !password) {

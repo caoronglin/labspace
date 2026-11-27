@@ -337,7 +337,10 @@ def _pptx_content(raw: bytes) -> dict[str, Any]:
                 break
             if not getattr(shape, "has_text_frame", False):
                 continue
-            text = shape.text_frame.text
+            text_frame = getattr(shape, "text_frame", None)
+            if text_frame is None:
+                continue
+            text = text_frame.text
             title = slide.shapes.title
             shapes.append({
                 "id": int(shape.shape_id),
@@ -347,7 +350,8 @@ def _pptx_content(raw: bytes) -> dict[str, Any]:
             })
         notes = ""
         if slide.has_notes_slide:
-            notes = slide.notes_slide.notes_text_frame.text
+            notes_frame = getattr(slide.notes_slide, "notes_text_frame", None)
+            notes = notes_frame.text if notes_frame is not None else ""
         slides.append({"index": index, "shapes": shapes, "notes": notes})
     return {"kind": "pptx", "slides": slides, "truncated": len(prs.slides) > MAX_SLIDES}
 
@@ -381,12 +385,17 @@ def _save_pptx(raw: bytes, slides: list[dict[str, Any]]) -> bytes:
             change = by_id.get(int(shape.shape_id))
             if not change or not getattr(shape, "has_text_frame", False):
                 continue
+            text_frame = getattr(shape, "text_frame", None)
+            if text_frame is None:
+                continue
             new_text = str(change.get("text", ""))
-            if shape.text_frame.text != new_text:
-                _set_text_frame(shape.text_frame, new_text)
+            if text_frame.text != new_text:
+                _set_text_frame(text_frame, new_text)
         notes = slide_change.get("notes")
         if notes is not None and slide.has_notes_slide:
-            slide.notes_slide.notes_text_frame.text = str(notes)
+            notes_frame = getattr(slide.notes_slide, "notes_text_frame", None)
+            if notes_frame is not None:
+                notes_frame.text = str(notes)
     out = io.BytesIO()
     prs.save(out)
     return out.getvalue()

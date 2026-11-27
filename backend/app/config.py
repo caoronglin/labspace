@@ -17,6 +17,18 @@ def _list(name: str, default: str = "") -> list[str]:
     return [x.strip() for x in raw.split(",") if x.strip()]
 
 
+def _positive_int(name: str, default: int, maximum: int = 512) -> int:
+    """读取有正数边界的配置；写错时保留可用默认值而不是让服务启动失败。"""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(value, maximum))
+
+
 #: 双入口（LAN + Tailscale）默认白名单；可用 LABSPACE_ALLOWED_HOSTS 覆盖。
 DEFAULT_ALLOWED_HOSTS = "192.0.2.10,198.51.100.71,127.0.0.1,localhost"
 
@@ -46,6 +58,16 @@ class Settings:
 
     # 数据库
     db_dsn: str = os.getenv("LABSPACE_DB_DSN", "")
+    # 门户库连接池：单 worker + 异步接口 + 线程池阻塞查询。
+    # PostgreSQL max_connections=100，门户与账号库合计默认 36，留给 AgentScope/Baserow 等余量。
+    db_pool_min: int = _positive_int("LABSPACE_DB_POOL_MIN", 4, 32)
+    db_pool_max: int = _positive_int("LABSPACE_DB_POOL_MAX", 24, 48)
+    account_db_pool_max: int = _positive_int("LABSPACE_ACCOUNT_DB_POOL_MAX", 12, 24)
+    # FastAPI 同步端点线程池；提高 I/O 并发，但不启用多 worker，保留内存限流与 SSE 状态。
+    threadpool_tokens: int = _positive_int("LABSPACE_THREADPOOL_TOKENS", 64, 128)
+    # 每个出站 AsyncClient 的连接上限；只影响单客户端，不代表全局连接数。
+    http_max_connections: int = _positive_int("LABSPACE_HTTP_MAX_CONNECTIONS", 128, 512)
+    http_keepalive_connections: int = _positive_int("LABSPACE_HTTP_KEEPALIVE_CONNECTIONS", 32, 128)
 
     # 账号数据库（沿用原 Casdoor PostgreSQL 库；Casdoor 容器已下线，数据保留）
     casdoor_db_host: str = os.getenv("CASDOOR_DB_HOST", "lab-postgres")
@@ -102,7 +124,7 @@ class Settings:
     latex_root: str = os.getenv("LABSPACE_LATEX_ROOT", "/srv/labdata/latex")
     latex_timeout: int = int(os.getenv("LABSPACE_LATEX_TIMEOUT", "120"))
 
-    # Agent 助手（宿主机 pi RPC 网关，仅监听 docker 网桥地址）
+    # 旧 pi 网关兼容配置（运行时默认走 AgentScope；仅为旧客户端显式选择保留）。
     agent_gateway: str = os.getenv("LABSPACE_AGENT_GATEWAY", "http://172.28.0.1:8110").rstrip("/")
     agent_token: str = os.getenv("LABSPACE_AGENT_TOKEN", "")
     agent_default_model: str = os.getenv("LABSPACE_AGENT_DEFAULT_MODEL", "minimax-cn/MiniMax-M3.1-Flash")
@@ -111,9 +133,9 @@ class Settings:
     siliconflow_base: str = os.getenv("LABSPACE_SILICONFLOW_BASE", "https://api.siliconflow.cn").rstrip("/")
     siliconflow_key: str = os.getenv("LABSPACE_SILICONFLOW_KEY", "")
     systemone_model: str = os.getenv("LABSPACE_SYSTEMONE_MODEL", "Kev-4b")
-    # 内部服务令牌（pi 插件等可信内部调用使用 X-Lab-Service-Token 头）
+    # 内部服务令牌（MCP 工具等可信内部调用使用 X-Lab-Service-Token 头）
     service_token: str = os.getenv("LABSPACE_SERVICE_TOKEN", "")
-    # 宿主机运维服务（lab-oidc-sync.service，root 运行、令牌鉴权）。
+    # 宿主机运维服务（兼容旧配置；lab-oidc-sync 已下线，当前仅 restic 快照删除使用）。
     # 只用于必须在本机 root 环境执行的动作（目前是 restic 快照删除）。
     oidc_sync_url: str = os.getenv("LABSPACE_OIDC_SYNC_URL", "").rstrip("/")
     # Baserow 数据表（容器内网地址；管理员凭据仅从 600 权限文件读取）

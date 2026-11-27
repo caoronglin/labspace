@@ -278,7 +278,7 @@ async def create_session(
 ) -> dict[str, Any]:
     """新建会话。
 
-    ``model_cfg`` 会写进 ``chat_model_config``：AgentScope 2.0.11 的模型配置挂在
+    ``model_cfg`` 会写进 ``chat_model_config``：AgentScope 2.0.12 的模型配置挂在
     **session** 上，agent 的 ``chat_config`` 里没有这个字段（放进去会被静默忽略，
     调用时直接 invalid_request）。
     """

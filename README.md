@@ -38,6 +38,7 @@ React 19 + TypeScript + Vite + Ant Design 6 的内网统一门户，聚合实验
 | 门户 D509 工作台 | http://192.0.2.10/ |
 | 登录 / 登出 | http://192.0.2.10/login |
 | 文件空间（门户原生网盘） | http://192.0.2.10/files |
+| SSH/SFTP 工作台 | http://192.0.2.10/ssh |
 | 文件工坊 SnapOtter | http://192.0.2.10/snapotter |
 | draw.io | http://192.0.2.10/apps/drawio/ |
 | Linux 命令速查 | http://192.0.2.10/apps/commands/ |
@@ -112,8 +113,9 @@ labspace/
 ├── agent/               助手技能（pi 网关已于 2026-11-10 下线，助手改由 AgentScope 提供）
 │   └── skills/          技能内容：deep-research / literature-search / plant-database-search / research-workflow
 ├── deploy/
-│   ├── compose.yaml     backend + latex-compile + drawio + pdf2zh + baserow
+│   ├── compose.yaml     backend + ssh-gateway + latex-compile + drawio + pdf2zh + baserow
 │   ├── .env             真实凭据（0600，不入库）
+│   ├── ssh-gateway/     自研 FastAPI + AsyncSSH 网关（连接/指纹/会话/SFTP/审计）
 │   └── nginx/labspace.conf
 ├── e2e/                 Playwright 验收脚本与截图
 ├── docs/                本目录
@@ -123,14 +125,14 @@ labspace/
 ## 现状一览
 
 - 门户：面向实验室成员的原生工作台，OIDC 登录、收藏/最近访问、深浅色主题、移动端适配；服务目录以 Go 核心为准。
-- 统一语料：command 621 / SnapOtter 工具 243 / 数据库 107 / 页面 15 / 服务 13 / 浏览器工具 12，
+- 统一语料：command 621 / SnapOtter 工具 243 / 数据库 107 / 页面 15 / 服务 14 / 浏览器工具 12，
   命令面板与全局搜索共用（按类型限额，避免单一类型刷屏）。
 - 生物数据库目录：**107 条真实资源、13 个分类**，其中 **32 个**已接入真实 API（服务端代理 + 归一化结果，
   页面内可直接检索）；未接入的条目逐条写明原因。
 - 身份：门户自有认证（账号口令 + OIDC Provider）；Casdoor 容器与 :8090 已下线，生信与 Primer3 通过门户 OIDC 单点登录。
 - 平台内嵌：draw.io / Linux Command / JBrowse 支持 iframe 内嵌（图纸平台为外链），服务端按 `X-Frame-Options` 与 CSP `frame-ancestors` 判定，不允许时回退「新窗口打开」。
 - 个人工作台 `/workbench`：一句话捕获 → 自动分类（任务/项目/计划/想法/知识/记忆/笔记）→ 人工确认 → 落库。
-- Agent 助手 `/agent`：底层 **AgentScope 2.0.11**（独立容器，与门户共享 Postgres），12 个 `lab_*` MCP 工具；
+- Agent 助手 `/agent`：底层 **AgentScope 2.0.12**（独立容器，与门户共享 Postgres），12 个 `lab_*` MCP 工具；
   支持知识库 RAG 检索（回答带来源）、工作台捕获、绘图与脚本沙箱；首次进入有 antd Tour 互动引导。
 - 文本论文翻译 `/translation`（Hy-MT2，模型未部署时自动回退本机引擎并标注来源）
   - `/docparse`（文档解析页）已下架：它只是一层「上传 PDF 看 Markdown」的壳，
@@ -141,6 +143,8 @@ labspace/
     以及 Entrez / BLAST（无外网时 3 秒内明确报错）。原来的 CropGenome（rust-bio）已下架，
     原因与回滚见 [`docs/RETIRE-CROPGENOME.md`](docs/RETIRE-CROPGENOME.md)。
   （OXR-1.0，内网 Docling 兜底）、天气 `/weather`（Open-Meteo）。
+- SSH/SFTP 工作台 `/ssh`：自研 FastAPI + AsyncSSH 网关，连接内网真实 SSH 服务器；
+  支持 xterm 终端、SFTP 文件目录、加密凭据、首次主机指纹确认、按门户账号隔离与操作审计。
 - 单点登录：门户与生信实训平台共用统一认证账号免密进入；JBrowse / draw.io / Linux 命令为静态站，SnapOtter 走门户原生界面，均无需单独登录。
 - 既有服务保留：SearXNG、Tika、Docling、科研 API/MCP、Open Terminal、oikb；Open WebUI 与 Quantum 已下线（见入口表）。
 - 未新增第二套账号库或文件系统；原账号数据库保留，认证运行时已收口到门户自身。
@@ -148,6 +152,6 @@ labspace/
 ## 一键回归
 
 ```bash
-cd /opt/labspace/e2e && ./run-regression.sh          # 全部 13 个脚本
+cd /opt/labspace/e2e && ./run-regression.sh          # 全套浏览器与接口回归
 cd /opt/labspace/e2e && ./run-regression.sh e2e.mjs   # 只跑指定脚本
 ```

@@ -34,7 +34,7 @@ import psycopg2.extras
 from psycopg2 import pool as pgpool
 from psycopg2 import sql
 
-from . import account_security
+from . import account_security, audit
 from . import baserow as baserow_mod
 
 with warnings.catch_warnings():
@@ -69,6 +69,8 @@ GROUP_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 GROUP_NAME_HINT = "用户组名称需以小写字母开头，仅含小写字母/数字/_-，长度 2–32"
 ADMIN_GROUP = "lab-admin"
 
+SqlStatement = str | sql.Composed
+
 _pool: pgpool.ThreadedConnectionPool | None = None
 _lock = threading.Lock()
 
@@ -80,7 +82,7 @@ def _get_pool() -> pgpool.ThreadedConnectionPool:
             if _pool is None:
                 _pool = pgpool.ThreadedConnectionPool(
                     1,
-                    4,
+                    settings.account_db_pool_max,
                     host=settings.casdoor_db_host,
                     port=settings.casdoor_db_port,
                     dbname=settings.casdoor_db_name,
@@ -94,7 +96,7 @@ def _get_pool() -> pgpool.ThreadedConnectionPool:
 # 说明：门户库与 Casdoor 库是两个库，因此这里各有一套执行器。
 # 两者都只接受**常量 SQL + 占位符参数**；表名/列名这类标识符不能参数化，
 # 一律用 psycopg2.sql.Identifier 组合（见下方 set_group_grants / purge_user）。
-def _query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
+def _query(statement: SqlStatement, params: tuple = ()) -> list[dict[str, Any]]:
     """在 Casdoor 库执行一条参数化查询，返回字典列表。
 
     SAFETY: 本函数是模块级统一入口，``statement`` 只来自本文件内的**字面量**
@@ -106,8 +108,8 @@ def _query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # SAFETY: 同 _execute —— statement 只来自本文件字面量或
-            # sql.Composed；值全走 params。分析器对变量的告警是误报。
-            cur.execute(statement, params)  # noqa: S608, python-sql-injection
+            # sql.Composed；值全走 params。命名参数让 SQL 与绑定值的边界清晰可见。
+            cur.execute(query=statement, vars=params)
             rows = cur.fetchall()
             conn.commit()
             return [dict(r) for r in rows]
@@ -115,7 +117,7 @@ def _query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
         pool.putconn(conn)
 
 
-def _execute(statement: Any, params: tuple = ()) -> int:
+def _execute(statement: SqlStatement, params: tuple = ()) -> int:
     """在 Casdoor 库执行一条参数化写语句，返回影响行数。
 
     SAFETY: 同 :func:`_query` —— ``statement`` 只来自本文件内的字面量或
@@ -125,7 +127,7 @@ def _execute(statement: Any, params: tuple = ()) -> int:
     conn = pool.getconn()
     try:
         with conn.cursor() as cur:
-            cur.execute(statement, params)  # noqa: S608, python-sql-injection —— 见 docstring
+            cur.execute(query=statement, vars=params)
             n = cur.rowcount
         conn.commit()
         return n
@@ -136,18 +138,13 @@ def _execute(statement: Any, params: tuple = ()) -> int:
         pool.putconn(conn)
 
 
-# 新建账号的初始口令：故意是弱口令，登录后强制修改（见 account_security 表）。
-# 它不是密钥，而是公开的策略值（登录页也会提示），因此允许硬编码；
-# 部署方可用环境变量覆盖成单位内约定的初始口令。
-INITIAL_PASSWORD = os.getenv("LABSPACE_INITIAL_PASSWORD", "ChangeMe#2026")  # noqa: S105
+# 新账号的一次性口令由服务端随机生成，不再提供全站通用默认口令。
 
 
 def _hash_password(password: str, *, allow_weak: bool = False) -> str:
     """生成 bcrypt 哈希。
 
-    ``allow_weak`` 保留给"确知口令来源"的场景（如从旧系统迁移）。
-    新建账号用的初始口令是 10 位的 ``ChangeMe#2026``，本身就满足强度下限，
-    因此建号路径**不再**需要这个开关。
+    ``allow_weak`` 仅保留给确知口令来源的旧数据迁移。
     """
     if not password:
         raise HTTPException(status_code=400, detail="口令不能为空")
@@ -160,6 +157,24 @@ def _hash_password(password: str, *, allow_weak: bool = False) -> str:
     # 而镜像以后必然要升 3.13，届时 crypt 会让"新建账号"整个功能直接崩。
     # bcrypt 产出的 $2b$ 哈希与既有数据同格式，已存口令仍可继续校验。
     return bcrypt.hashpw(raw, bcrypt.gensalt(rounds=12)).decode("ascii")
+
+
+def generate_one_time_password(length: int = 16) -> str:
+    """生成不含歧义字符的一次性强口令，供管理员安全交付。"""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*"
+    required = "Aa2!"
+    while True:
+        chars = [secrets.choice(alphabet) for _ in range(length - len(required))]
+        chars.extend(required)
+        secrets.SystemRandom().shuffle(chars)
+        candidate = "".join(chars)
+        if (
+            any(c.islower() for c in candidate)
+            and any(c.isupper() for c in candidate)
+            and any(c.isdigit() for c in candidate)
+            and any(not c.isalnum() for c in candidate)
+        ):
+            return candidate
 
 
 def verify_password(name: str, password: str) -> bool:
@@ -200,6 +215,14 @@ def set_user_password(name: str, password: str) -> None:
     )
     # 标记表在门户库（见 app/account_security.py），不能用这里的 Casdoor 连接池。
     account_security.clear_must_change(name)
+
+
+def record_login(name: str) -> None:
+    """本地登录成功后更新最近登录时间（Casdoor 下线后的权威入口）。"""
+    _execute(
+        'UPDATE public."user" SET last_signin_time = %s WHERE owner = %s AND name = %s',
+        (_now(), OWNER, (name or "").strip().lower()),
+    )
 
 
 def _now() -> str:
@@ -412,8 +435,8 @@ def _normalize_grants(grants: Any) -> list[dict[str, str]]:
 def _audit(actor: str, action: str, target: str, detail: dict[str, Any]) -> None:
     try:
         db.execute(
-            "INSERT INTO labspace.account_audit (actor, action, target, detail) VALUES (%s,%s,%s,%s::jsonb)",
-            (actor, action, target, json.dumps(detail, ensure_ascii=False)),
+            "INSERT INTO labspace.account_audit (actor, action, target, detail, ip) VALUES (%s,%s,%s,%s::jsonb,%s)",
+            (actor, action, target, json.dumps(detail, ensure_ascii=False), audit.current_ip()),
         )
     except Exception as exc:  # audit failure must not block the operation
         log.warning("account audit failed: %s", exc)
@@ -424,7 +447,6 @@ class AccountCreate(BaseModel):
     displayName: str = Field(default="", max_length=100)
     email: str = Field(default="", max_length=100)
     groups: list[str] = Field(default_factory=list)
-    password: str = Field(min_length=10, max_length=72)
 
 
 class AccountUpdate(BaseModel):
@@ -602,10 +624,9 @@ async def create_account(
         if dup:
             raise HTTPException(status_code=409, detail="邮箱已被其他账号使用")
     groups = _validate_groups(body.groups)
-    # 新建账号一律发初始口令，并要求首次登录后修改；管理员不再自选初始口令。
-    # 新账号一律发**初始口令**（10 位，满足强度下限），并打"必须改密"标记。
-    # 管理员不再自选初始口令：自选就意味着有人会图省事发 123456。
-    pwd = _hash_password(INITIAL_PASSWORD)
+    # 新账号使用服务端随机一次性口令，不再有全站通用默认口令。
+    initial_password = generate_one_time_password()
+    pwd = _hash_password(initial_password)
     now = _now()
     _execute(
         """
@@ -630,7 +651,7 @@ async def create_account(
             json.dumps(groups, ensure_ascii=False),
         ),
     )
-    # 初始口令是弱口令，必须标记为"待修改"，否则等于发了一个永久的弱口令。
+    # 一次性口令必须标记为"待修改"，避免管理员掌握的凭据长期有效。
     account_security.mark_must_change(name)
     ok, detail = await provision_user(_file_key({"name": name, "email": email}))
     if not ok:
@@ -652,7 +673,7 @@ async def create_account(
     # 明确回传**实际使用**的初始口令：口令由服务端统一生成（不接受管理员自选），
     # 不回传的话前端只能显示管理员在表单里填的那个值 —— 那个值是无效的，
     # 用户拿着它登不进去（这是"新建账号后用户登录失败"的常见根因）。
-    return {"ok": True, "account": account, "initialPassword": INITIAL_PASSWORD}
+    return {"ok": True, "account": account, "initialPassword": initial_password}
 
 
 @router.patch("/{name}")
@@ -740,8 +761,8 @@ async def update_account(
                 # 表名/列名来自本文件顶部的常量元组，不是用户输入；但仍用
                 # Identifier 交给驱动做标识符转义，避免以后有人把常量改成动态值。
                 _execute(
-                    sql.SQL("DELETE FROM public.{tbl} WHERE owner = %s AND {col} = %s").format(
-                        tbl=sql.Identifier(table), col=sql.Identifier(column)
+                    sql.SQL("DELETE FROM public.{} WHERE owner = %s AND {} = %s").format(
+                        sql.Identifier(table), sql.Identifier(column)
                     ),
                     (OWNER, name),
                 )
@@ -1207,10 +1228,10 @@ async def delete_account(
             raise AssertionError("非法的用户表清理目标")
         purged[table] = len(
             db.query(
-                sql.SQL("DELETE FROM labspace.{tbl} WHERE {col} = %s RETURNING 1").format(
-                    tbl=sql.Identifier(table), col=sql.Identifier(column)
+                statement=sql.SQL("DELETE FROM labspace.{} WHERE {} = %s RETURNING 1").format(
+                    sql.Identifier(table), sql.Identifier(column)
                 ),
-                (subject,),
+                params=(subject,),
             )
         )
     # 公告是全站内容，删掉会连带影响其他用户；只隐去作者并把原名留在审计里。
@@ -1225,8 +1246,8 @@ async def delete_account(
     purged["announcements"] = announcements
     for table, column in _CASDOOR_USER_TABLES:
         purged[f"casdoor.{table}"] = _execute(
-            sql.SQL('DELETE FROM public.{tbl} WHERE owner = %s AND {col} = %s').format(
-                tbl=sql.Identifier(table), col=sql.Identifier(column)
+            sql.SQL('DELETE FROM public.{} WHERE owner = %s AND {} = %s').format(
+                sql.Identifier(table), sql.Identifier(column)
             ),
             (OWNER, name),
         )

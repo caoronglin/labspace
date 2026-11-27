@@ -24,6 +24,7 @@ const Colors = lazy(() => import('../pages/Colors'));
 const Translate = lazy(() => import('../pages/Translate'));
 const Commands = lazy(() => import('../pages/Commands'));
 const Bioinfo = lazy(() => import('../pages/Bioinfo'));
+const Ssh = lazy(() => import('../pages/Ssh'));
 const Weather = lazy(() => import('../pages/Weather'));
 const Workbench = lazy(() => import('../pages/Workbench'));
 const LatexStudio = lazy(() => import('../pages/LatexStudio'));
@@ -83,7 +84,9 @@ function ToolsRedirect() {
   const location = useLocation();
   const query = new URLSearchParams(location.search);
   const tool = query.get('tool');
-  const target = tool === 'plot' ? '/plot' : tool === 'genomes' ? '/genomes' : '/drawio';
+  // 兼容旧工具深链：只保留白名单目标，未知参数仍回流程图设计。
+  const toolPaths: Record<string, string> = { plot: '/plot', genomes: '/genomes', drawio: '/drawio' };
+  const target = toolPaths[tool || ''] || '/drawio';
   query.delete('tool');
   const rest = query.toString();
   return <Navigate to={rest ? `${target}?${rest}` : target} replace />;
@@ -135,6 +138,7 @@ export function AppRoutes() {
             <Route path="/translate" element={<Translate />} />
             <Route path="/commands" element={<Commands />} />
             <Route path="/bioinfo" element={<Bioinfo />} />
+            <Route path="/ssh" element={<Ssh />} />
             {/* 文本翻译已并入翻译中心（/translate 内含页签），旧路径重定向避免两个入口 */}
             <Route path="/weather" element={<Weather />} />
             <Route path="/workbench" element={<Workbench />} />

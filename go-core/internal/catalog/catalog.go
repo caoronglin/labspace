@@ -154,6 +154,21 @@ func Default() *Service {
 				Health: HealthSpec{URL: "/srv/labdata/translate/worker.heartbeat", Kind: "file", MaxAgeSecond: 90},
 			},
 			{
+				ID: "ssh-gateway", Name: "SSH 工作台", Category: "tools",
+				Description: "连接内网 SSH 服务器，提供真实终端与 SFTP 文件目录；凭据与会话按门户账号隔离",
+				URL:         "/ssh", Icon: "CodeOutlined",
+				OpenMode: "link",
+				Roles:    []string{"lab-admin", "lab-teacher", "lab-student"},
+				Tags:     []string{"SSH", "SFTP", "终端", "服务器", "内网"},
+				Guide: []string{
+					"门户 /ssh 是统一入口：保存个人连接、首次确认主机指纹，然后打开终端或文件目录。",
+					"SSH 口令与私钥加密保存；连接、主机密钥、会话和审计均按当前门户账号隔离。",
+					"目标地址必须位于运维配置的内网白名单，默认仅允许私网、回环与 Tailscale CGNAT。",
+				},
+				Enabled: true, Status: "new", Engine: "LabSpace SSH Gateway (FastAPI + AsyncSSH)",
+				Health: HealthSpec{URL: "http://127.0.0.1:8118/healthz", Kind: "http", Container: "lab-ssh-gateway"},
+			},
+			{
 				ID: "bioinfo-training", Name: "生信实验实训平台", Category: "learn",
 				Description: "课程、实验环境、终端工作区、提交与批阅（门户内嵌统一入口）",
 				URL:         "/bioinfo", Icon: "CodeOutlined",

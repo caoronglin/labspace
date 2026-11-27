@@ -9,8 +9,7 @@ from __future__ import annotations
 import pytest
 from starlette.requests import Request
 
-from app import main as main_mod
-from app.routers.auth import api_auth_check  # 路由已迁出 main
+from app.routers.auth import _safe_back, api_auth_check  # 路由已迁出 main
 
 
 def _request(path: str = "/api/auth/check", headers: dict[str, str] | None = None) -> Request:
@@ -26,6 +25,20 @@ def _request(path: str = "/api/auth/check", headers: dict[str, str] | None = Non
         "client": ("127.0.0.1", 54321),
     }
     return Request(scope)
+
+
+def test_safe_back_preserves_long_oidc_pkce_url():
+    back = (
+        "/oidc/authorize?client_id=bioinfo-training&response_type=code&state=state-1"
+        "&code_challenge=abcdefghijklmnopqrstuvwxyz0123456789-_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "&code_challenge_method=S256&nonce=nonce-1"
+        "&scope=openid+profile+email+groups"
+        "&redirect_uri=http%3A%2F%2F192.0.2.10%2Fapps%2Fbioinfo%2Fapi%2Fv1%2Fauth%2Fcallback"
+    )
+    assert len(back) > 200
+    assert _safe_back(back) == back
+    assert _safe_back("//evil.example/") == ""
+    assert _safe_back("https://evil.example/") == ""
 
 
 @pytest.mark.asyncio

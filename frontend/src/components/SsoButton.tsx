@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Tooltip } from 'antd';
 import { LoginOutlined } from '@ant-design/icons';
+import { sameHostUrl } from '../utils/safeNavigate.ts';
 
 export interface SsoButtonProps {
   /** 服务自身的 OIDC 启动端点；门户已有会话时可直接免密进入 */
@@ -32,19 +32,14 @@ export default function SsoButton({
   size = 'small',
   block,
 }: SsoButtonProps) {
-  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const safeSsoUrl = sameHostUrl(ssoUrl);
+  const portalPath = serviceId ? `/sso/${encodeURIComponent(serviceId)}` : null;
 
-  if (!ssoUrl && !serviceId) return null;
+  if (!safeSsoUrl && !portalPath) return null;
 
   const go = () => {
-    setBusy(true);
-    // 优先直连服务自带的 OIDC 启动端点：门户 OIDC 会话命中后无需再次输入口令
-    if (ssoUrl) {
-      window.location.href = ssoUrl;
-      return;
-    }
-    navigate(`/sso/${serviceId}`);
+    if (portalPath) navigate(portalPath);
   };
 
   return (
@@ -54,8 +49,8 @@ export default function SsoButton({
         size={size}
         block={block}
         icon={<LoginOutlined />}
-        loading={busy}
-        onClick={go}
+        href={safeSsoUrl ?? undefined}
+        onClick={safeSsoUrl ? undefined : go}
       >
         {label}
       </Button>

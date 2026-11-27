@@ -15,7 +15,8 @@ async function loginAs(browser, user, pass) {
   await page.locator('input[type="password"]').first().fill(pass);
   await page.getByRole('button', { name: /登录|Login/ }).first().click();
   await page.waitForTimeout(5000);
-  const body = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
+  const bodyText = await page.evaluate(() => document.body.innerText);
+  const body = bodyText.replace(/\s+/g, ' ');
   if (!/工作台|全部服务|我的收藏/.test(body)) {
     await ctx.close();
     throw new Error(`登录失败：${user}`);
@@ -24,8 +25,8 @@ async function loginAs(browser, user, pass) {
 }
 
 const results = [];
-const ok = (name, extra = '') => { results.push([true, name, extra]); console.log(`  ✓ ${name}${extra ? ' — ' + extra : ''}`); };
-const bad = (name, extra = '') => { results.push([false, name, extra]); console.log(`  ✗ ${name}${extra ? ' — ' + extra : ''}`); };
+const ok = (name, extra = '') => { results.push([true, name, extra]); console.log(`  ✓ ${name}${extra ? ` — ${extra}` : ''}`); };
+const bad = (name, extra = '') => { results.push([false, name, extra]); console.log(`  ✗ ${name}${extra ? ` — ${extra}` : ''}`); };
 
 mkdirSync(new URL('./shots/', import.meta.url).pathname, { recursive: true });
 
@@ -104,7 +105,7 @@ await checkPage(ctx, '/translation', {
 
 await checkPage(ctx, '/weather', {
   label: '天气',
-  expect: async (page, text) => {
+  expect: async (_page, text) => {
     const has = /天气/.test(text);
     const hasData = /℃|预报|查询|温度/.test(text);
     return { pass: has && hasData, detail: hasData ? '有天气内容' : '缺少天气内容' };
@@ -141,7 +142,7 @@ const adminCtx = await loginAs(browser, ADMIN_USER, ADMIN_PASS);
 console.log('\n[管理员视角]');
 await checkPage(adminCtx, '/admin', {
   label: '管理端 Agent 面板',
-  expect: async (page, text) => {
+  expect: async (page) => {
     const tab = await page.getByRole('tab', { name: /Agent 模型与配额/ }).count();
     if (!tab) return { pass: false, detail: '未找到 Agent 模型与配额 页签' };
     await page.getByRole('tab', { name: /Agent 模型与配额/ }).first().click();
@@ -149,6 +150,18 @@ await checkPage(adminCtx, '/admin', {
     const t2 = await page.evaluate(() => document.body.innerText);
     const has = /模型白名单|配额|用量统计/.test(t2);
     return { pass: has, detail: has ? '面板已渲染' : '面板内容缺失' };
+  },
+});
+await checkPage(adminCtx, '/admin', {
+  label: '管理端账号审计',
+  expect: async (page) => {
+    const tab = page.getByRole('tab', { name: /用户和权限/ });
+    if ((await tab.count()) === 0) return { pass: false, detail: '未找到用户和权限页签' };
+    await tab.first().click();
+    await page.getByText('账号与权限审计', { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+    const hasFilters = (await page.getByPlaceholder('操作人').count()) === 1;
+    const hasExport = (await page.getByRole('button', { name: /导出 CSV/ }).count()) === 1;
+    return { pass: hasFilters && hasExport, detail: `筛选=${hasFilters} 导出=${hasExport}` };
   },
 });
 await adminCtx.close();
@@ -159,6 +172,6 @@ const failed = results.filter((r) => !r[0]);
 console.log(`\n结果：${results.length - failed.length}/${results.length} 通过`);
 if (failed.length) {
   console.log('失败项：');
-  failed.forEach(([, n, d]) => console.log(` - ${n}: ${d}`));
+  for (const [, name, detail] of failed) console.log(` - ${name}: ${detail}`);
   process.exit(1);
 }

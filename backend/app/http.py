@@ -16,14 +16,25 @@ from typing import Any
 
 import httpx
 
+from .config import settings
+
 
 def _ipv4_transport() -> httpx.AsyncHTTPTransport:
-    return httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    # pi-lens-ignore: bind-all-interfaces -- 这是出站 HTTP 的本地源地址，不是监听 Socket；0.0.0.0 用于强制 IPv4。
+    return httpx.AsyncHTTPTransport(local_address="0.0.0.0")  # noqa: S104
 
 
 def async_client(**kwargs: Any) -> httpx.AsyncClient:
     """创建强制 IPv4 的异步 HTTP 客户端（可覆盖 timeout / follow_redirects 等）。"""
     kwargs.setdefault("transport", _ipv4_transport())
+    kwargs.setdefault(
+        "limits",
+        httpx.Limits(
+            max_connections=settings.http_max_connections,
+            max_keepalive_connections=settings.http_keepalive_connections,
+            keepalive_expiry=30.0,
+        ),
+    )
     return httpx.AsyncClient(**kwargs)
 
 

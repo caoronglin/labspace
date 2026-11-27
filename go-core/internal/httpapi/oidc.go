@@ -68,6 +68,13 @@ func (s *Server) oidcAuthorize(w http.ResponseWriter, r *http.Request, p *oidc.P
 		// back 只允许站内相对路径：绝对 URL 或协议相对 URL（//host）都可能被
 		// 用来把受害者弹到站外，登录页自身也会再校验一次，这里先收紧。
 		back := r.URL.RequestURI()
+		// Nginx 把公开 /oidc/* 映射到内部 /v1/oidc/*。回跳浏览器必须使用
+		// 公开路径，否则登录后会落到门户 SPA 的 404 路由。
+		if strings.HasPrefix(back, "/v1/oidc/") {
+			back = "/oidc/" + strings.TrimPrefix(back, "/v1/oidc/")
+		} else if back == "/v1/oidc" {
+			back = "/oidc"
+		}
 		if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") {
 			back = "/"
 		}

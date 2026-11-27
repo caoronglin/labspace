@@ -1,4 +1,4 @@
-# AgentScope 2.0.11 官方 Agent Service（独立镜像）
+# AgentScope 2.0.12 官方 Agent Service（独立镜像）
 #
 # 为什么不塞进 backend 镜像：agentscope 的依赖很重且带版本约束
 # （mcp>=2.0.0、httpx2>=2.5.0、anthropic、dashscope、opentelemetry*），

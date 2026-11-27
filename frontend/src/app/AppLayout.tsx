@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BellOutlined,
@@ -12,6 +12,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   QuestionCircleOutlined,
+  RobotOutlined,
   SearchOutlined,
   SettingOutlined,
   ThunderboltOutlined,
@@ -27,6 +28,7 @@ import AnnouncementsPanel from '../components/AnnouncementsPanel';
 import HelpOnboarding from '../components/HelpOnboarding';
 import OnboardingTour from '../components/OnboardingTour';
 import { requestTour } from '../components/onboardingState';
+import { handoffToAgent } from '../utils/agentHandoff';
 import ForcePasswordChange from '../components/ForcePasswordChange';
 
 
@@ -67,6 +69,7 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const siderShellRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { me, isAdmin, isTeacher, loading, mustChangePassword, refetch: refetchMe } = useAuth();
@@ -75,6 +78,8 @@ export default function AppLayout() {
   const isMobile = !screens.lg;
   /** 实际呈现形态：桌面折叠且未悬浮时收起；移动端 Drawer 始终按展开菜单处理。 */
   const siderCollapsed = !isMobile && collapsed && !siderHover;
+  /** 折叠态悬浮展开：使用 vertical 弹层，子菜单 hover 即可打开。 */
+  const siderFlyout = !isMobile && collapsed && siderHover;
 
   // 全局 ⌘K / Ctrl+K 唤起命令面板；首页按钮通过事件触发
   useEffect(() => {
@@ -92,6 +97,24 @@ export default function AppLayout() {
       window.removeEventListener('d509:cmdk', onEvent);
     };
   }, []);
+
+  // 悬浮展开监听挂在 ref 上，避免在静态 div 上写 JSX 事件处理器。
+  useEffect(() => {
+    const shell = siderShellRef.current;
+    if (!shell) return;
+    if (isMobile) {
+      setSiderHover(false);
+      return;
+    }
+    const onEnter = () => setSiderHover(true);
+    const onLeave = () => setSiderHover(false);
+    shell.addEventListener('mouseenter', onEnter);
+    shell.addEventListener('mouseleave', onLeave);
+    return () => {
+      shell.removeEventListener('mouseenter', onEnter);
+      shell.removeEventListener('mouseleave', onLeave);
+    };
+  }, [isMobile, loading, me?.authenticated]);
 
   // 移动端子菜单跳转后统一关闭抽屉；不能只依赖 Menu.onClick，
   // 链接点击在部分 AntD 嵌套场景下不会冒泡到 Menu。
@@ -168,6 +191,7 @@ export default function AppLayout() {
     items: [
       ...(isMobile
         ? [
+            { key: 'agent-page', icon: <RobotOutlined />, label: '让 Agent 分析当前页' },
             { key: 'cmdk', icon: <ThunderboltOutlined />, label: '命令面板' },
             { key: 'start', icon: <HomeOutlined />, label: '起始页' },
             { key: 'theme', icon: <CloudServerOutlined />, label: resolved === 'dark' ? '切换浅色主题' : '切换深色主题' },
@@ -190,6 +214,21 @@ export default function AppLayout() {
     onClick: async ({ key }: { key: string }) => {
       if (key === 'profile') setProfileOpen(true);
       if (key === 'tour') requestTour();
+      if (key === 'agent-page') {
+        const title = document.title || location.pathname;
+        navigate(
+          handoffToAgent({
+            source: location.pathname,
+            title,
+            prompt: `请分析当前「${title}」页面，并结合页面内容给出下一步建议。`,
+            context: {
+              path: location.pathname,
+              search: location.search,
+              selectedText: window.getSelection()?.toString().trim().slice(0, 1000) || undefined,
+            },
+          }),
+        );
+      }
       if (key === 'cmdk') setCmdkOpen(true);
       if (key === 'start') navigate('/start');
       if (key === 'help') navigate('/help');
@@ -224,7 +263,8 @@ export default function AppLayout() {
   const menu = (
     <div style={{ padding: '10px 8px 4px' }}>
       <Menu
-        mode="inline"
+        mode={siderFlyout ? 'vertical' : 'inline'}
+        triggerSubMenuAction={siderFlyout ? 'hover' : 'click'}
         theme={resolved === 'dark' ? 'dark' : 'light'}
         selectedKeys={[selectedKey]}
         items={menuItems}
@@ -262,11 +302,10 @@ export default function AppLayout() {
   // 折叠时侧栏外壳只占 68px；悬浮展开的侧栏绝对定位覆盖在内容上，避免页面跳动
   const desktopSider = (
     <div
+      ref={siderShellRef}
       className="d509-sider-shell"
       data-tour="sider"
       style={{ width: collapsed ? 68 : 232, flex: `0 0 ${collapsed ? 68 : 232}px` }}
-      onMouseEnter={() => setSiderHover(true)}
-      onMouseLeave={() => setSiderHover(false)}
     >
       <Sider
         theme={resolved === 'dark' ? 'dark' : 'light'}
@@ -351,19 +390,42 @@ export default function AppLayout() {
         </div>
 
         <Space size={4}>
-          {!isMobile && (
-            <>
-              <Tooltip title="命令面板">
-                <Button type="text" icon={<ThunderboltOutlined />} data-tour="cmdk" onClick={() => setCmdkOpen(true)} />
-              </Tooltip>
-              <Tooltip title="浏览器主页">
-                <Button type="text" icon={<HomeOutlined />} onClick={() => navigate('/start')} />
-              </Tooltip>
+        {!isMobile && location.pathname !== '/agent' && (
+          <Tooltip title="让 Agent 分析当前页面">
+            <Button
+              type="text"
+              icon={<RobotOutlined />}
+              aria-label="让 Agent 分析当前页"
+              onClick={() => {
+                const selectedText = window.getSelection()?.toString().trim().slice(0, 1000) ?? '';
+                const title = document.title || location.pathname;
+                navigate(
+                  handoffToAgent({
+                    source: location.pathname,
+                    title,
+                    prompt: `请分析当前「${title}」页面，并结合页面内容给出下一步建议。`,
+                    context: {
+                      path: location.pathname,
+                      search: location.search,
+                      selectedText: selectedText || undefined,
+                    },
+                  }),
+                );
+              }}
+            />
+          </Tooltip>
+        )}
+        {!isMobile && (
+          <>
+            <Tooltip title="浏览器主页">
+              <Button type="text" icon={<HomeOutlined />} aria-label="浏览器主页" onClick={() => navigate('/start')} />
+            </Tooltip>
               <Tooltip title="帮助中心">
                 <Button
                   type="text"
                   icon={<QuestionCircleOutlined />}
                   data-tour="help"
+                  aria-label="帮助中心"
                   onClick={() => navigate('/help')}
                 />
               </Tooltip>
@@ -383,7 +445,7 @@ export default function AppLayout() {
           </Tooltip>
           {!isMobile && (
             <Tooltip title="恢复默认主题色">
-              <Button type="text" size="small" onClick={resetPrimary} style={{ paddingInline: 4 }}>
+              <Button type="text" size="small" aria-label="恢复默认主题色" onClick={resetPrimary} style={{ paddingInline: 4 }}>
                 <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: 'var(--d509-primary, #2B5CE6)' }} />
               </Button>
             </Tooltip>
@@ -393,6 +455,7 @@ export default function AppLayout() {
               <Button
                 type="text"
                 icon={resolved === 'dark' ? <DashboardOutlined /> : <CloudServerOutlined />}
+                aria-label={resolved === 'dark' ? '切换浅色主题' : '切换深色主题'}
                 onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
               />
             </Tooltip>
@@ -404,7 +467,7 @@ export default function AppLayout() {
             arrow={false}
           >
             <Tooltip title="公告">
-              <Button type="text" icon={<BellOutlined />} />
+              <Button type="text" icon={<BellOutlined />} aria-label="公告" />
             </Tooltip>
           </Popover>
           {me?.authenticated ? (

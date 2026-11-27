@@ -69,11 +69,11 @@ export default function ForcePasswordChange({ mustChange, onChanged }: Props) {
         type="warning"
         showIcon
         title="这是首次登录，必须先改口令"
-        description="初始口令是公开的临时口令，改完才能使用工作台的其它功能。"
+        description="请使用管理员通过安全渠道交付的一次性口令，修改后才能使用工作台的其它功能。"
         style={{ marginBottom: 12 }}
       />
       <Paragraph type="secondary" style={{ fontSize: 13 }}>
-        新口令至少 10 位，且不能与初始口令相同。
+        新口令至少 10 位，且不能与当前口令相同。
       </Paragraph>
       <Form form={form} layout="vertical" onFinish={() => void submit()}>
         <Form.Item
@@ -81,7 +81,7 @@ export default function ForcePasswordChange({ mustChange, onChanged }: Props) {
           label="当前口令"
           rules={[{ required: true, message: '请输入当前口令' }]}
         >
-          <Input.Password prefix={<LockOutlined />} placeholder="ChangeMe#2026" autoComplete="current-password" />
+          <Input.Password prefix={<LockOutlined />} placeholder="请输入当前口令" autoComplete="current-password" />
         </Form.Item>
         <Form.Item
           name="newPassword"
@@ -110,7 +110,7 @@ export default function ForcePasswordChange({ mustChange, onChanged }: Props) {
           <Input.Password prefix={<LockOutlined />} placeholder="再输入一次新口令" autoComplete="new-password" />
         </Form.Item>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          改完口令后，其他账号（导师、组员）也请各自改一次自己的初始口令。
+          改完口令后，其他账号（导师、组员）也请各自修改自己的一次性口令。
         </Text>
       </Form>
     </Modal>

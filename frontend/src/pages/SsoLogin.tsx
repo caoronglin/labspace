@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, App, Button, Card, Result, Space, Spin, Typography } from 'antd';
 import { ArrowLeftOutlined, ExportOutlined } from '@ant-design/icons';
-import { api } from '../services/api';
+import { api } from '../services/api.ts';
+import { sameHostUrl } from '../utils/safeNavigate.ts';
 
 /**
  * 一键登录中转页。
@@ -26,9 +27,11 @@ export default function SsoLoginPage() {
       try {
         const res = await api.ssoPrepare(serviceId);
         if (cancelled) return;
-        setLoginUrl(res.loginUrl);
+        const target = sameHostUrl(res.loginUrl);
+        if (!target) throw new Error('服务返回的登录地址不受信任，已取消跳转');
+        setLoginUrl(target);
         setState('done');
-        window.location.href = res.loginUrl;
+        window.location.replace(target);
       } catch (err) {
         if (cancelled) return;
         const text = err instanceof Error ? err.message : String(err);

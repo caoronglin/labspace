@@ -11,7 +11,7 @@ func TestDefaultManifestCoversOriginalD509Domains(t *testing.T) {
 	for _, f := range r.All() {
 		seen[f.ID] = true
 	}
-	required := []string{"identity-portal", "service-catalog", "sso", "global-search", "plant-databases", "literature", "research-api-mcp", "linux-commands", "favorites-recent", "drawings", "announcements", "workbench", "pi-agent", "files-acl", "file-preview", "download-center", "knowledge-rag", "image-generation", "lab-translate", "snapotter-tools", "bioinfo-training", "bioinfo-terminal", "jbrowse", "blast", "drawio", "searxng", "document-parsers", "backup-health", "wecom-selective"}
+	required := []string{"identity-portal", "service-catalog", "sso", "global-search", "plant-databases", "literature", "research-api-mcp", "linux-commands", "favorites-recent", "drawings", "announcements", "workbench", "pi-agent", "files-acl", "file-preview", "download-center", "knowledge-rag", "image-generation", "lab-translate", "snapotter-tools", "bioinfo-training", "bioinfo-terminal", "ssh-gateway", "jbrowse", "blast", "drawio", "searxng", "document-parsers", "backup-health", "wecom-selective"}
 	for _, id := range required {
 		if !seen[id] {
 			t.Fatalf("missing feature %s", id)

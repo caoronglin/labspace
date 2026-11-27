@@ -9,6 +9,7 @@ import asyncio
 import logging
 import re
 
+from anyio.to_thread import current_default_thread_limiter
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -119,6 +120,16 @@ from .security import (
 log = logging.getLogger("labspace.main")
 
 app = FastAPI(title="LabSpace API", version="2026.11.24", docs_url="/api/docs", openapi_url="/api/openapi.json")
+
+
+@app.on_event("startup")
+async def _configure_threadpool() -> None:
+    """按部署规格扩大同步端点线程池。
+
+    门户保留单 worker，避免把登录限流、Agent 活跃流和后台定时任务复制到多个进程；
+    但 psycopg2/文件/科学计算代理等阻塞端点需要足够的线程并发。
+    """
+    current_default_thread_limiter().total_tokens = settings.threadpool_tokens
 
 
 @app.on_event("startup")

@@ -118,7 +118,7 @@ export default function HubTab() {
   });
 
   const toggleSkill = useMutation({
-    // AgentScope 2.0.11 只提供 GET/DELETE /skill/{id}（上游对 PATCH 返回 405），
+    // AgentScope 2.0.12 只提供 GET/DELETE /skill/{id}（上游对 PATCH 返回 405），
     // 这里仍然按统一契约发起 PATCH，失败时把上游原因原样告诉用户。
     mutationFn: (v: { id: string; enabled: boolean }) => asPatch('skill', v.id, { enabled: v.enabled }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: SKILL_KEY }),

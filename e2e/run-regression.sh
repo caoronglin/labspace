@@ -16,6 +16,7 @@ ALL=(api-integration.mjs e2e.mjs snapotter-integration.mjs agent-integration.mjs
      charts-test.mjs design-selfcheck.mjs components-polish-test.mjs
      ip-adaptive-test.mjs sso-e2e-test.mjs sso-no-thrash-test.mjs
      post-reset-test.mjs bioinfo-api-smoke.mjs bioinfo-terminal-test.mjs
+     ssh-entry-test.mjs concurrency-test.mjs
      tailscale-access-test.mjs
      # 2026-11 收敛：这些脚本一直在跑但没进 ALL（手工 node 执行），
      # 等于「有回归套件却没被回归覆盖」；补进来才是真的护栏。

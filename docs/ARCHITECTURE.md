@@ -1,4 +1,4 @@
-> 当前状态提示：Casdoor 与 8090 已下线，认证改由门户自身提供；本文保留历史拓扑说明，当前入口以 README.md 为准。
+> 当前状态：Casdoor 与 8090 已下线，认证由门户本地账号与 LabGo OIDC Provider 提供；Agent 助手运行在 AgentScope 2.0.12。
 
 # ARCHITECTURE.md
 
@@ -11,7 +11,6 @@
         ┌────────── Debian 192.0.2.10 ──────────┐
         │  Nginx（宿主机 apt 安装，host-based 路由） │
         │   192.0.2.10:80      → LabSpace 门户 + /api 反代 │
-        │   192.0.2.10:8090     → Casdoor（IP 专属端口）│
         │   192.0.2.10:8082    → draw.io            │
         │   192.0.2.10:8086    → Linux Command（静态）│
         │   192.0.2.10:8084    → IT-Tools           │
@@ -22,7 +21,7 @@
         │  ┌──────────── Docker 网络 ───────────┐ │
         │  │ labspace-net                       │ │
         │  │  lab-labspace-backend (8080)       │ │
-        │  │  lab-casdoor (8000)                │ │
+        │  │  lab-ssh-gateway (8080 → :8118)    │ │
         │  │  lab-drawio (8080)                 │ │
         │  │  lab-it-tools (80)                 │ │
         │  │  lab-postgres（既有，PG17）        │ │
@@ -34,10 +33,9 @@
         │  JBrowse(:8091) / 静态与工具站点           │
         │                                          │
         │  ┌──── 宿主机 systemd 服务 ──────────┐   │
-        │  │ labgo (Go 核心, :8122)            │   │  ← 服务目录/健康/内嵌探测
+        │  │ labgo (Go 核心 + OIDC, :8122)     │   │  ← 服务目录/健康/OIDC Provider
         │  │   127.0.0.1:8122  ← nginx        │   │
-        │  │   172.28.0.1:8122  ← 后端容器      │   │
-        │  │ lab-oidc-sync (:8111, issuer 同步) │   │
+        │  │   203.0.113.1:8122  ← 后端容器      │   │
         │  │ bioinfo-api (:8100) / bioinfo-    │   │
         │  │   terminal (:8101)                │   │
         │  └────────────────────────────────────┘   │
@@ -60,7 +58,6 @@
 | 目标 | 地址 | 说明 |
 | --- | --- | --- |
 | 门户 | `http://192.0.2.10/` | **推荐**，无需任何 DNS 配置 |
-| Casdoor | `http://192.0.2.10:8090/` | 统一身份源（IP 专属端口） |
 | draw.io | `http://192.0.2.10:8082/` | 绘图编辑器（原 `/draw/` 会 302 到此） |
 | IT-Tools | `http://192.0.2.10:8084/` | 原版 IT-Tools（原 `/tools/` 会 302 到此） |
 | Linux Command | `http://192.0.2.10:8086/` | 静态站点（原 `/commands/` 会 302 到此） |
@@ -69,7 +66,8 @@
 | 图纸平台 | `http://192.0.2.29:5244/` | 外部内网服务（当前端口关闭，标记 `external-down`） |
 | PDF 论文翻译 | `http://192.0.2.10/translate` | 门户内页面（AntD 重写），后端为 PDFMathTranslate 工作进程 |
 | 文件管理（门户原生网盘） | `http://192.0.2.10/files` | 门户内页面（Go 核心 `labfiles` 按用户 ACL 授权） |
-| Agent 助手 | `http://192.0.2.10/agent` | 门户内页面（pi RPC 网关），AI 对话与知识库问答 |
+| Agent 助手 | `http://192.0.2.10/agent` | 门户内页面（AgentScope 2.0.12），AI 对话与知识库问答 |
+| SSH/SFTP 工作台 | `http://192.0.2.10/ssh` | 门户内页面，连接内网真实 SSH 服务器与文件目录 |
 | Tailscale | `http://198.51.100.71/` | 同一套服务，跨网访问（nftables 放行 100.64.0.0/10） |
 
 > **全部服务一律使用 `192.0.2.10 + 端口` 访问，不使用任何域名**：客户端无需 DNS 解析、
@@ -79,9 +77,8 @@
 | 端口 | 绑定 | 用途 |
 | --- | --- | --- |
 | 80 | 0.0.0.0 | Nginx 统一入口（内网） |
-| 8090 | 0.0.0.0 | Casdoor（IP 专属端口） |
 | 8088 | 127.0.0.1 | LabSpace 后端（仅 Nginx 访问） |
-| 8000 | 127.0.0.1 | Casdoor 容器（仅 Nginx 访问） |
+| 8118 | 127.0.0.1 | 自研 SSH/SFTP 网关（仅 Nginx 访问） |
 | 8082 | 0.0.0.0 | draw.io |
 | 8084 | 0.0.0.0 | IT-Tools |
 | 8086 | 0.0.0.0 | Linux Command（静态） |
@@ -99,7 +96,7 @@ Tailscale `100.64.0.0/10` 可达，公网入口由路由器 NAT 与本机策略�
 
 ```
 set svc_ports { type inet_service
-                 elements = { 80, 8090, 3000, 8080, 8082, 8084, 8086, 8091, 8092 } }
+                 elements = { 80, 8082, 8084, 8086, 8091, 8092 } }
 ```
 
 放行规则：`tcp dport @svc_ports ip saddr @lan_net accept` 与 `tcp dport @svc_ports ip saddr @ts_net accept`。
@@ -118,7 +115,7 @@ set svc_ports { type inet_service
 | --- | --- | --- |
 | 门户后端 | `backend/app/catalog.py::adapt_host()` + `main.py::_client_host()` | 按请求 `Host`/`X-Forwarded-Host` 改写服务地址（url / embedUrl / ssoUrl / 描述），影响 `/api/services`、`/api/services/health`、`/api/network/entries`、`/api/search`、`/api/corpus` |
 | 门户前端 | `frontend/src/utils/host.ts`（`currentHost()` / `hostUrl()`） | 页面内所有绝对地址按当前 `window.location.hostname` 生成，无硬编码 IP（仅 `DEFAULT_HOST` 兜底） |
-| 门户自身 OIDC | `backend/app/casdoor.py` | issuer 按请求 Host 推导；`state` 内固化 `redirect_uri` 与 `issuer` |
+| 门户自身 OIDC | `go-core/internal/httpapi/oidc.go` + `internal/oidc/provider.go` | issuer 按白名单请求 Host 发布；未登录回跳使用公开 `/oidc/*`，不泄露内部 `/v1/oidc/*` |
 | 门户内原生页面（文件管理 `/files`、Agent 助手 `/agent` 等） | 门户自身路由 + `backend/app/catalog.py::adapt_host()` | 全部按当前入口主机生成地址，无需任何外部服务配合 |
 
 自适应的原因：远程用户经 Tailscale 进入时，内网 IP `192.0.2.10` 对其不可达
@@ -133,20 +130,19 @@ set svc_ports { type inet_service
 ## 3. 身份流
 
 ```
-浏览器 ──▶ /api/auth/login (LabSpace 后端)
-          └─ 302 → Casdoor /login/oauth/authorize?client_id=labspace&state&nonce
-浏览器 ──▶ Casdoor 登录页（本地口令 / 后续可切 OIDC）
-          └─ 302 → /api/auth/callback?code&state
-后端 ──▶ POST Casdoor /api/login/oauth/access_token  → id_token
-       └─ 用 Discovery 的 JWKS 校验签名/iss/aud/exp/nonce
-       └─ 归一化用户（id/email/name/roles=groups）
-       └─ 签发自有会话 JWT（HS256，HttpOnly Cookie labspace_session，8h）
-       └─ 同时下发 labspace_csrf（非 HttpOnly，供双提交 CSRF）
+浏览器 ──▶ /login（门户本地账号口令）
+          └─ POST /api/auth/login-direct → bcrypt 校验 + 账号/IP 联合限流
+          └─ 签发门户会话 JWT（HS256，HttpOnly Cookie labspace_session）
+          └─ 同时下发 labspace_csrf（非 HttpOnly，供双提交 CSRF）
+
+生信/primer3 ──▶ /oidc/authorize（LabGo OIDC Provider）
+          └─ 无会话 → /login?back=/oidc/authorize?...（保留完整 PKCE 参数）
+          └─ 有会话 → 授权码 → 同源回调 → token/JWKS 校验 → 生信本地会话
 ```
 
-- 前端从不接触 Client Secret / 会话密钥。
-- 所有写操作要求 `X-CSRF-Token` 与 Cookie 一致，并校验 `Origin`。
-- 角色来自 Casdoor 的 `groups`：`lab-admin` / `lab-teacher` / `lab-student` / `project-*`。
+- 前端从不接触 Client Secret / 会话密钥；所有写操作要求 `X-CSRF-Token` 与 Cookie 一致，并校验 `Origin`。
+- 角色来自保留账号库的 `groups`：`lab-admin` / `lab-teacher` / `lab-student` / `project-*`。
+- Casdoor 容器已下线，原 PostgreSQL 账号库仅作为兼容数据存储，不再是运行时身份提供方。
 
 ## 4. 数据流与存储
 
@@ -173,13 +169,13 @@ set svc_ports { type inet_service
   PDF 论文翻译、文本论文翻译、天气、个人工作台、Agent 助手、文件工坊、浏览器主页、网络诊断、
   内嵌页 `/embed/:id`、管理端（仅管理员，含「Agent 模型与配额」）。
 
-## 7. Agent 网关（pi）
+## 7. Agent 网关（AgentScope）
 
 ```
 浏览器 ──SSE──▶ Nginx :80 ──▶ LabSpace 后端 /api/agent/sessions/{id}/stream
                                   │  (X-User-ID = 会话解出的 sub，客户端不可伪造)
                                   ▼
-                   AgentScope 2.0.11 Agent Service（容器 lab-agentscope :8100）
+                   AgentScope 2.0.12 Agent Service（容器 lab-agentscope :8100）
                                   │  create_app(storage/message_bus/workspace_manager/mcp_hubs)
                                   ▼
                    Postgres 库 agentscope（13 张表）+ 内置 MCP 工具进程
@@ -188,9 +184,9 @@ set svc_ports { type inet_service
                    openai 兼容端点（平台模型凭据 /etc/labspace/agent-model.env）
 ```
 
-- 每个会话一个 pi 子进程；会话目录 `/srv/labdata/labspace/agent/sessions`，cwd 指向空目录
-  `/srv/labdata/labspace/agent/work`；15 分钟空闲回收。
-- 插件工具只能通过门户 API 访问数据，**不能读写宿主机文件系统**。
+- AgentScope 为每用户建立独立工作区与资源池；长期记忆落在用户工作区，向量知识库使用 Qdrant。
+- `lab_*` MCP 工具通过门户内部 API 访问数据，身份来自 Nginx 核验后的用户断言，**不能读写宿主机文件系统**。
+- 工具确认与 AskUser 走 HITL；跨用户共享仅限教师/管理员只读助手与知识库，凭据永不共享。
 
 ## 8. 外部依赖
 

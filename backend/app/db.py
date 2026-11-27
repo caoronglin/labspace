@@ -29,7 +29,11 @@ def get_pool() -> pgpool.ThreadedConnectionPool:
     if _pool is None:
         with _lock:
             if _pool is None:
-                _pool = pgpool.ThreadedConnectionPool(1, 8, dsn=settings.db_dsn)
+                _pool = pgpool.ThreadedConnectionPool(
+                    settings.db_pool_min,
+                    settings.db_pool_max,
+                    dsn=settings.db_dsn,
+                )
                 conn = _pool.getconn()
                 try:
                     # 结构变更走版本化迁移（app/migrations/*.sql），执行过的记在
@@ -66,7 +70,7 @@ def query(statement: Any, params: tuple = ()) -> list[dict[str, Any]]:
 def query_many(statements: list[tuple[str, tuple]]) -> list[list[dict[str, Any]]]:
     """在**单条连接**上依次执行多条查询，返回与入参同序的结果列表。
 
-    背景：连接池上限为 8，如果像工作台首页那样把 12 条查询丢进
+    背景：连接池上限可配置（默认 24），如果像工作台首页那样把 12 条查询丢进
     asyncio.gather（每条都经 to_thread 独占一条连接），会直接触发
     psycopg2 的 PoolError: connection pool exhausted。
     批量查询只占一条连接，把 12 次往返压成 1 次线程调度。

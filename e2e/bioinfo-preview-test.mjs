@@ -7,7 +7,7 @@ const API = '/apps/bioinfo/api/v1';
 let pass = 0, fail = 0;
 const record = (name, ok, detail = '') => {
   if (ok) pass++; else fail++;
-  console.log(`  ${ok ? '[ OK ]' : '[FAIL]'} ${name}${detail ? ' — ' + detail : ''}`);
+  console.log(`  ${ok ? '[ OK ]' : '[FAIL]'} ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
 const b = await launch();
@@ -47,7 +47,7 @@ try {
   record('API 返回完整 1005 行', (preview.body.text || '').split('\n').length === 1005 && !preview.body.truncated);
 
   await page.goto(`${BASE}/apps/bioinfo/workspace`, { waitUntil: 'domcontentloaded' });
-  const row = page.locator('.ant-list-item').filter({ hasText: FILE_NAME }).first();
+  const row = page.locator('.ant-flex').filter({ has: page.getByText(FILE_NAME, { exact: true }) }).first();
   await row.waitFor({ state: 'visible', timeout: 15000 });
   await row.getByRole('button', { name: '预览' }).click();
   const modal = page.locator('.ant-modal').first();
@@ -63,7 +63,7 @@ try {
   await modal.getByRole('button', { name: '自动换行' }).click();
   const wrap = await modal.locator('pre > div > span:last-child').first().evaluate(el => getComputedStyle(el).whiteSpace);
   record('换行开关生效', wrap === 'pre-wrap', `white-space=${wrap}`);
-  await page.screenshot({ path: new URL('./shots/', import.meta.url).pathname + 'bioinfo-code-preview.png', fullPage: false });
+  await page.screenshot({ path: `${new URL('./shots/', import.meta.url).pathname}bioinfo-code-preview.png`, fullPage: false });
 } finally {
   if (page) {
     try {

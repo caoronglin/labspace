@@ -4,7 +4,7 @@ export * from './api-types';
 export * from './api-types-agent';
 export * from './api-plot';
 import { request, requestBlob, requestFileContentPut } from './api-http';
-import type { AccessPreviewResponse, AccountItem, AccountsResponse, AdminInfo, AdminTaskList, Announcement, BackupGitStatus, BackupStatus, CorpusItem, DailyPapersResponse, DailySub, DatabaseApiIndex, DatabaseItem, DatabaseQueryResult, EmbedInfo, FileAccessEvent, FileContent, FileEntry, FileGrant, FilePreview, FileSortKey, FileSource, FileTrashItem, FileTrashSummary, FileUsage, GroupPermissionsResponse, IngestResult, IngestSummary, KnowledgeDoc, KnowledgeFacets, KnowledgeSpace, KnowledgeSpaces, Me, MentorBindings, OfficeContent, OfficeSavePayload, PeopleEntry, PersonalShare, RagAnswer, RagStatus, SearchResponse, ServiceItem, SharedEntry, WeComConfig, WorkbenchBrief, WorkbenchCapture, WorkbenchItem, WorkbenchPlan, WorkbenchProject, WorkbenchSummary } from './api-types';
+import type { AccessPreviewResponse, AccountItem, AccountsResponse, AdminInfo, AdminTaskList, Announcement, AuditResponse, BackupGitStatus, BackupStatus, CorpusItem, DailyPapersResponse, DailySub, DatabaseApiIndex, DatabaseItem, DatabaseQueryResult, EmbedInfo, FileAccessEvent, FileContent, FileEntry, FileGrant, FilePreview, FileSortKey, FileSource, FileTrashItem, FileTrashSummary, FileUsage, GroupPermissionsResponse, IngestResult, IngestSummary, KnowledgeDoc, KnowledgeFacets, KnowledgeSpace, KnowledgeSpaces, Me, MentorBindings, OfficeContent, OfficeSavePayload, PeopleEntry, PersonalShare, RagAnswer, RagStatus, SearchResponse, ServiceItem, SharedEntry, WeComConfig, WorkbenchBrief, WorkbenchCapture, WorkbenchItem, WorkbenchPlan, WorkbenchProject, WorkbenchSummary } from './api-types';
 import type { AgentAdminConfig, AgentMemory, AgentMessage, AgentModel, AgentQuota, AgentSession, AgentSkillOption, AgentStatus, AgentUsageSummary, ColorMatchItem, ColorMeta, ColorPaletteList, LabopsEntry, LabopsLibrary, LabopsLibraryFolder, LabopsLiterature, LabopsPublishResult, LabopsTemplate, TranslateResult, TranslateStatus, WeatherReport } from './api-types-agent';
 import type { LatexAsset, LatexDocument, LatexReview, LatexReviewReply, LatexReviewStatus, LatexStatus, LatexTemplate, LatexVersion } from './api-plot';
 
@@ -188,7 +188,9 @@ export const api = {
     return request<{ items: KnowledgeDoc[]; total: number }>(`/api/knowledge?${params.toString()}`);
   },
   knowledgeCategories: (space?: number) =>
-    request<KnowledgeFacets>(`/api/knowledge/categories${space !== undefined ? `?space=${space}` : ''}`),
+    space === undefined
+      ? request<KnowledgeFacets>('/api/knowledge/categories')
+      : request<KnowledgeFacets>(`/api/knowledge/categories?space=${space}`),
   knowledgeSpaces: () => request<KnowledgeSpaces>('/api/knowledge/spaces'),
   knowledgeSpaceCreate: (body: {
     name: string;
@@ -472,6 +474,25 @@ export const api = {
     digestTime: string;
   }) => request<WeComConfig>('/api/admin/wecom', { method: 'PUT', body: JSON.stringify(body) }),
   testWecom: () => request<{ ok: boolean; detail: string }>('/api/admin/wecom/test', { method: 'POST' }),
+  adminAudit: (filters: { actor?: string; action?: string; since?: string; until?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (filters.actor) params.set('actor', filters.actor);
+    if (filters.action) params.set('action', filters.action);
+    if (filters.since) params.set('since', filters.since);
+    if (filters.until) params.set('until', filters.until);
+    params.set('limit', String(filters.limit ?? 500));
+    return request<AuditResponse>(`/api/admin/audit?${params.toString()}`);
+  },
+  adminAuditCsvUrl: (filters: { actor?: string; action?: string; since?: string; until?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (filters.actor) params.set('actor', filters.actor);
+    if (filters.action) params.set('action', filters.action);
+    if (filters.since) params.set('since', filters.since);
+    if (filters.until) params.set('until', filters.until);
+    params.set('limit', String(filters.limit ?? 5000));
+    params.set('format', 'csv');
+    return `/api/admin/audit?${params.toString()}`;
+  },
   accounts: (q = '') =>
     request<AccountsResponse>(`/api/admin/accounts${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createAccount: (body: {
@@ -479,7 +500,6 @@ export const api = {
     displayName?: string;
     email?: string;
     groups: string[];
-    password: string;
   }) => request<{ ok: boolean; account: AccountItem; initialPassword?: string }>('/api/admin/accounts', { method: 'POST', body: JSON.stringify(body) }),
   updateAccount: (
     name: string,
@@ -813,9 +833,9 @@ export const api = {
     page_size?: number;
   } = {}) => {
     const sp = new URLSearchParams();
-    Object.entries(p).forEach(([k, v]) => {
-      if (v !== undefined && v !== '' && v !== 0) sp.set(k, String(v));
-    });
+    for (const [key, value] of Object.entries(p)) {
+      if (value !== undefined && value !== '' && value !== 0) sp.set(key, String(value));
+    }
     return request<ColorPaletteList>(`/api/next/v1/colors/palettes?${sp.toString()}`);
   },
   colorMatch: (colors: string[], limit = 8) =>

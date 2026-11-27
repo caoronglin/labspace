@@ -1,4 +1,4 @@
-"""长期记忆中间件的加固版（AgentScope 2.0.11 官方 ``AgenticMemoryMiddleware``）。
+"""长期记忆中间件的加固版（AgentScope 2.0.12 官方 ``AgenticMemoryMiddleware``）。
 
 为什么官方中间件在门户里会让「流永不结束」
 ------------------------------------------
@@ -276,7 +276,5 @@ class LabAgenticMemoryMiddleware(AgenticMemoryMiddleware):
         if msgs is None:
             return ""
         return "\n".join(
-            f"{_.name}: " + _.get_text_content()
-            for _ in msgs
-            if _.get_text_content() is not None
+            f"{_.name}: " + _.get_text_content() for _ in msgs if _.get_text_content() is not None
         )

@@ -30,7 +30,10 @@ try {
     console.log(`  [SKIP] PDF 翻译模型与备用网关均不可用：${mt.body?.reason || mt.body?.fallback?.reason || `HTTP ${mt.status}`}`);
   } else {
     await page.goto(`${BASE}/translate`, { waitUntil: 'domcontentloaded' });
-    const status = await page.evaluate(async () => (await fetch('/api/pdf-translate/status', { credentials: 'include' })).text());
+    const status = await page.evaluate(async () => {
+      const response = await fetch('/api/pdf-translate/status', { credentials: 'include' });
+      return response.text();
+    });
     console.log('  服务状态:', status);
     const input = page.locator('.ant-upload input[type="file"]').first();
     await input.waitFor({ state: 'attached', timeout: 20000 });
@@ -43,7 +46,8 @@ try {
     let finalText = '';
     for (let i = 0; i < 60; i++) {
       await page.waitForTimeout(5000);
-      finalText = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+      const bodyText = await page.locator('body').innerText();
+      finalText = bodyText.replace(/\s+/g, ' ');
       if (finalText.includes('翻译完成') || finalText.includes('翻译失败')) break;
       if (i % 6 === 0) console.log('  ...', finalText.match(/排队中|正在解析[^，]*/)?.[0] ?? '');
     }

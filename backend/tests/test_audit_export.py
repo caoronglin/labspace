@@ -14,7 +14,7 @@ import json
 import pytest
 from starlette.requests import Request
 
-from app import audit, db, main
+from app import audit, db
 from app.routers import reports
 
 
@@ -95,6 +95,34 @@ async def test_export_csv_has_header_and_utf8(fake_rows):
     assert rows[1][2] == "seed.update"
     # detail 是 jsonb，导出成 JSON 字符串而不是 Python repr
     assert json.loads(rows[1][4])["values"]["编号"] == "A-1"
+
+
+@pytest.mark.asyncio
+async def test_export_csv_neutralizes_spreadsheet_formulas(monkeypatch):
+    monkeypatch.setattr(
+        db,
+        "query",
+        lambda *_args, **_kwargs: [
+            {
+                "id": 2,
+                "actor": "=1+1",
+                "action": "@SUM(A1)",
+                "target": " \t=cmd",
+                "detail": {},
+                "ip": "-1",
+                "created_at": "2026-11-21T10:00:00+08:00",
+            }
+        ],
+    )
+    response = await reports.api_admin_audit(
+        request=_request(), actor="", action="", since="", until="", limit=10,
+        format="csv", _admin={"sub": "admin01"},
+    )
+    rows = list(csv.reader(io.StringIO(response.body.decode("utf-8"))))
+    assert rows[1][1] == "'=1+1"
+    assert rows[1][2] == "'@SUM(A1)"
+    assert rows[1][3] == "' \t=cmd"
+    assert rows[1][5] == "'-1"
 
 
 def test_record_failure_never_breaks_business(monkeypatch):

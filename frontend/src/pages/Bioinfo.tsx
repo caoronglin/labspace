@@ -13,10 +13,12 @@ export default function Bioinfo() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [params] = useSearchParams();
   // 走门户同源 /apps/bioinfo/（nginx 反代），不再用 IP+端口直连。
-  // tab=terminal 直达生信平台的 PTY 工作区（统一 SSH 登录入口）。
+  // iframe 直接发起 OIDC：门户已有会话时自动完成 SSO，不再落到生信登录按钮页。
+  // tab=terminal 仍可直达生信平台自己的 PTY 工作区；它不是门户 SSH 网关。
   const src = useMemo(() => {
     const tab = params.get('tab');
-    return tab === 'terminal' ? '/apps/bioinfo/workspace' : '/apps/bioinfo/';
+    const target = tab === 'terminal' ? '/apps/bioinfo/workspace' : '/apps/bioinfo/';
+    return `/apps/bioinfo/api/v1/auth/login?redirect=${encodeURIComponent(target)}`;
   }, [params]);
 
   const pushTheme = useCallback(() => {

@@ -1,4 +1,4 @@
-"""AgentScope 2.0.11 官方 Agent Service —— 门户的 Agent 后端（共用内核）。
+"""AgentScope 2.0.12 官方 Agent Service —— 门户的 Agent 后端（共用内核）。
 
 与门户的关系
 ------------
@@ -98,6 +98,7 @@ from lab_memory import LabAgenticMemoryMiddleware
 
 log = logging.getLogger("agentscope.service")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
 
 # 数据库：与门户同实例、独立库。用独立库而不是同库不同 schema ——
 # AgentScope 自带 alembic，schema 隔离需要给 asyncpg 与 alembic 两侧都加
