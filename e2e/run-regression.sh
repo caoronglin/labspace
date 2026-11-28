@@ -9,7 +9,7 @@ export LAB_PASS
 export LAB_ADMIN_PASS
 
 ALL=(api-integration.mjs e2e.mjs snapotter-integration.mjs agent-integration.mjs
-     agent-chat-test.mjs agent-navigation-test.mjs logout-test.mjs sso-flow.mjs
+     agent-chat-test.mjs agent-hitl-test.mjs agent-navigation-test.mjs logout-test.mjs sso-flow.mjs
      new-features-test.mjs db-api-integration.mjs databases-api-ui.mjs
      biomed-api-test.mjs biomed-search-test.mjs
      i18n-full.mjs embed-test.mjs jbrowse-i18n.mjs home-layout.mjs oidc-multi.mjs

@@ -45,6 +45,9 @@ LAB_PASS=… LAB_ADMIN_PASS=… ./run-regression.sh api-integration.mjs e2e.mjs
 
 `concurrency-test.mjs` 验证 24 个门户会话查询与 8 个生信序列计算可并行完成，用于守护数据库池和多 worker 配置。
 
+`agent-hitl-test.mjs` 用服务端形状的 SSE 桩触发工具确认与 AskUser，验证前端只回传用户选择，
+不自行构造工具权限；服务端重建事件与防伪造规则由 `backend/tests/test_hitl.py` 覆盖。
+
 ## 单个探针怎么写
 
 ```js

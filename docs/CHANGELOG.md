@@ -8,8 +8,8 @@
   Tailscale CGNAT；上传先写临时文件再改名，失败清理临时文件；Nginx 会话校验后覆盖注入用户身份。
 - **并发优化**：门户保持单 worker 以共享限流/SSE 状态，CPU 配额提高到 4 核，线程池 64，门户/账号数据库池
   分别 24/12；生信工具改为 4 worker、每请求单线程 BLAS，避免 NumPy/SciPy 线程超订。
-- **回归**：SSH 门户入口 10/10、真实 SSH/SFTP 集成 4/4、并发回归 2/2、服务目录 Go/Python 12 项一致；
-  门户后端 322 项、Go 全包测试、前端 TypeScript/Vite 与 Ant Design lint 均通过。
+- **回归**：SSH 门户入口 10/10、真实 SSH/SFTP 集成 4/4、HITL 浏览器回归 8/8、并发回归 2/2、
+  服务目录 Go/Python 12 项一致；门户后端 322 项、Go 全包测试、前端 TypeScript/Vite 与 Ant Design lint 均通过。
 
 ## 2026-11-25 — v2026.11.24 发布后加固（版本号不变）
 
